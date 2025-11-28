@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "ipykernel>=7.1.0",
+    "numpy>=2.3.5",
+    "polars>=1.35.2",
+    "sentence-transformers>=5.1.2",
+]
 
 [dependency-groups]
 dev = [

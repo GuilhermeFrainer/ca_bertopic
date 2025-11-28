@@ -7,8 +7,8 @@ import os
 import glob
 
 
-OUTPUT_DIR = "../data/processed/embeddings_batches" # Where to save chunks
-BATCH_SIZE = 1000 # Save to disk every 1000 rows (adjust based on RAM)
+OUTPUT_DIR = "data/processed/embeddings_batches"
+BATCH_SIZE = 1000 # Save to disk every 1000 rows
 YELP_DATASET = "data/processed/yelp_reviews.parquet"
 MODEL = "all-MiniLM-L6-v2"
 
@@ -34,7 +34,7 @@ def main():
 
     for i in tqdm(range(start_index, total_rows, BATCH_SIZE), desc="Generating Embeddings"):
         chunk = df.slice(i, BATCH_SIZE)
-        texts = df["text"].to_list()
+        texts = chunk["text"].to_list()
 
         embeddings = embedding_model.encode(texts, show_progress_bar=False)
         chunk_with_embeddings = chunk.with_columns(
