@@ -5,13 +5,26 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "bertopic>=0.17.3",
+    "cucim-cu13==25.10.*",
+    "cudf-cu13==25.10.*",
+    "cugraph-cu13==25.10.*",
+    "cuml-cu13==25.10.*",
+    "cuvs-cu13==25.10.*",
+    "cuxfilter-cu13==25.10.*",
+    "dask-cudf-cu13==25.10.*",
+    "gensim>=4.4.0",
     "ipykernel>=7.1.0",
-    "numpy>=2.3.5",
+    "ipywidgets>=8.1.8",
+    "numpy<2.3",
+    "nx-cugraph-cu13==25.10.*",
     "polars>=1.35.2",
-    "sentence-transformers>=5.1.2",
+    "pylibraft-cu13==25.10.*",
+    "raft-dask-cu13==25.10.*",
+    "rbo>=0.1.3",
+    "torch>=2.9.1",
+    "torchvision>=0.24.1",
 ]
 
-[dependency-groups]
-dev = [
-    "nbstripout>=0.8.2",
-]
+[[tool.uv.index]]
+url = "https://pypi.nvidia.com/"
