@@ -1,0 +1,1 @@
+This project was made in an attempt to modify BERTopic so that it will incorporate document-level metadata into the topic modeling process.
