@@ -20,6 +20,7 @@ dependencies = [
     "nbstripout>=0.8.2",
     "numpy<2.3",
     "nx-cugraph-cu13==25.10.* ; sys_platform == 'linux'",
+    "octis>=1.8.3",
     "polars>=1.35.2",
     "pylibraft-cu13==25.10.* ; sys_platform == 'linux'",
     "raft-dask-cu13==25.10.* ; sys_platform == 'linux'",
