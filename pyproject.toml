@@ -18,7 +18,7 @@ dependencies = [
     "ipykernel>=7.1.0",
     "ipywidgets>=8.1.8",
     "nbstripout>=0.8.2",
-    "numpy<2.3",
+    "numpy<2.2",
     "nx-cugraph-cu13==25.10.* ; sys_platform == 'linux'",
     "octis>=1.8.3",
     "polars>=1.35.2",
