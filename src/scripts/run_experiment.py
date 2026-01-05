@@ -25,7 +25,7 @@ OUTPUT_DIR = pathlib.Path("output")
 
 def main():
     now = datetime.datetime.now()
-    with open(EXPERIMENTS_DIR / "experiment_1.yaml", "r") as f:
+    with open(EXPERIMENTS_DIR / "experiment_2.yaml", "r") as f:
         config = yaml.safe_load(f)
 
     random_state = config["experiment"]["random_state"]
@@ -50,9 +50,9 @@ def main():
 
     scaled_metadata = metadata_df.with_columns(scaling_expressions).to_numpy()
 
+    baseline_topic_n = None
     results = []
     for model_config in tqdm(models_config, desc="Training models"):
-        #print(model_config)
         model_name = model_config.get("id", "Unnamed Model")
         try:
             # Model instantiation
@@ -64,7 +64,8 @@ def main():
             hdbscan_model = get_algorithm(
                 model_config["clustering"],
                 metadata=scaled_metadata,
-                random_state=random_state
+                random_state=random_state,
+                n_clusters=baseline_topic_n
             )
             topic_model = BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model)
             topics, probs = topic_model.fit_transform(documents=text, embeddings=embeddings)
@@ -99,13 +100,14 @@ def main():
                 "outliers": outlier_count
             }
             results.append(run_metrics | coherence_scores | diversity_scores)
+
+            # Saves the number of topics of the baseline model
+            # Can be used later as reference for other models
+            if model_name == "vanilla":
+                baseline_topic_n = len(topic_model.get_topic_info())
         except Exception as e:
             print(f"Error training model {model_name}: {e}")
             raise e
-            results.append({
-                "model_name": model_name,
-                "error": str(e)
-            })
     
     results_df = pl.DataFrame(results)
     experiment_name = config["experiment"]["name"]
@@ -133,7 +135,8 @@ def min_max_scaler(col: str):
 def get_algorithm(
     config: dict,
     metadata: Optional[np.ndarray],
-    random_state: int
+    random_state: int,
+    n_clusters: Optional[int] = None
 ):
     algo_type = config["type"]
     params = config.get("params") or {}
@@ -149,6 +152,9 @@ def get_algorithm(
     elif algo_type == 'multi_view_spectral_clustering':
         if metadata is None:
             raise ValueError("Metadata array is null")
+
+        if n_clusters and params["n_clusters"] == "baseline":
+            params["n_clusters"] = n_clusters
 
         cluster_model = MultiviewSpectralClustering(
             random_state=random_state,
