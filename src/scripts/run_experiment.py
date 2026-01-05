@@ -11,17 +11,20 @@ from octis.evaluation_metrics.coherence_metrics import Coherence
 from octis.evaluation_metrics.diversity_metrics import TopicDiversity, InvertedRBO
 
 from typing import Optional
-import pathlib
+from pathlib import Path
 import yaml
 import datetime
 import argparse
+import time
+import logging
 
 from src.mvc_wrapper import MVCWrapper
 from src.evaluation import bertopic_output_to_octis
 
 
-EXPERIMENTS_DIR = pathlib.Path("experiments")
-OUTPUT_DIR = pathlib.Path("output")
+EXPERIMENTS_DIR = Path("./experiments")
+OUTPUT_DIR = Path("./output")
+LOG_DIR = Path("./logs")
 
 
 def main():
@@ -33,58 +36,79 @@ def main():
         help="Name of the experiment yaml file (e.g., experiment_2)"
     )
     args = parser.parse_args()
-    now = datetime.datetime.now()
 
     try:
-        # 2. Setup
+        # 1. Setup Config & Logs
         config = load_config(args.exp)
-        text, embeddings, scaled_metadata = load_and_prep_data(config)
+        exp_name = config["experiment"]["name"]
+        logger = setup_logging(exp_name)
         
-        # 3. Main Experiment Loop
-        results = []
-        baseline_topic_n = None
-        models_config = config["models"]
+        logger.info("Loading and preparing data...")
+        text, embeddings, scaled_metadata = load_and_prep_data(config)
 
-        for model_config in tqdm(models_config, desc="Training models"):
+        # 2. Separate Baseline from Others
+        models_config = config["models"]
+        
+        # We look for a model marked as baseline OR strictly named "vanilla"
+        baseline_config = next(
+            (m for m in models_config if m.get("is_baseline") or m.get("id") == "vanilla"), 
+            None
+        )
+        
+        # Filter out the baseline from the main list so we don't run it twice
+        other_models = [m for m in models_config if m != baseline_config]
+        
+        results = []
+        baseline_n_topics = None
+
+        # 3. Run Baseline First (if it exists)
+        if baseline_config:
+            logger.info(f"Running Baseline Model: {baseline_config.get('id')}")
+            metrics, trained_model = train_and_evaluate(
+                baseline_config, text, embeddings, scaled_metadata, config
+            )
+            results.append(metrics)
+            
+            # Extract n_topics
+            baseline_n_topics = len(trained_model.get_topic_info()) - 1
+            logger.info(f"Baseline found {baseline_n_topics} topics.")
+
+        # 4. Run Remaining Models
+        for model_config in tqdm(other_models, desc="Training models"):
             try:
-                # Pass baseline_topic_n if we have it, logic handled inside or here
-                metrics, trained_model = train_and_evaluate(
+                metrics, _ = train_and_evaluate(
                     model_config, 
                     text, 
                     embeddings, 
                     scaled_metadata, 
                     config,
-                    baseline_topics=baseline_topic_n
+                    baseline_topics=baseline_n_topics
                 )
                 results.append(metrics)
-
-                # Capture baseline for subsequent models
-                if metrics["model_name"] == "vanilla":
-                    baseline_topic_n = len(trained_model.get_topic_info())
-
             except Exception as e:
-                print(f"Error training model {model_config.get('id')}: {e}")
-                # decide if you want to 'continue' or 'raise' here
-                raise e
+                logger.error(f"Failed model {model_config.get('id')}: {e}")
+                # Don't raise if you want other models to keep running
+                continue
 
-        # 4. Save Results
+        # 5. Save Results
         results_df = pl.DataFrame(results)
-        experiment_name = config["experiment"]["name"]
-        timestamp = now.strftime("%Y%m%d-%H%M%S")
-        
-        OUTPUT_DIR.mkdir(exist_ok=True, parents=True) # Safety check
-        results_path = OUTPUT_DIR / f"{experiment_name}-{timestamp}.csv"
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        results_path = OUTPUT_DIR / f"{exp_name}-{timestamp}.csv"
         results_df.write_csv(results_path)
-        print(f"Results saved to {results_path}")
+        
+        logger.info(f"Experiment finished. Results at {results_path}")
 
     except Exception as e:
-        print(f"Pipeline failed: {e}")
+        logger = logging.getLogger("pipeline")
+        logger.error(f"Pipeline crashed: {e}", exc_info=True)
 
 
 def load_config(exp_name: str) -> dict:
     """
     Resolves path and loads the YAML config
     """
+    logger = logging.getLogger("pipeline")
+
     filename = exp_name if exp_name.endswith(".yaml") else f"{exp_name}.yaml"
     config_path = EXPERIMENTS_DIR / filename
 
@@ -92,7 +116,7 @@ def load_config(exp_name: str) -> dict:
         raise FileNotFoundError(f"Experiment file {config_path} not found.")
 
     with open(config_path, "r") as f:
-        print(f"Loaded config from {config_path}")
+        logger.info(f"Loaded config from {config_path}")
         return yaml.safe_load(f)
     
 
@@ -134,6 +158,9 @@ def train_and_evaluate(
     """
     Trains a single model instance and returns metrics.
     """
+    start_time = time.time()
+    logger = logging.getLogger("pipeline")
+
     random_state = config["experiment"]["random_state"]
     model_name = model_config.get("id", "Unnamed Model")
 
@@ -163,9 +190,13 @@ def train_and_evaluate(
     tokenized_texts = [analyzer(t) for t in text]
     
     octis_output = bertopic_output_to_octis(topic_model, topics)
+
+    duration = time.time() - start_time
+    logger.info(f"[{model_name}] Finished in {duration:.2f} seconds.")
     
     metrics = {
         "model_name": model_name,
+        "duration_seconds": duration,
         "n_topics": n_topics,
         "outliers": outlier_count
     }
@@ -180,6 +211,29 @@ def train_and_evaluate(
         metrics[dm] = compute_diversity(dm, model_output=octis_output)
 
     return metrics, topic_model
+
+
+def setup_logging(experiment_name: str) -> logging.Logger:
+    """
+    Sets up a logger that writes to file and console.
+    """
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_file = LOG_DIR / f"{experiment_name}-{timestamp}.log"
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s [%(name)s] [%(levelname)s] %(message)s",
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()  # Keeps printing to console
+        ]
+    )
+    logger = logging.getLogger("pipeline")
+    logger.setLevel(logging.INFO)
+    logger.info(f"Starting experiment: {experiment_name}")
+    return logger
 
 
 def compute_diversity(diversity_type: str, model_output: dict) -> float:

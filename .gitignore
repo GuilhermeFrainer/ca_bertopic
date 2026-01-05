@@ -12,6 +12,7 @@ wheels/
 data/
 models/
 output/
+logs/
 
 .stignore
 .stfolder

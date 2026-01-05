@@ -20,6 +20,7 @@ experiment:
 models:
   - id: "vanilla"
     description: "Standard BERTopic: no metadata and default hiperparameters."
+    is_baseline: true
     # Clustering algorithm options
     dimensionality_reduction:
       type: "umap"
@@ -35,6 +36,7 @@ models:
   
   - id: "mvc_vanilla"
     description: "Default implementation using MVC."
+    use_baseline_n_topics: true
     dimensionality_reduction:
       type: "umap"
       params:
@@ -44,7 +46,6 @@ models:
     clustering:
       type: "multi_view_spectral_clustering"
       params:
-        n_clusters: "baseline"
         n_init: 10
 
 evaluation:
