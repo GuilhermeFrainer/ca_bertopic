@@ -33,108 +33,153 @@ def main():
         help="Name of the experiment yaml file (e.g., experiment_2)"
     )
     args = parser.parse_args()
-
-    exp_file = args.exp if args.exp.endswith(".yaml") else f"{args.exp}.yaml"
-    config_path = EXPERIMENTS_DIR / exp_file
-
-    if not config_path.exists():
-        print(f"Error: Experiment file {config_path} not found.")
-        return
-
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    
-    print(f"Loaded config from {config_path}")
-
     now = datetime.datetime.now()
 
-    random_state = config["experiment"]["random_state"]
-    sample_size = config["experiment"]["sample_size"]
-    covariates = config["experiment"]["covariates"]
+    try:
+        # 2. Setup
+        config = load_config(args.exp)
+        text, embeddings, scaled_metadata = load_and_prep_data(config)
+        
+        # 3. Main Experiment Loop
+        results = []
+        baseline_topic_n = None
+        models_config = config["models"]
+
+        for model_config in tqdm(models_config, desc="Training models"):
+            try:
+                # Pass baseline_topic_n if we have it, logic handled inside or here
+                metrics, trained_model = train_and_evaluate(
+                    model_config, 
+                    text, 
+                    embeddings, 
+                    scaled_metadata, 
+                    config,
+                    baseline_topics=baseline_topic_n
+                )
+                results.append(metrics)
+
+                # Capture baseline for subsequent models
+                if metrics["model_name"] == "vanilla":
+                    baseline_topic_n = len(trained_model.get_topic_info())
+
+            except Exception as e:
+                print(f"Error training model {model_config.get('id')}: {e}")
+                # decide if you want to 'continue' or 'raise' here
+                raise e
+
+        # 4. Save Results
+        results_df = pl.DataFrame(results)
+        experiment_name = config["experiment"]["name"]
+        timestamp = now.strftime("%Y%m%d-%H%M%S")
+        
+        OUTPUT_DIR.mkdir(exist_ok=True, parents=True) # Safety check
+        results_path = OUTPUT_DIR / f"{experiment_name}-{timestamp}.csv"
+        results_df.write_csv(results_path)
+        print(f"Results saved to {results_path}")
+
+    except Exception as e:
+        print(f"Pipeline failed: {e}")
+
+
+def load_config(exp_name: str) -> dict:
+    """
+    Resolves path and loads the YAML config
+    """
+    filename = exp_name if exp_name.endswith(".yaml") else f"{exp_name}.yaml"
+    config_path = EXPERIMENTS_DIR / filename
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Experiment file {config_path} not found.")
+
+    with open(config_path, "r") as f:
+        print(f"Loaded config from {config_path}")
+        return yaml.safe_load(f)
+    
+
+def load_and_prep_data(config: dict) -> tuple[list[str], np.ndarray, np.ndarray]:
+    """
+    Loads parquet, samples data, and scales metadata.
+    """
     data_path = config["experiment"]["dataset_path"]
+    sample_size = config["experiment"]["sample_size"]
+    random_state = config["experiment"]["random_state"]
+    covariates = config["experiment"]["covariates"]
 
-    models_config: list[dict] = config["models"]
-
-    # Get the data
+    # Lazy load and sample
     full_lf = pl.scan_parquet(data_path)
     lf = sample_from_lf(full_lf, n=sample_size, seed=random_state)
     
-    text = lf.select("text").collect().to_series().to_list()
-    embeddings = lf.select("embedding").collect().to_series().to_numpy()
-    metadata_df = lf.select(covariates).collect()
-
-    scaling_expressions = [
-        min_max_scaler(c)
-        for c in metadata_df.columns
-    ]
-
+    # Materialize data
+    df = lf.collect()
+    
+    text = df["text"].to_list()
+    embeddings = df["embedding"].to_numpy()
+    
+    # Metadata scaling
+    metadata_df = df.select(covariates)
+    scaling_expressions = [min_max_scaler(c) for c in metadata_df.columns]
     scaled_metadata = metadata_df.with_columns(scaling_expressions).to_numpy()
 
-    baseline_topic_n = None
-    results = []
-    for model_config in tqdm(models_config, desc="Training models"):
-        model_name = model_config.get("id", "Unnamed Model")
-        try:
-            # Model instantiation
-            umap_model = get_algorithm(
-                model_config["dimensionality_reduction"],
-                metadata=scaled_metadata,
-                random_state=random_state
-            )
-            hdbscan_model = get_algorithm(
-                model_config["clustering"],
-                metadata=scaled_metadata,
-                random_state=random_state,
-                n_clusters=baseline_topic_n
-            )
-            topic_model = BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model)
-            topics, probs = topic_model.fit_transform(documents=text, embeddings=embeddings)
+    return text, embeddings, scaled_metadata
 
-            # Evaluation
-            outlier_count = topics.count(-1)
 
-            # Coherence
-            # Texts have to be tokenized to compute coherence
-            analyzer = topic_model.vectorizer_model.build_analyzer()
-            tokenized_texts = [analyzer(t) for t in text]
-            octis_output = bertopic_output_to_octis(
-                topic_model,
-                topics
-            )
-            coherence_scores = {}
-            for cm in config["experiment"]["coherence_metrics"]:
-                coherence_model = Coherence(
-                    texts=tokenized_texts,
-                    measure=cm
-                )
-                coherence_scores[cm] = coherence_model.score(model_output=octis_output)
+def train_and_evaluate(
+    model_config: dict,
+    text: list[str],
+    embeddings: np.ndarray,
+    scaled_metadata: np.ndarray,
+    config: dict,
+    baseline_topics: Optional[int] = None
+) -> tuple[dict, BERTopic]:
+    """
+    Trains a single model instance and returns metrics.
+    """
+    random_state = config["experiment"]["random_state"]
+    model_name = model_config.get("id", "Unnamed Model")
 
-            # Diversity
-            diversity_scores = {}
-            for dm in config["experiment"]["diversity_metrics"]:
-                diversity_scores[dm] = compute_diversity(dm, model_output=octis_output)
-
-            run_metrics = {
-                "model_name": model_name,
-                "n_topics": len(topic_model.get_topic_info()) - 1,
-                "outliers": outlier_count
-            }
-            results.append(run_metrics | coherence_scores | diversity_scores)
-
-            # Saves the number of topics of the baseline model
-            # Can be used later as reference for other models
-            if model_name == "vanilla":
-                baseline_topic_n = len(topic_model.get_topic_info())
-        except Exception as e:
-            print(f"Error training model {model_name}: {e}")
-            raise e
+    # 1. Instantiation
+    umap_model = get_algorithm(
+        model_config["dimensionality_reduction"],
+        metadata=scaled_metadata,
+        random_state=random_state
+    )
+    hdbscan_model = get_algorithm(
+        model_config["clustering"],
+        metadata=scaled_metadata,
+        random_state=random_state,
+        n_clusters=baseline_topics # Only used if provided
+    )
     
-    results_df = pl.DataFrame(results)
-    experiment_name = config["experiment"]["name"]
-    timestamp = now.strftime("%Y%m%d-%H%M%S")
-    results_path = OUTPUT_DIR / f"{experiment_name}-{timestamp}.csv"
-    results_df.write_csv(results_path)
-    print(f"Results saved to {results_path}")
+    topic_model = BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model)
+    topics, probs = topic_model.fit_transform(documents=text, embeddings=embeddings)
+
+    # 2. Basic Metrics
+    outlier_count = topics.count(-1)
+    n_topics = len(topic_model.get_topic_info()) - 1
+
+    # 3. Advanced Metrics (Coherence & Diversity)
+    # Pre-tokenize once per model run (or pass in pre-tokenized text to save time)
+    analyzer = topic_model.vectorizer_model.build_analyzer()
+    tokenized_texts = [analyzer(t) for t in text]
+    
+    octis_output = bertopic_output_to_octis(topic_model, topics)
+    
+    metrics = {
+        "model_name": model_name,
+        "n_topics": n_topics,
+        "outliers": outlier_count
+    }
+
+    # Coherence Loop
+    for cm in config["experiment"]["coherence_metrics"]:
+        coherence_model = Coherence(texts=tokenized_texts, measure=cm)
+        metrics[cm] = coherence_model.score(model_output=octis_output)
+
+    # Diversity Loop
+    for dm in config["experiment"]["diversity_metrics"]:
+        metrics[dm] = compute_diversity(dm, model_output=octis_output)
+
+    return metrics, topic_model
 
 
 def compute_diversity(diversity_type: str, model_output: dict) -> float:
