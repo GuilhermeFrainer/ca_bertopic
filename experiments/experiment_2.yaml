@@ -1,0 +1,53 @@
+experiment:
+  name: "mvc_experiment_1"
+  dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
+  random_state: 2349479
+  sample_size: 10000
+  covariates:
+    - date
+    - stars
+    - user_average_stars
+    - yelping_since
+    - business_stars
+  coherence_metrics:
+    - u_mass
+    - c_v
+    - c_npmi
+  diversity_metrics:
+    - irbo
+    - topic_diversity
+
+models:
+  - id: "vanilla"
+    description: "Standard BERTopic: no metadata and default hiperparameters."
+    # Clustering algorithm options
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "hdbscan"
+      params:
+        min_cluster_size: 15
+        prediction_data: true
+  
+  - id: "mvc_vanilla"
+    description: "Default implementation using MVC."
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "multi_view_spectral_clustering"
+      params:
+        n_clusters: "baseline"
+        n_init: 10
+
+evaluation:
+  metrics:
+    - "npmi"  
+    - "irbo"

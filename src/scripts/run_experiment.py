@@ -14,6 +14,7 @@ from typing import Optional
 import pathlib
 import yaml
 import datetime
+import argparse
 
 from src.mvc_wrapper import MVCWrapper
 from src.evaluation import bertopic_output_to_octis
@@ -24,9 +25,28 @@ OUTPUT_DIR = pathlib.Path("output")
 
 
 def main():
-    now = datetime.datetime.now()
-    with open(EXPERIMENTS_DIR / "experiment_2.yaml", "r") as f:
+    parser = argparse.ArgumentParser(description="Run a specific ML experiment.")
+    parser.add_argument(
+        "--exp", 
+        type=str, 
+        required=True, 
+        help="Name of the experiment yaml file (e.g., experiment_2)"
+    )
+    args = parser.parse_args()
+
+    exp_file = args.exp if args.exp.endswith(".yaml") else f"{args.exp}.yaml"
+    config_path = EXPERIMENTS_DIR / exp_file
+
+    if not config_path.exists():
+        print(f"Error: Experiment file {config_path} not found.")
+        return
+
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
+    
+    print(f"Loaded config from {config_path}")
+
+    now = datetime.datetime.now()
 
     random_state = config["experiment"]["random_state"]
     sample_size = config["experiment"]["sample_size"]
