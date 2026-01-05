@@ -1,5 +1,5 @@
 from bertopic import BERTopic
-from octis.evaluation_metrics.diversity_metrics import TopicDiversity
+from octis.evaluation_metrics.diversity_metrics import TopicDiversity, InvertedRBO
 from octis.evaluation_metrics.coherence_metrics import Coherence
 
 
@@ -35,4 +35,14 @@ def compute_coherence(
         measure=measure
     )
     return coherence_model.score(model_output)
+
+
+def compute_diversity(diversity_type: str, model_output: dict) -> float:
+    if diversity_type == "irbo":
+        diversity_model = InvertedRBO()
+    elif diversity_type == "topic_diversity":
+        diversity_model = TopicDiversity()
+    else:
+        raise ValueError(f"Invalid diversity type: {diversity_type}")
+    return diversity_model.score(model_output=model_output) # type: ignore
 
