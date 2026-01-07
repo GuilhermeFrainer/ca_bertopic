@@ -2,6 +2,8 @@ from bertopic import BERTopic
 from octis.evaluation_metrics.diversity_metrics import TopicDiversity, InvertedRBO
 from octis.evaluation_metrics.coherence_metrics import Coherence
 
+import logging
+
 
 def bertopic_output_to_octis(
     m: BERTopic,
@@ -34,7 +36,12 @@ def compute_coherence(
         topk=topk,
         measure=measure
     )
-    return coherence_model.score(model_output)
+    try:
+        return coherence_model.score(model_output)
+    except IndexError as e:
+        logger = logging.getLogger("pipeline")
+        logger.error(f"Error when computing coherence. Model output:\n{model_output}")
+        raise e
 
 
 def compute_diversity(diversity_type: str, model_output: dict) -> float:

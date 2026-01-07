@@ -9,11 +9,13 @@ import logging
 import src.utils as utils
 import src.data as data
 import src.training as training
+import src.make_table as make_table
 
 
 EXPERIMENTS_DIR = Path("./experiments")
 OUTPUT_DIR = Path("./output")
 LOG_DIR = Path("./logs")
+TABLES_DIR = Path("./tables")
 
 
 def main():
@@ -82,10 +84,19 @@ def main():
         # 5. Save Results
         results_df = pl.DataFrame(results)
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        results_path = OUTPUT_DIR / f"{exp_name}-{timestamp}.csv"
+        results_filename = f"{exp_name}-{timestamp}"
+        results_path = OUTPUT_DIR / f"{results_filename}.csv"
         results_df.write_csv(results_path)
         
         logger.info(f"Experiment finished. Results at {results_path}")
+
+        latex_table = make_table.generate_latex_table(results_df)
+        #latex_table = results_df.to_pandas().to_latex()
+        table_filename = f"{results_filename}.tex"
+        table_path = TABLES_DIR / table_filename
+        with open(table_path, "w") as f:
+            f.write(latex_table)
+        logger.info(f"Latex table saved at {table_path}")
 
     except Exception as e:
         logger = logging.getLogger("pipeline")

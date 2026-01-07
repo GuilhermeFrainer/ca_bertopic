@@ -2,7 +2,7 @@ experiment:
   name: "mvc_experiment_1"
   dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
   random_state: 2349479
-  sample_size: 10000
+  sample_size: 100
   covariates:
     - date
     - stars

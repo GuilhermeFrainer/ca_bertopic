@@ -13,6 +13,7 @@ data/
 models/
 output/
 logs/
+tables/
 
 .stignore
 .stfolder

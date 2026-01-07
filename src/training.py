@@ -36,7 +36,7 @@ def train_and_evaluate(
         model_config["clustering"],
         metadata=scaled_metadata,
         random_state=random_state,
-        n_clusters=baseline_topics # Only used if provided
+        n_clusters=baseline_topics
     )
     
     topic_model = BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model)
