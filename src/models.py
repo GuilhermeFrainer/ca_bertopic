@@ -3,7 +3,7 @@ from umap import UMAP
 from hdbscan import HDBSCAN
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
-from mvlearn.cluster import MultiviewSpectralClustering
+import mvlearn.cluster as mvcluster
 
 from typing import Optional
 
@@ -19,6 +19,9 @@ def get_algorithm(
     algo_type = config["type"]
     params = config.get("params") or {}
 
+    if n_clusters:
+        params["n_clusters"] = n_clusters
+
     if algo_type == 'umap':
         return UMAP(random_state=random_state, **params)
     elif algo_type == 'pca':
@@ -31,14 +34,38 @@ def get_algorithm(
         if metadata is None:
             raise ValueError("Metadata array is null")
 
-        if n_clusters and params["n_clusters"] == "baseline":
-            params["n_clusters"] = n_clusters
-
-        cluster_model = MultiviewSpectralClustering(
+        cluster_model = mvcluster.MultiviewSpectralClustering(
             random_state=random_state,
             **params
         )
         return MVCWrapper(model=cluster_model, metadata=metadata)
-        
+    elif algo_type == 'co_regularized_multi_view_spectral_clustering':
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+
+        cluster_model = mvcluster.MultiviewCoRegSpectralClustering(
+            random_state=random_state,
+            **params
+        )
+        return MVCWrapper(model=cluster_model, metadata=metadata)
+    elif algo_type == 'multi_view_k_means':
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+
+        cluster_model = mvcluster.MultiviewKMeans(
+            random_state=random_state,
+            **params
+        )
+        return MVCWrapper(model=cluster_model, metadata=metadata)
+    elif algo_type == 'multi_view_spherical_k_means':
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+
+        cluster_model = mvcluster.MultiviewSphericalKMeans(
+            random_state=random_state,
+            **params
+        )
+        return MVCWrapper(model=cluster_model, metadata=metadata)
     else:
         raise ValueError(f"Unknown algorithm type: {algo_type}")
+    
