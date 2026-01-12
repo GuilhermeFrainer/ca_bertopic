@@ -37,14 +37,20 @@ def create_bertopic_instance(
     )
 
     # Instantiate Clustering
-    # We pass n_clusters if provided (e.g., derived from baseline), 
-    # otherwise the algorithm uses its own default/config.
-    hdbscan_model = get_algorithm(
-        model_config["clustering"],
-        metadata=scaled_metadata,
-        random_state=random_state,
-        n_clusters=n_clusters 
-    )
+    use_baseline_topics: bool = model_config.get("use_baseline_n_topics", False)
+    if use_baseline_topics:
+        hdbscan_model = get_algorithm(
+            model_config["clustering"],
+            metadata=scaled_metadata,
+            random_state=random_state,
+            n_clusters=n_clusters 
+        )
+    else:
+        hdbscan_model = get_algorithm(
+            model_config["clustering"],
+            metadata=scaled_metadata,
+            random_state=random_state
+        )
     
     # Return the assembled object
     return BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model)
