@@ -10,54 +10,49 @@ import src.models as models
 
 
 def train_and_evaluate(
-    model_config: dict,
+    topic_model: BERTopic,
+    model_id: str,
     text: list[str],
     embeddings: np.ndarray,
-    scaled_metadata: np.ndarray,
-    config: dict,
-    baseline_topics: Optional[int] = None
+    config: dict
 ) -> tuple[dict, BERTopic]:
     """
-    Trains a single model instance and returns metrics.
+    Fits a pre-instantiated BERTopic model and calculates evaluation metrics.
+
+    Args:
+        topic_model: The instantiated BERTopic object.
+        model_id: String identifier for logging/results.
+        text: List of document strings.
+        embeddings: Pre-computed document embeddings.
+        config: The global experiment configuration (for metric settings).
+
+    Returns:
+        A tuple containing the metrics dictionary and the fitted model.
     """
-    start_time = time.time()
     logger = logging.getLogger("pipeline")
+    start_time = time.time()
 
-    random_state = config["experiment"]["random_state"]
-    model_name = model_config.get("id", "Unnamed Model")
-
-    # 1. Instantiation
-    umap_model = models.get_algorithm(
-        model_config["dimensionality_reduction"],
-        metadata=scaled_metadata,
-        random_state=random_state
-    )
-    hdbscan_model = models.get_algorithm(
-        model_config["clustering"],
-        metadata=scaled_metadata,
-        random_state=random_state,
-        n_clusters=baseline_topics
-    )
-    
-    topic_model = BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model)
-    topics, probs = topic_model.fit_transform(documents=text, embeddings=embeddings)
+    # 1. Fit & Transform
+    # The model is already instantiated, so we just fit it.
+    topics, _probs = topic_model.fit_transform(documents=text, embeddings=embeddings)
 
     # 2. Basic Metrics
     outlier_count = topics.count(-1)
+    # n_topics is length of info minus the outlier topic (-1)
     n_topics = len(topic_model.get_topic_info()) - 1
 
     # 3. Advanced Metrics (Coherence & Diversity)
-    # Pre-tokenize once per model run (or pass in pre-tokenized text to save time)
+    # Optimization: Re-use vectorizer analyzer
     analyzer = topic_model.vectorizer_model.build_analyzer()
     tokenized_texts = [analyzer(t) for t in text]
     
     octis_output = evaluation.bertopic_output_to_octis(topic_model, topics)
 
     duration = time.time() - start_time
-    logger.info(f"[{model_name}] Finished in {duration:.2f} seconds.")
+    logger.info(f"[{model_id}] Finished in {duration:.2f} seconds.")
     
     metrics = {
-        "model_name": model_name,
+        "model_name": model_id,
         "duration_seconds": duration,
         "n_topics": n_topics,
         "outliers": outlier_count

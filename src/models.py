@@ -4,10 +4,50 @@ from hdbscan import HDBSCAN
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 import mvlearn.cluster as mvcluster
+from bertopic import BERTopic
 
 from typing import Optional
 
 from src.mvc_wrapper import MVCWrapper
+
+
+def create_bertopic_instance(
+    model_config: dict, 
+    scaled_metadata: np.ndarray, 
+    random_state: int,
+    n_clusters: Optional[int] = None
+) -> BERTopic:
+    """
+    Factory function that builds a BERTopic instance from a configuration dictionary.
+    
+    Args:
+        model_config: Dictionary containing model hyperparameters (clustering, dim reduction).
+        scaled_metadata: Metadata array required by the custom algorithms.
+        random_state: Seed for reproducibility.
+        n_clusters: Optional integer to force a specific number of topics (used for non-baseline models).
+
+    Returns:
+        An unfitted BERTopic instance.
+    """
+    # Instantiate Dimensionality Reduction
+    umap_model = get_algorithm(
+        model_config["dimensionality_reduction"],
+        metadata=scaled_metadata,
+        random_state=random_state
+    )
+
+    # Instantiate Clustering
+    # We pass n_clusters if provided (e.g., derived from baseline), 
+    # otherwise the algorithm uses its own default/config.
+    hdbscan_model = get_algorithm(
+        model_config["clustering"],
+        metadata=scaled_metadata,
+        random_state=random_state,
+        n_clusters=n_clusters 
+    )
+    
+    # Return the assembled object
+    return BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model)
 
 
 def get_algorithm(
@@ -68,4 +108,4 @@ def get_algorithm(
         return MVCWrapper(model=cluster_model, metadata=metadata)
     else:
         raise ValueError(f"Unknown algorithm type: {algo_type}")
-    
+

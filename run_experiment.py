@@ -10,6 +10,7 @@ import src.utils as utils
 import src.data as data
 import src.training as training
 import src.make_table as make_table
+import src.models as models
 
 
 EXPERIMENTS_DIR = Path("./experiments")
@@ -29,20 +30,40 @@ def main():
     args = parser.parse_args()
 
     try:
-        # 1. Setup Config & Logs
+        # 1. Setup
         config = utils.load_config(args.exp, EXPERIMENTS_DIR)
         exp_name = config["experiment"]["name"]
+        random_state = config["experiment"]["random_state"]
         logger = utils.setup_logging(exp_name, LOG_DIR)
         
+        # 2. Load Data 
+        # (We MUST do this first because models depend on scaled_metadata for init)
         logger.info("Loading and preparing data...")
         text, embeddings, scaled_metadata = data.load_and_prep_data(config)
 
-        # 2. Separate Baseline from Others
-        models_config = config["models"]
+        # ---------------------------------------------------------
+        # 3. FAIL FAST: Validation Loop
+        # ---------------------------------------------------------
+        logger.info("Validating model configurations...")
+        models_config: list[dict] = config["models"]
         
+        for m_conf in models_config:
+            m_id = m_conf.get("id", "Unknown")
+            try:
+                # Dry-run instantiation. 
+                # We pass n_clusters=None just to ensure the parameters (strings/args) are valid.
+                _ = models.create_bertopic_instance(m_conf, scaled_metadata, random_state)
+            except Exception as e:
+                logger.error(f"CRITICAL: Configuration error in model '{m_id}'")
+                logger.error(f"Error details: {e}")
+                # Crash immediately
+                raise e 
+        
+        logger.info("All model configurations are valid. Starting training...")
+
         # We look for a model marked as baseline OR strictly named "vanilla"
         baseline_config = next(
-            (m for m in models_config if m.get("is_baseline") or m.get("id") == "vanilla"), 
+            (m for m in models_config if m.get("is_baseline")), 
             None
         )
         
@@ -52,34 +73,53 @@ def main():
         results = []
         baseline_n_topics = None
 
-        # 3. Run Baseline First (if it exists)
+        # 5. Run Baseline
         if baseline_config:
-            logger.info(f"Running Baseline Model: {baseline_config.get('id')}")
+            b_id: str = baseline_config.get('id', "")
+            logger.info(f"Running Baseline Model: {b_id}")
+            
+            # Real Instantiation for Baseline
+            baseline_model = models.create_bertopic_instance(
+                baseline_config, scaled_metadata, random_state
+            )
+
             metrics, trained_model = training.train_and_evaluate(
-                baseline_config, text, embeddings, scaled_metadata, config
+                topic_model=baseline_model,  # Pass object
+                model_id=b_id,
+                text=text, 
+                embeddings=embeddings, 
+                config=config
             )
             results.append(metrics)
             
-            # Extract n_topics
-            baseline_n_topics = len(trained_model.get_topic_info()) - 1
+            baseline_n_topics = metrics["n_topics"]
             logger.info(f"Baseline found {baseline_n_topics} topics.")
 
-        # 4. Run Remaining Models
+        # 6. Run Remaining Models
         for model_config in tqdm(other_models, desc="Training models"):
+            m_id = model_config.get('id', "")
             try:
-                metrics, _ = training.train_and_evaluate(
+                # Real Instantiation for Others (using baseline topic count)
+                model_instance = models.create_bertopic_instance(
                     model_config, 
-                    text, 
-                    embeddings, 
                     scaled_metadata, 
-                    config,
-                    baseline_topics=baseline_n_topics
+                    random_state,
+                    n_clusters=baseline_n_topics # Injecting the dependency here
+                )
+
+                metrics, _ = training.train_and_evaluate(
+                    topic_model=model_instance, # Pass object
+                    model_id=m_id,
+                    text=text, 
+                    embeddings=embeddings, 
+                    config=config
                 )
                 results.append(metrics)
+
             except Exception as e:
-                logger.error(f"Failed model {model_config.get('id')}: {e}")
-                # Don't raise if you want other models to keep running
+                logger.error(f"Failed during runtime of {m_id}: {e}")
                 continue
+
 
         # 5. Save Results
         results_df = pl.DataFrame(results)
