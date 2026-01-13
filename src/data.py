@@ -4,7 +4,7 @@ import numpy as np
 from typing import Optional
 
 
-def load_and_prep_data(config: dict) -> tuple[list[str], np.ndarray, np.ndarray]:
+def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.ndarray, np.ndarray]:
     """
     Loads parquet, samples data, and scales metadata.
     """
@@ -14,7 +14,6 @@ def load_and_prep_data(config: dict) -> tuple[list[str], np.ndarray, np.ndarray]
 
     data_path = config["experiment"]["dataset_path"]
     sample_size = config["experiment"]["sample_size"]
-    random_state = config["experiment"]["random_state"]
     covariates = config["experiment"]["covariates"]
 
     # Lazy load and sample
