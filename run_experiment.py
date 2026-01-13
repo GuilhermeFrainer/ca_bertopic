@@ -5,6 +5,7 @@ from pathlib import Path
 import datetime
 import argparse
 import logging
+import random
 
 import src.utils as utils
 import src.data as data
@@ -33,7 +34,8 @@ def main():
         # 1. Setup
         config = utils.load_config(args.exp, EXPERIMENTS_DIR)
         exp_name = config["experiment"]["name"]
-        random_state = config["experiment"]["random_state"]
+        random_state = utils.get_random_state(config["experiment"]["random_state"])
+
         logger = utils.setup_logging(exp_name, LOG_DIR)
         
         # 2. Load Data 
@@ -124,7 +126,7 @@ def main():
         # 5. Save Results
         results_df = pl.DataFrame(results)
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        results_filename = f"{exp_name}-{timestamp}"
+        results_filename = f"{exp_name}-{random_state}-{timestamp}"
         results_path = OUTPUT_DIR / f"{results_filename}.csv"
         results_df.write_csv(results_path)
         
