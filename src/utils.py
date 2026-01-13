@@ -2,6 +2,7 @@ import logging
 import datetime
 from pathlib import Path
 import yaml
+import random
 
 
 def setup_logging(experiment_name: str, log_dir: Path) -> logging.Logger:
@@ -43,3 +44,12 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
         logger.info(f"Loaded config from {config_path}")
         return yaml.safe_load(f)
 
+
+def get_random_state(random_state: str | int) -> int:
+        if isinstance(random_state, int):
+            return random_state
+        elif random_state == "random":
+            return random.randint(0, 100_000)
+        else:
+            raise ValueError(f"Invalid random state: {random_state}")
+        
