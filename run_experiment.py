@@ -5,6 +5,7 @@ from pathlib import Path
 import datetime
 import argparse
 import logging
+import traceback
 
 import src.utils as utils
 import src.data as data
@@ -119,7 +120,7 @@ def main():
                 results.append(metrics)
 
             except Exception as e:
-                logger.error(f"Failed during runtime of {m_id}: {e}")
+                logger.error(f"Failed during runtime of {m_id}\n {traceback.format_exc()}")
                 continue
 
 
