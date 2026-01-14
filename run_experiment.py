@@ -41,7 +41,8 @@ def main():
         # 2. Load Data 
         # (We MUST do this first because models depend on scaled_metadata for init)
         logger.info("Loading and preparing data...")
-        text, embeddings, scaled_metadata = data.load_and_prep_data(config)
+        text, embeddings, scaled_metadata = data.load_and_prep_data(
+            config, random_state=random_state)
 
         # ---------------------------------------------------------
         # 3. FAIL FAST: Validation Loop
@@ -126,7 +127,7 @@ def main():
         # 5. Save Results
         results_df = pl.DataFrame(results)
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        results_filename = f"{exp_name}-{random_state}-{timestamp}"
+        results_filename = f"{exp_name}-{timestamp}-{random_state}"
         results_path = OUTPUT_DIR / f"{results_filename}.csv"
         results_df.write_csv(results_path)
         

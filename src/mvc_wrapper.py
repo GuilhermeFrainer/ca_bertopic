@@ -14,16 +14,13 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
         self.labels_ = None
 
 
-    def fit(self, X):
+    def fit(self, X, y=None):
         if not len(X) == len(self.metadata):
-            raise ValueError(
-                f"Metadata and textual embeddings must have the same length. Found {len(X) and len(self.metadata)}"
-            )
-        # Joins textual embeddings and metadata
-        # to prepare for Multi-View Clustering
-        Xs = [X, self.metadata]
+             raise ValueError(f"Shape mismatch between text data and metadata: {len(X)} vs {len(self.metadata)}")
 
+        Xs = [X, self.metadata]
         self.model.fit(Xs)
+
         self.labels_ = self.model.labels_
         return self
 
@@ -31,7 +28,7 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
     def predict(self, X):
         if not len(X) == len(self.metadata):
             raise ValueError(
-                f"Metadata and textual embeddings must have the same length. Found {len(X) and len(self.metadata)}"
+                f"Metadata and textual embeddings must have the same length. Found {len(X)} and {len(self.metadata)}"
             )
         Xs = [X, self.metadata]
         return self.model.predict(Xs)

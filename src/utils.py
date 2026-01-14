@@ -46,10 +46,10 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
 
 
 def get_random_state(random_state: str | int) -> int:
-        if isinstance(random_state, int):
-            return random_state
-        elif random_state == "random":
-            return random.randint(0, 100_000)
-        else:
-            raise ValueError(f"Invalid random state: {random_state}")
+    if isinstance(random_state, int):
+        return random_state
+    elif random_state == "random":
+        return random.randint(0, 100_000)
+    else:
+        raise ValueError(f"Invalid random state: {random_state}")
         
