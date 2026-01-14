@@ -14,7 +14,7 @@ import src.models as models
 
 
 EXPERIMENTS_DIR = Path("./experiments")
-OUTPUT_DIR = Path("./output")
+RESULTS_DIR = Path("./results")
 LOG_DIR = Path("./logs")
 TABLES_DIR = Path("./tables")
 
@@ -127,7 +127,7 @@ def main():
         results_df = pl.DataFrame(results)
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         results_filename = f"{exp_name}-{timestamp}-{random_state}"
-        results_path = OUTPUT_DIR / f"{results_filename}.csv"
+        results_path = RESULTS_DIR / f"{results_filename}.csv"
         results_df.write_csv(results_path)
         
         logger.info(f"Experiment finished. Results at {results_path}")
