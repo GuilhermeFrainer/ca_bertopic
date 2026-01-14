@@ -68,6 +68,16 @@ def get_algorithm(
         from umap import UMAP
         return UMAP(random_state=random_state, **params)
     
+    elif algo_type == "aligned_umap":
+        from umap import AlignedUMAP
+        from src.mvc_wrapper import AlignedUMAPWrapper
+        
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+        
+        aligned_umap = AlignedUMAP(random_state=random_state, **params)
+        return AlignedUMAPWrapper(model=aligned_umap, metadata=metadata)
+    
     elif algo_type == 'pca':
         from sklearn.decomposition import PCA
         return PCA(random_state=random_state, **params)
