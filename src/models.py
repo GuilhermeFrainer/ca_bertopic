@@ -1,8 +1,4 @@
 import numpy as np
-from umap import UMAP
-from hdbscan import HDBSCAN
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
 import mvlearn.cluster as mvcluster
 from bertopic import BERTopic
 
@@ -69,13 +65,21 @@ def get_algorithm(
         params["n_clusters"] = n_clusters
 
     if algo_type == 'umap':
+        from umap import UMAP
         return UMAP(random_state=random_state, **params)
+    
     elif algo_type == 'pca':
+        from sklearn.decomposition import PCA
         return PCA(random_state=random_state, **params)
+    
     elif algo_type == 'hdbscan':
+        from hdbscan import HDBSCAN
         return HDBSCAN(**params) # No random state parameter
+    
     elif algo_type == 'k_means':
+        from sklearn.cluster import KMeans
         return KMeans(random_state=random_state, **params)
+    
     elif algo_type == 'multi_view_spectral_clustering':
         if metadata is None:
             raise ValueError("Metadata array is null")
@@ -85,6 +89,7 @@ def get_algorithm(
             **params
         )
         return MVCWrapper(model=cluster_model, metadata=metadata)
+    
     elif algo_type == 'co_regularized_multi_view_spectral_clustering':
         if metadata is None:
             raise ValueError("Metadata array is null")
@@ -94,6 +99,7 @@ def get_algorithm(
             **params
         )
         return MVCWrapper(model=cluster_model, metadata=metadata)
+
     elif algo_type == 'multi_view_k_means':
         if metadata is None:
             raise ValueError("Metadata array is null")
@@ -103,6 +109,7 @@ def get_algorithm(
             **params
         )
         return MVCWrapper(model=cluster_model, metadata=metadata)
+
     elif algo_type == 'multi_view_spherical_k_means':
         if metadata is None:
             raise ValueError("Metadata array is null")
@@ -112,6 +119,7 @@ def get_algorithm(
             **params
         )
         return MVCWrapper(model=cluster_model, metadata=metadata)
+
     else:
         raise ValueError(f"Unknown algorithm type: {algo_type}")
 
