@@ -1,0 +1,73 @@
+experiment:
+  name: "alt_vanilla"
+  description: "Testing alternative models of standard BERTopic."
+  dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
+  random_state: 36201624
+  sample_size: 10000
+  covariates:
+    - date
+    - stars
+    - user_average_stars
+    - yelping_since
+    - business_stars
+  coherence_metrics:
+    - u_mass
+    - c_v
+    - c_npmi
+  diversity_metrics:
+    - irbo
+    - topic_diversity
+
+models:
+  - id: "baseline"
+    description: "Standard BERTopic: no metadata and default hiperparameters."
+    is_baseline: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "hdbscan"
+      params:
+        min_cluster_size: 15
+        prediction_data: true
+
+  - id: "pca"
+    description: "Replaces UMAP with PCA"
+    dimensionality_reduction:
+      type: "pca"
+      params:
+        n_components: 5
+    clustering:
+      type: "hdbscan"
+      params:
+        min_cluster_size: 15
+        prediction_data: true
+
+  - id: "k_means"
+    description: "Replaces HDBSCAN with K-Means for clustering"
+    # K-Means requires a fixed number of topics
+    use_baseline_n_topics: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "k_means"
+      params: null
+
+  - id: "pca_k_means"
+    description: "Replaces UMAP+HDBSCAN with PCA+K-Means."
+    # K-Means requires a fixed number of topics
+    use_baseline_n_topics: true
+    dimensionality_reduction:
+      type: "pca"
+      params:
+        n_components: 5
+    clustering:
+      type: "k_means"
+      params: null

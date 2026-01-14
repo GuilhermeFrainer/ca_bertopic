@@ -1,7 +1,8 @@
 experiment:
-  name: "mvc_experiment_1"
+  name: "mv_k_means"
+  description: "Testing MV K-Means models"
   dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
-  random_state: 2349479
+  random_state: 36201624
   sample_size: 10000
   covariates:
     - date
@@ -18,7 +19,7 @@ experiment:
     - topic_diversity
 
 models:
-  - id: "vanilla"
+  - id: "baseline"
     description: "Standard BERTopic: no metadata and default hiperparameters."
     is_baseline: true
     dimensionality_reduction:
@@ -32,9 +33,9 @@ models:
       params:
         min_cluster_size: 15
         prediction_data: true
-  
-  - id: "mvc_vanilla"
-    description: "Default implementation using MVC."
+
+  - id: "mv_k_means"
+    description: "MV K-Means"
     use_baseline_n_topics: true
     dimensionality_reduction:
       type: "umap"
@@ -43,11 +44,19 @@ models:
         n_components: 5
         metric: "cosine"
     clustering:
-      type: "multi_view_spectral_clustering"
+      type: "multi_view_k_means"
       params:
         n_init: 10
 
-evaluation:
-  metrics:
-    - "npmi"  
-    - "irbo"
+  - id: "mv_spherical_k_means"
+    description: "MV Spherical K-Means"
+    use_baseline_n_topics: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "multi_view_spherical_k_means"
+      params: null
