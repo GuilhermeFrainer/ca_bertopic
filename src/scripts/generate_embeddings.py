@@ -54,8 +54,8 @@ def process_dataset(dataset_key: str):
     embedding_model = SentenceTransformer(DEFAULT_MODEL)
     
     # Load Data
-    df = pl.read_parquet(file_path)
-    total_rows = len(df)
+    lf = pl.scan_parquet(file_path)
+    total_rows = lf.select(pl.len()).collect().item()
     
     # Check Resume Status
     start_index = get_start_index(output_dir, DEFAULT_BATCH_SIZE)
@@ -70,7 +70,7 @@ def process_dataset(dataset_key: str):
 
         # Main Loop
         for i in tqdm(range(start_index, total_rows, DEFAULT_BATCH_SIZE), desc="Generating Embeddings"):
-            chunk = df.slice(i, DEFAULT_BATCH_SIZE)
+            chunk = lf.slice(i, DEFAULT_BATCH_SIZE).collect()
             texts = chunk["text"].to_list()
             output_filepath = f"{dataset_key}_batch_{i}.parquet"
 
