@@ -13,7 +13,7 @@ DEFAULT_MODEL = "all-MiniLM-L6-v2"
 DATA_DIR = Path("data/processed")
 DATASETS = {
     "yelp": DATA_DIR / "yelp_reviews.parquet",
-    "trump": DATA_DIR / "trump_parsed.parquet"
+    "trump": DATA_DIR / "trump_cleaned.parquet"
 }
 
 
@@ -26,10 +26,16 @@ def main():
         choices=DATASETS.keys(), 
         help="The key of the dataset to process (e.g., 'yelp')."
     )
+    parser.add_argument(
+        "--columns",
+        nargs="+",
+        default=["text"],
+        help="List of columns to embed (e.g. --columns text title summary). Default: 'text'"
+    )
     args = parser.parse_args()
     
     try:
-        process_dataset(args.dataset)
+        process_dataset(args.dataset, args.columns)
     except KeyError:
         print(f"Error: Dataset '{args.dataset}' not found in registry.")
 
@@ -42,7 +48,7 @@ def get_start_index(output_dir: Path, batch_size: int) -> int:
     return len(existing_files) * batch_size
 
 
-def process_dataset(dataset_key: str):
+def process_dataset(dataset_key: str, target_columns: list[str]):
     """
     Orchestrates the data loading, processing loop, and file saving.
     """
@@ -55,12 +61,20 @@ def process_dataset(dataset_key: str):
     
     # Load Data
     lf = pl.scan_parquet(file_path)
+
+    schema = lf.collect_schema()
+    for col in target_columns:
+        if col not in schema.names():
+            print(f"Error: Column '{col}' not found in dataset '{dataset_key}'. Available columns: {schema.names()}")
+            return
+
     total_rows = lf.select(pl.len()).collect().item()
     
     # Check Resume Status
     start_index = get_start_index(output_dir, DEFAULT_BATCH_SIZE)
     
     print(f"Processing dataset: {dataset_key}")
+    print(f"Target columns: {target_columns}")
     print(f"Total rows: {total_rows}")
     
     if start_index >= total_rows:
@@ -71,17 +85,19 @@ def process_dataset(dataset_key: str):
         # Main Loop
         for i in tqdm(range(start_index, total_rows, DEFAULT_BATCH_SIZE), desc="Generating Embeddings"):
             chunk = lf.slice(i, DEFAULT_BATCH_SIZE).collect()
-            texts = chunk["text"].to_list()
+
+            # Loop through every requested column and generate embeddings
+            for col in target_columns:
+                texts = chunk[col].to_list()
+                embeddings = embedding_model.encode(texts)
+                
+                # Add the new column with suffix
+                chunk = chunk.with_columns(
+                    pl.Series(name=f"{col}_embedding", values=embeddings)
+                )
             output_filepath = f"{dataset_key}_batch_{i}.parquet"
-
-            embeddings = embedding_model.encode(texts)
-            
-            chunk_with_embeddings = chunk.with_columns(
-                pl.Series(name="embedding", values=embeddings)
-            )
-
             save_path = output_dir / output_filepath
-            chunk_with_embeddings.write_parquet(save_path)
+            chunk.write_parquet(save_path)
 
     # Stitch files at the end
     stitch_batches(output_dir, dataset_key)
