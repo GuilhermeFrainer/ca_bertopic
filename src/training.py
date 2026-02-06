@@ -46,7 +46,7 @@ def train_and_evaluate(
     analyzer = topic_model.vectorizer_model.build_analyzer()
     tokenized_texts = [analyzer(t) for t in text]
     
-    octis_output = evaluation.bertopic_output_to_octis(topic_model, topics)
+    octis_output = evaluation.bertopic_output_to_octis(topic_model)
 
     duration = time.time() - start_time
     logger.info(f"[{model_id}] Finished in {duration:.2f} seconds.")

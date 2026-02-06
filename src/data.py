@@ -2,6 +2,7 @@ import polars as pl
 import numpy as np
 
 from typing import Optional
+import logging
 
 
 def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.ndarray, np.ndarray]:
@@ -11,20 +12,32 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
     def min_max_scaler(col: str):
         x = pl.col(col)
         return (x - x.min()) / (x.max() - x.min())
+    
+    logger = logging.getLogger("pipeline")
 
     data_path = config["experiment"]["dataset_path"]
-    sample_size = config["experiment"]["sample_size"]
+    sample_size = config["experiment"].get("sample_size")
     covariates = config["experiment"]["covariates"]
 
     # Lazy load and sample
     full_lf = pl.scan_parquet(data_path)
-    lf = sample_from_lf(full_lf, n=sample_size, seed=random_state)
+
+    if sample_size is not None:
+        logger.info(f"Subsampling dataset to {sample_size} rows.")
+        lf = sample_from_lf(full_lf, n=sample_size, seed=random_state)
+    else:
+        dataset_len = full_lf.select("text").count().collect().item()
+        logger.info(f"Using full dataset. Total rows: {dataset_len}")
+        lf = full_lf
     
     # Materialize data
     df = lf.collect()
     
     text = df["text"].to_list()
-    embeddings = df["embedding"].to_numpy()
+    try:
+        embeddings = df["embedding"].to_numpy()
+    except pl.exceptions.ColumnNotFoundError:
+        embeddings = df["text_embedding"].to_numpy()
     
     # Metadata scaling
     metadata_df = df.select(covariates)

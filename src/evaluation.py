@@ -7,7 +7,6 @@ import logging
 
 def bertopic_output_to_octis(
     m: BERTopic,
-    topic_assignments: list[int],
     topk: int = 10
 ) -> dict[str, list[list[str]]]:
     """
@@ -15,13 +14,17 @@ def bertopic_output_to_octis(
     for evaluation.
     """
     topic_words: list[list[str]] = []
-    # Excludes noise topic -1
-    n_topics = len(set(topic_assignments)) - 1
-    for i in range(n_topics):
-        topic_info = m.get_topic(i)
+    topic_ids = [
+        t_id
+        for t_id in m.get_topics().keys() 
+        if t_id != -1 # Ignores noise topic
+    ]
+    for t_id in topic_ids:
+        topic_info = m.get_topic(t_id) # type: ignore
         if isinstance(topic_info, list):
-            words = [word for word, _ in topic_info[:topk]] # type: ignore
+            words = [str(word) for word, _ in topic_info[:topk]] # type: ignore
             topic_words.append(words)
+
     return {"topics": topic_words}
 
 
@@ -40,7 +43,11 @@ def compute_coherence(
         return coherence_model.score(model_output)
     except IndexError as e:
         logger = logging.getLogger("pipeline")
-        logger.error(f"Error when computing coherence. Model output:\n{model_output}")
+        logger.error(f"Error when computing coherence. Model output:\n{model_output["topics"]}")
+        raise e
+    except ValueError as e:
+        logger = logging.getLogger("pipeline")
+        logger.error(f"Error when computing coherence. Model output:\n{texts}")
         raise e
 
 
