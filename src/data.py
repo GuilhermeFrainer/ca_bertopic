@@ -29,17 +29,22 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
 
     # Lazy load and sample
     full_lf = pl.scan_parquet(data_path)
+    dataset_len = full_lf.select(text_col).count().collect().item()
 
     if sample_size is not None:
         logger.info(f"Subsampling dataset to {sample_size} rows.")
         lf = sample_from_lf(full_lf, n=sample_size, seed=random_state)
     else:
-        dataset_len = full_lf.select("text").count().collect().item()
         logger.info(f"Using full dataset. Total rows: {dataset_len}")
         lf = full_lf
     
     # Materialize data
-    df = lf.collect()
+    # We must drop empty rows, as we can't compute Coherence scores for them
+    non_empty_lf = lf.filter(pl.col(text_col) != "")
+    df = non_empty_lf.collect()
+
+    dropped_rows = dataset_len - len(df)
+    logger.info(f"Dropped {dropped_rows} rows for being empty strings.")
     
     try:
         text = df[text_col].to_list()
