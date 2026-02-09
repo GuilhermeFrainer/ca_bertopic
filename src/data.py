@@ -15,9 +15,17 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
     
     logger = logging.getLogger("pipeline")
 
-    data_path = config["experiment"]["dataset_path"]
-    sample_size = config["experiment"].get("sample_size")
-    covariates = config["experiment"]["covariates"]
+    experiment_config: dict = config["experiment"]
+
+    data_path = experiment_config["dataset_path"]
+    sample_size = experiment_config.get("sample_size")
+    covariates = experiment_config["covariates"]
+
+    text_col = experiment_config.get("text_col", "text")
+    embedding_col = experiment_config.get("embedding_col", "embedding")
+
+    logger.info(f"Target Text Column: '{text_col}'")
+    logger.info(f"Target Embedding Column: '{embedding_col}'")
 
     # Lazy load and sample
     full_lf = pl.scan_parquet(data_path)
@@ -33,11 +41,12 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
     # Materialize data
     df = lf.collect()
     
-    text = df["text"].to_list()
     try:
-        embeddings = df["embedding"].to_numpy()
-    except pl.exceptions.ColumnNotFoundError:
-        embeddings = df["text_embedding"].to_numpy()
+        text = df[text_col].to_list()
+        embeddings = df[embedding_col].to_numpy()
+    except pl.exceptions.ColumnNotFoundError as e:
+        logger.error(f"Column not found in dataset. Available columns: {df.columns}")
+        raise e
     
     # Metadata scaling
     metadata_df = df.select(covariates)
