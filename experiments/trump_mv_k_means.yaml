@@ -1,0 +1,69 @@
+experiment:
+  name: "trump_mv_k_means"
+  description: "Testing MV K-Means models"
+  dataset_path: "data/processed/trump_embeddings.parquet"
+  random_state: 36201624
+  sample_size: 1000
+  embedding_col: "clean_text_embedding"
+  text_col: "clean_text"
+  covariates:
+    numerical:
+      - log_favorites
+      - log_retweets
+      - date
+    categorical:
+      - device
+    binary:
+      - is_retweet
+      - is_deleted
+      - is_flagged
+  coherence_metrics:
+    - u_mass
+    - c_v
+    - c_npmi
+  diversity_metrics:
+    - irbo
+    - topic_diversity
+
+models:
+  - id: "baseline"
+    description: "Standard BERTopic: no metadata and default hiperparameters."
+    is_baseline: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "hdbscan"
+      params:
+        min_cluster_size: 15
+        prediction_data: true
+
+  - id: "mv_k_means"
+    description: "MV K-Means"
+    use_baseline_n_topics: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "multi_view_k_means"
+      params:
+        n_init: 10
+
+  - id: "mv_spherical_k_means"
+    description: "MV Spherical K-Means"
+    use_baseline_n_topics: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "multi_view_spherical_k_means"
+      params: null
