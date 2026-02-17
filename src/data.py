@@ -41,6 +41,7 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
     dropped_rows = dataset_len - len(df)
     if dropped_rows > 0:
         logger.info(f"Dropped {dropped_rows} rows for being empty strings.")
+        logger.info(f"Running experiment on {len(df)} rows.")
     
     try:
         text = df[text_col].to_list()
