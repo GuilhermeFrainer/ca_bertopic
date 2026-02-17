@@ -1,25 +1,21 @@
 import polars as pl
 import numpy as np
 
-from typing import Optional
+from typing import Union, Optional
 import logging
 
 
 def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.ndarray, np.ndarray]:
     """
-    Loads parquet, samples data, and scales metadata.
+    Loads parquet, samples data, and processes metadata.
     """
-    def min_max_scaler(col: str):
-        x = pl.col(col)
-        return (x - x.min()) / (x.max() - x.min())
-    
     logger = logging.getLogger("pipeline")
-
     experiment_config: dict = config["experiment"]
 
     data_path = experiment_config["dataset_path"]
     sample_size = experiment_config.get("sample_size")
-    covariates = experiment_config["covariates"]
+
+    covariates_config = experiment_config["covariates"]
 
     text_col = experiment_config.get("text_col", "text")
     embedding_col = experiment_config.get("embedding_col", "embedding")
@@ -38,13 +34,13 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
         logger.info(f"Using full dataset. Total rows: {dataset_len}")
         lf = full_lf
     
-    # Materialize data
     # We must drop empty rows, as we can't compute Coherence scores for them
     non_empty_lf = lf.filter(pl.col(text_col) != "")
     df = non_empty_lf.collect()
 
     dropped_rows = dataset_len - len(df)
-    logger.info(f"Dropped {dropped_rows} rows for being empty strings.")
+    if dropped_rows > 0:
+        logger.info(f"Dropped {dropped_rows} rows for being empty strings.")
     
     try:
         text = df[text_col].to_list()
@@ -53,12 +49,83 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
         logger.error(f"Column not found in dataset. Available columns: {df.columns}")
         raise e
     
-    # Metadata scaling
-    metadata_df = df.select(covariates)
-    scaling_expressions = [min_max_scaler(c) for c in metadata_df.columns]
-    scaled_metadata = metadata_df.with_columns(scaling_expressions).to_numpy()
+    processed_metadata = process_metadata(df, covariates_config)
 
-    return text, embeddings, scaled_metadata
+    return text, embeddings, processed_metadata
+
+
+def process_metadata(df: pl.DataFrame, covariates_config: Union[dict, list]) -> np.ndarray:
+    """
+    Parses the covariates config and applies specific scaling/encoding 
+    strategies for Numerical, Categorical, and Binary variables.
+    """
+    logger = logging.getLogger("pipeline")
+
+    # Parse configuration
+    # Legacy config
+    if isinstance(covariates_config, list):
+        logger.warning("Deprecation Warning: 'covariates' is a list. Assuming all are numerical.")
+        num_cols = covariates_config
+        cat_cols = []
+        bin_cols = []
+    else:
+        num_cols = covariates_config.get("numerical", [])
+        cat_cols = covariates_config.get("categorical", [])
+        bin_cols = covariates_config.get("binary", [])
+
+    processed_features = []
+
+    # Min-max scaling for numerical columns
+    if num_cols:
+        logger.info(f"Processing Numerical cols: {num_cols}")
+        # Check if columns exist
+        missing = [c for c in num_cols if c not in df.columns]
+        if missing:
+            raise ValueError(f"Missing numerical columns: {missing}")
+
+        num_df = df.select(num_cols)
+        # Apply MinMax Scaling safely
+        exprs = []
+        for c in num_cols:
+            c_min = pl.col(c).min()
+            c_max = pl.col(c).max()
+            # Avoid division by zero if max == min
+            exprs.append(
+                pl.when(c_max != c_min)
+                .then((pl.col(c) - c_min) / (c_max - c_min))
+                .otherwise(0.0) 
+            )
+            
+        scaled_num = num_df.with_columns(exprs).fill_nan(0.0).to_numpy()
+        processed_features.append(scaled_num)
+
+    # One-hot encoding for categorical values
+    if cat_cols:
+        logger.info(f"Processing Categorical cols: {cat_cols}")
+        missing = [c for c in cat_cols if c not in df.columns]
+        if missing:
+            raise ValueError(f"Missing categorical columns: {missing}")
+            
+        dummies_df = df.select(cat_cols).to_dummies(drop_first=False)
+        processed_features.append(dummies_df.to_numpy())
+
+    # Binary variables are simply cast to float
+    if bin_cols:
+        logger.info(f"Processing Binary cols: {bin_cols}")
+        missing = [c for c in bin_cols if c not in df.columns]
+        if missing:
+            raise ValueError(f"Missing binary columns: {missing}")
+            
+        bin_matrix = df.select(bin_cols).select(pl.all().cast(pl.Float64)).to_numpy()
+        processed_features.append(bin_matrix)
+
+    if processed_features:
+        final_metadata = np.hstack(processed_features)
+        logger.info(f"Metadata processing complete. Shape: {final_metadata.shape}")
+        return final_metadata
+    else:
+        logger.warning("No covariates found in config. Returning empty array.")
+        return np.array([])
 
 
 def sample_from_lf(

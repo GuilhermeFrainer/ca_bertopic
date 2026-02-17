@@ -8,9 +8,16 @@ experiment:
   embedding_col: "clean_text_embedding"
   text_col: "clean_text"
   covariates:
-    - date
-    - favorites
-    - retweets
+    numerical:
+      - log_favorites
+      - log_retweets
+      - date
+    categorical:
+      - device
+    binary:
+      - is_retweet
+      - is_deleted
+      - is_flagged
   coherence_metrics:
     - u_mass
     - c_v
