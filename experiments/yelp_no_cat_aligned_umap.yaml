@@ -1,5 +1,5 @@
 experiment:
-  name: "aligned_umap"
+  name: "yelp_no_cat_aligned_umap"
   description: "Testing AlignedUMAP."
   dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
   random_state: 36201624

@@ -1,5 +1,5 @@
 experiment:
-  name: "alt_vanilla"
+  name: "yelp_no_cat_alt_vanilla"
   description: "Testing alternative models of standard BERTopic."
   dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
   random_state: 36201624

@@ -1,8 +1,8 @@
 experiment:
-  name: "pipeline_test"
+  name: "yelp_no_cat_mvc_experiment_1"
   dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
-  random_state: 526801
-  sample_size: 1000
+  random_state: 2349479
+  sample_size: 10000
   covariates:
     - date
     - stars
@@ -20,31 +20,32 @@ experiment:
 models:
   - id: "vanilla"
     description: "Standard BERTopic: no metadata and default hiperparameters."
-    # Clustering algorithm options
+    is_baseline: true
     dimensionality_reduction:
       type: "umap"
-      params: null
-        #n_neighbors: 15
-        #min_dist: 5
-        #n_components: 0.0
-        #metric: "cosine"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
     clustering:
       type: "hdbscan"
-      params: null
-        #min_cluster_size: 5
-        #metric: "euclidean"
-        #cluster_selection_method: "eom"
-        #prediction_data: false
+      params:
+        min_cluster_size: 15
+        prediction_data: true
   
   - id: "mvc_vanilla"
     description: "Default implementation using MVC."
+    use_baseline_n_topics: true
     dimensionality_reduction:
       type: "umap"
-      params: null
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
     clustering:
       type: "multi_view_spectral_clustering"
       params:
-        n_clusters: 20
+        n_init: 10
 
 evaluation:
   metrics:

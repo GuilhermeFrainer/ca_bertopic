@@ -1,7 +1,8 @@
 experiment:
-  name: "mvc_experiment_1"
+  name: "yelp_no_cat_mvc_spectral"
+  description: "Testing the two versions of MV Spectral Clustering."
   dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
-  random_state: 2349479
+  random_state: 36201624
   sample_size: 10000
   covariates:
     - date
@@ -18,7 +19,7 @@ experiment:
     - topic_diversity
 
 models:
-  - id: "vanilla"
+  - id: "baseline"
     description: "Standard BERTopic: no metadata and default hiperparameters."
     is_baseline: true
     dimensionality_reduction:
@@ -32,8 +33,8 @@ models:
       params:
         min_cluster_size: 15
         prediction_data: true
-  
-  - id: "mvc_vanilla"
+
+  - id: "mv_spectral"
     description: "Default implementation using MVC."
     use_baseline_n_topics: true
     dimensionality_reduction:
@@ -47,7 +48,15 @@ models:
       params:
         n_init: 10
 
-evaluation:
-  metrics:
-    - "npmi"  
-    - "irbo"
+  - id: "mv_co_reg_spectral"
+    description: "Multi-View Co-Regularized Spectral Clustering"
+    use_baseline_n_topics: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "co_regularized_multi_view_spectral_clustering"
+      params: null
