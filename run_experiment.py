@@ -12,6 +12,7 @@ import src.data as data
 import src.training as training
 import src.make_table as make_table
 import src.models as models
+import src.logger_config as logger_config
 
 
 EXPERIMENTS_DIR = Path("./experiments")
@@ -36,7 +37,7 @@ def main():
         exp_name = config["experiment"]["name"]
         random_state = utils.get_random_state(config["experiment"]["random_state"])
 
-        logger = utils.setup_logging(exp_name, LOG_DIR)
+        logger = logger_config.setup_logging(exp_name, LOG_DIR)
         
         # 2. Load Data 
         # (We MUST do this first because models depend on scaled_metadata for init)
