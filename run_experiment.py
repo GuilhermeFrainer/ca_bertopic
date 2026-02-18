@@ -15,10 +15,11 @@ import src.models as models
 import src.logger_config as logger_config
 
 
-EXPERIMENTS_DIR = Path("./experiments")
-RESULTS_DIR = Path("./results")
-LOG_DIR = Path("./logs")
-TABLES_DIR = Path("./tables")
+BASE_DIR = Path(__file__).resolve().parent
+EXPERIMENTS_DIR = BASE_DIR / "experiments"
+RESULTS_DIR = BASE_DIR / "results"
+LOG_DIR = BASE_DIR / "logs"
+TABLES_DIR = BASE_DIR / "tables"
 
 
 def main():
