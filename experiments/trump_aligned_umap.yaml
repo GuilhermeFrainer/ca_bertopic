@@ -3,7 +3,6 @@ experiment:
   description: "Testing AlignedUMAP."
   dataset_path: "data/processed/trump_embeddings.parquet"
   random_state: 36201624
-  sample_size: 1000
   embedding_col: "clean_text_embedding"
   text_col: "clean_text"
   covariates:
