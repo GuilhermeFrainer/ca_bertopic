@@ -122,7 +122,17 @@ def main():
                 results.append(metrics)
 
             except Exception as e:
-                logger.error(f"Failed during runtime of {m_id}\n {traceback.format_exc()}")
+                tb_str = traceback.format_exc()
+                err_msg = f"Failed during runtime of {m_id}."
+                # Check for the specific numerical error from the log
+                if baseline_n_topics is not None and "ArpackError" in tb_str:
+                    # Arpack error seems to be caused by making the model pick too many
+                    # topics/clusters when there's not enough data to support it
+                    #
+                    # We log this information more explicitly to make debugging easier
+                    err_msg += f" This is likely a numerical issue, possibly caused by forcing n_clusters={baseline_n_topics} on a model that cannot support it with the given data."
+                
+                logger.error(f"{err_msg}\n{tb_str}")
                 continue
 
 
@@ -136,7 +146,6 @@ def main():
         logger.info(f"Experiment finished. Results at {results_path}")
 
         latex_table = make_table.generate_latex_table(results_df)
-        #latex_table = results_df.to_pandas().to_latex()
         table_filename = f"{results_filename}.tex"
         table_path = TABLES_DIR / table_filename
         with open(table_path, "w") as f:
@@ -150,4 +159,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
