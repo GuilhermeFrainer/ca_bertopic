@@ -30,13 +30,13 @@ Experiments are defined by `.yaml` files in the `experiments/` directory and can
 
 To run an experiment, use the following command:
 ```bash
-python run_experiment.py --experiment <experiment_name>
+python run_experiment.py --exp <experiment_name>
 ```
 Replace `<experiment_name>` with the name of the yaml file in the `experiments` directory (without the `.yaml` extension).
 
 For example, to run the `trump.yaml` experiment:
 ```bash
-python run_experiment.py --experiment trump
+python run_experiment.py --exp trump
 ```
 
 ## Project Structure
