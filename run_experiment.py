@@ -33,22 +33,20 @@ def main():
     args = parser.parse_args()
 
     try:
-        # 1. Setup
+        # Setup
         config = utils.load_config(args.exp, EXPERIMENTS_DIR)
         exp_name = config["experiment"]["name"]
         random_state = utils.get_random_state(config["experiment"]["random_state"])
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
         
-        # 2. Load Data 
+        # Data loading
         # (We MUST do this first because models depend on scaled_metadata for init)
         logger.info("Loading and preparing data...")
         text, embeddings, scaled_metadata = data.load_and_prep_data(
             config, random_state=random_state)
 
-        # ---------------------------------------------------------
-        # 3. FAIL FAST: Validation Loop
-        # ---------------------------------------------------------
+        # Model validation
         logger.info("Validating model configurations...")
         models_config: list[dict] = config["models"]
         
@@ -66,7 +64,7 @@ def main():
         
         logger.info("All model configurations are valid. Starting training...")
 
-        # We look for a model marked as baseline OR strictly named "vanilla"
+        # We look for a model marked as baseline
         baseline_config = next(
             (m for m in models_config if m.get("is_baseline")), 
             None
@@ -78,18 +76,17 @@ def main():
         results = []
         baseline_n_topics = None
 
-        # 5. Run Baseline
+        # Run Baseline
         if baseline_config:
             b_id: str = baseline_config.get('id', "")
             logger.info(f"Running Baseline Model: {b_id}")
             
-            # Real Instantiation for Baseline
             baseline_model = models.create_bertopic_instance(
                 baseline_config, scaled_metadata, random_state
             )
 
             metrics, trained_model = training.train_and_evaluate(
-                topic_model=baseline_model,  # Pass object
+                topic_model=baseline_model,
                 model_id=b_id,
                 text=text, 
                 embeddings=embeddings, 
@@ -100,20 +97,19 @@ def main():
             baseline_n_topics = metrics["n_topics"]
             logger.info(f"Baseline found {baseline_n_topics} topics.")
 
-        # 6. Run Remaining Models
+        # Run Remaining Models
         for model_config in tqdm(other_models, desc="Training models"):
             m_id = model_config.get('id', "")
             try:
-                # Real Instantiation for Others (using baseline topic count)
                 model_instance = models.create_bertopic_instance(
                     model_config, 
                     scaled_metadata, 
                     random_state,
-                    n_clusters=baseline_n_topics # Injecting the dependency here
+                    n_clusters=baseline_n_topics
                 )
 
                 metrics, _ = training.train_and_evaluate(
-                    topic_model=model_instance, # Pass object
+                    topic_model=model_instance,
                     model_id=m_id,
                     text=text, 
                     embeddings=embeddings, 
@@ -136,7 +132,7 @@ def main():
                 continue
 
 
-        # 5. Save Results
+        # Save Results
         results_df = pl.DataFrame(results)
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         results_filename = f"{exp_name}-{timestamp}-{random_state}"
@@ -159,3 +155,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
