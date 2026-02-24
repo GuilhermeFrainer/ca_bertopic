@@ -1,0 +1,39 @@
+
+experiment:
+  name: "yelp_no_cat_mvc_spectral"
+  description: "Optimizing the parameters for MV Co-Regularized Spectral Clustering."
+  dataset_path: "data/processed/yelp_reviews_with_embeddings.parquet"
+  random_state: 36201624
+  sample_size: 1000
+  covariates:
+    - date
+    - stars
+    - user_average_stars
+    - yelping_since
+    - business_stars
+  coherence_metrics:
+    - u_mass
+    - c_v
+    - c_npmi
+  diversity_metrics:
+    - irbo
+    - topic_diversity
+
+model:
+  id: "mv_co_reg_spectral"
+  description: "Multi-View Co-Regularized Spectral Clustering"
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      n_components: 5
+      metric: "cosine"
+  clustering:
+    type: "co_regularized_multi_view_spectral_clustering"
+    params:
+      n_clusters:
+        - 75
+        - 80
+        - 90
+        - 100
+        - 110

@@ -2,6 +2,7 @@ import polars as pl
 from typing import Any, Dict, List
 import logging
 import itertools
+import pathlib
 
 import src.models as models
 import src.training as training
@@ -40,30 +41,43 @@ class Optimizer:
         self.results = []
         self.logger = logging.getLogger("pipeline")
 
-    def _generate_hyperparameter_combinations(self) -> List[Dict[str, Any]]:
+    def _generate_hyperparameter_combinations(self) -> list[tuple[dict, dict]]:
         """
-        Generates all possible hyperparameter combinations from the model config.
+        Generates hyperparameter combinations based on the user's heuristic:
+        parameters to vary are in dimensionality_reduction.params or clustering.params.
         """
-        hyperparameter_keys = []
-        hyperparameter_values = []
+        import copy
 
-        for key, value in self.model_config.items():
-            if isinstance(value, list):
-                hyperparameter_keys.append(key)
-                hyperparameter_values.append(value)
+        param_paths = []
+        param_values = []
 
-        if not hyperparameter_keys:
-            return [self.model_config]
+        def collect_params(component_name):
+            component = self.model_config.get(component_name, {})
+            params = component.get("params", {})
+            for key, value in params.items():
+                # A list of non-strings is considered a hyperparameter to vary
+                if isinstance(value, list) and not all(isinstance(i, str) for i in value):
+                    path = [component_name, "params", key]
+                    param_paths.append(path)
+                    param_values.append(value)
+
+        collect_params("dimensionality_reduction")
+        collect_params("clustering")
+
+        if not param_paths:
+            return [(self.model_config, {})]
 
         combinations = []
-        for values in itertools.product(*hyperparameter_values):
-            combination = self.model_config.copy()
-            for i, key in enumerate(hyperparameter_keys):
-                combination[key] = values[i]
-            combinations.append(combination)
+        for value_combination in itertools.product(*param_values):
+            new_config = copy.deepcopy(self.model_config)
+            varied_params = {}
+            for path, value in zip(param_paths, value_combination):
+                # Set nested item: e.g., new_config['clustering']['params']['n_clusters'] = value
+                new_config[path[0]][path[1]][path[2]] = value
+                varied_params[".".join(path)] = value
+            combinations.append((new_config, varied_params))
         
         return combinations
-
 
     def run(self) -> None:
         """
@@ -74,9 +88,12 @@ class Optimizer:
         num_combinations = len(hyperparameter_combinations)
         self.logger.info(f"Starting hyperparameter optimization for {num_combinations} models.")
 
-        for i, model_config in enumerate(hyperparameter_combinations):
-            model_id = model_config.get("name", f"model_{i+1}")
-            self.logger.info(f"--- Training model [{model_id}] ({i+1}/{num_combinations}) ---")
+        for i, (model_config, varied_params) in enumerate(hyperparameter_combinations):
+            model_id = self.model_config.get("id", "model")
+            run_id = f"{model_id}_{i+1}"
+            
+            self.logger.info(f"--- Training model [{run_id}] ({i+1}/{num_combinations}) ---")
+            self.logger.info(f"Varied Parameters: {varied_params}")
 
             # 1. Create Model Instance
             topic_model = models.create_bertopic_instance(
@@ -88,18 +105,19 @@ class Optimizer:
             # 2. Train and Evaluate
             metrics, _ = training.train_and_evaluate(
                 topic_model=topic_model,
-                model_id=model_id,
+                model_id=run_id,
                 text=self.texts,
                 embeddings=self.embeddings,
                 config=self.experiment_config
             )
             
-            # 3. Store results
+            # 3. Store results, including the varied hyperparameters
+            metrics.update(varied_params)
             self.results.append(metrics)
 
         self.logger.info("Finished hyperparameter optimization.")
 
-    def save_results(self, filepath: str) -> None:
+    def save_results(self, filepath: str | pathlib.Path) -> None:
         """
         Saves the collected evaluation metrics to a CSV file.
         Args:
