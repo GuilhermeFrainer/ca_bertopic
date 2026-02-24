@@ -92,8 +92,13 @@ class Optimizer:
             model_id = self.model_config.get("id", "model")
             run_id = f"{model_id}_{i+1}"
             
+            # Clean up param names for reporting
+            cleaned_varied_params = {
+                key.replace("clustering.params.", "").replace("dimensionality_reduction.params.", ""): value
+                for key, value in varied_params.items()
+            }
             self.logger.info(f"--- Training model [{run_id}] ({i+1}/{num_combinations}) ---")
-            self.logger.info(f"Varied Parameters: {varied_params}")
+            self.logger.info(f"Varied Parameters: {cleaned_varied_params}")
 
             # 1. Create Model Instance
             topic_model = models.create_bertopic_instance(
@@ -112,21 +117,47 @@ class Optimizer:
             )
             
             # 3. Store results, including the varied hyperparameters
-            metrics.update(varied_params)
+            metrics.update(cleaned_varied_params)
             self.results.append(metrics)
 
         self.logger.info("Finished hyperparameter optimization.")
 
-    def save_results(self, filepath: str | pathlib.Path) -> None:
+    def save_results(self, filepath: str | pathlib.Path, decimal_digits: int | None = None) -> None:
         """
         Saves the collected evaluation metrics to a CSV file.
         Args:
             filepath: The path to the output CSV file.
+            decimal_digits: Optional number of digits for float precision in the CSV.
         """
         if not self.results:
             self.logger.warning("No results to save. Run the optimization first.")
             return
 
         df = pl.DataFrame(self.results)
-        df.write_csv(filepath)
+
+        # Reorder columns based on user's desired output format
+        all_cols = df.columns
+        
+        core_stats_cols = ["model_name", "duration_seconds", "n_topics", "outliers"]
+        
+        # Calculated metrics from the experiment config
+        exp_metrics = []
+        if "experiment" in self.experiment_config:
+            exp_metrics.extend(self.experiment_config["experiment"].get("coherence_metrics", []))
+            exp_metrics.extend(self.experiment_config["experiment"].get("diversity_metrics", []))
+
+        # Varied parameter columns are what's left over
+        param_cols = [
+            col for col in all_cols if col not in core_stats_cols and col not in exp_metrics
+        ]
+        
+        # New order: core stats, then params, then calculated metrics
+        final_order = (
+            [c for c in core_stats_cols if c in all_cols] +
+            [p for p in param_cols if p in all_cols] +
+            [m for m in exp_metrics if m in all_cols]
+        )
+        df = df.select(final_order)
+
+        df.write_csv(filepath, float_precision=decimal_digits)
         self.logger.info(f"Results saved to {filepath}")

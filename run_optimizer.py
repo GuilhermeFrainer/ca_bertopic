@@ -49,6 +49,9 @@ def main():
         if not model_config:
             raise ValueError("Configuration file must contain a 'model' section for optimization.")
 
+        # Get optional rounding parameter
+        decimal_digits = config.get("experiment", {}).get("decimal_digits")
+
         # Initialize and run optimizer
         optimizer = Optimizer(
             texts=text,
@@ -63,7 +66,7 @@ def main():
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         results_filename = f"{exp_name}-{timestamp}-{random_state}"
         results_path = RESULTS_DIR / f"{results_filename}.csv"
-        optimizer.save_results(results_path)
+        optimizer.save_results(results_path, decimal_digits=decimal_digits)
         
         logger.info(f"Optimization finished. Results at {results_path}")
 
