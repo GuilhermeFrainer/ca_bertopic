@@ -30,16 +30,17 @@ def train_and_evaluate(
         A tuple containing the metrics dictionary and the fitted model.
     """
     logger = logging.getLogger("pipeline")
-    start_time = time.time()
 
     # 1. Fit & Transform
-    # The model is already instantiated, so we just fit it.
-    topics, _probs = topic_model.fit_transform(documents=text, embeddings=embeddings)
+    start_time = time.time()
+    topics, _ = topic_model.fit_transform(documents=text, embeddings=embeddings)
+    duration = time.time() - start_time
+    logger.info(f"[{model_id}] Training finished in {duration:.2f} seconds.")
 
     # 2. Basic Metrics
-    outlier_count = topics.count(-1)
-    # n_topics is length of info minus the outlier topic (-1)
-    n_topics = len(topic_model.get_topic_info()) - 1
+    outlier_count = topics.count(-1) if -1 in topics else 0
+    # Count topics >= 0
+    n_topics = len([t for t in topic_model.get_topics() if t != -1])
 
     # 3. Advanced Metrics (Coherence & Diversity)
     # Optimization: Re-use vectorizer analyzer
@@ -47,9 +48,6 @@ def train_and_evaluate(
     tokenized_texts = [analyzer(t) for t in text]
     
     octis_output = evaluation.bertopic_output_to_octis(topic_model)
-
-    duration = time.time() - start_time
-    logger.info(f"[{model_id}] Finished in {duration:.2f} seconds.")
     
     metrics = {
         "model_name": model_id,
