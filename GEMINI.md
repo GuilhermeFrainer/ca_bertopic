@@ -39,6 +39,19 @@ For example, to run the `trump.yaml` experiment:
 python run_experiment.py --exp trump
 ```
 
+### Running Hyperparameter Optimization
+
+For hyperparameter tuning, use the `run_optimizer.py` script. The setup is similar to a regular experiment, but the YAML file should contain a single `model` configuration. Within that configuration, any parameter that you want to search over should be specified as a list of values.
+
+To run an optimization, use the following command:
+```bash
+python run_optimizer.py --exp <optimization_name>
+```
+For example, to run the `yelp_opt_spectral.yaml` optimization:
+```bash
+python run_optimizer.py --exp yelp_opt_spectral
+```
+
 ## Project Structure
 
 ```
@@ -50,9 +63,11 @@ python run_experiment.py --exp trump
 ├── src/               # Source code
 │   ├── data.py        # Data loading and preprocessing
 │   ├── models.py      # Custom model definitions
+│   ├── optimizer.py   # Hyperparameter optimization
 │   ├── training.py    # Training scripts
 │   └── evaluation.py  # Evaluation metrics
 ├── run_experiment.py  # Main script to run experiments
+├── run_optimizer.py   # Main script to run hyperparameter optimization
 └── pyproject.toml     # Project configuration and dependencies
 ```
 
