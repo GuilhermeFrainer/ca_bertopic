@@ -1,5 +1,5 @@
 import polars as pl
-from typing import Any, Dict, List
+from typing import Any, Dict
 import logging
 import itertools
 import pathlib

@@ -1,12 +1,10 @@
 import numpy as np
 from bertopic import BERTopic
 
-from typing import Optional
 import time
 import logging
 
 import src.evaluation as evaluation
-import src.models as models
 
 
 def train_and_evaluate(
