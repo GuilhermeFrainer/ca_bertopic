@@ -378,6 +378,7 @@ dependencies = [
     { name = "great-tables" },
     { name = "ipykernel" },
     { name = "ipywidgets" },
+    { name = "mvlearn" },
     { name = "nbstripout" },
     { name = "numpy" },
     { name = "nx-cugraph-cu13", marker = "sys_platform == 'linux'" },
@@ -415,6 +416,7 @@ requires-dist = [
     { name = "great-tables", specifier = ">=0.20.0" },
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "ipywidgets", specifier = ">=8.1.8" },
+    { name = "mvlearn", specifier = ">=0.4.1" },
     { name = "nbstripout", specifier = ">=0.8.2" },
     { name = "numpy", specifier = "<2.2" },
     { name = "nx-cugraph-cu13", marker = "sys_platform == 'linux'", specifier = "==25.10.*" },
@@ -2474,6 +2476,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2d/f9/8e360bdfc3c44e267e7e046f0e0b9922766da92da26959a6963f597e6bb5/murmurhash-1.0.15-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:4fd8189ee293a09f30f4931408f40c28ccd42d9de4f66595f8814879339378bc", size = 161811, upload-time = "2025-11-14T09:51:01.289Z" },
     { url = "https://files.pythonhosted.org/packages/f9/31/97649680595b1096803d877ababb9a67c07f4378f177ec885eea28b9db6d/murmurhash-1.0.15-cp314-cp314t-win_amd64.whl", hash = "sha256:66395b1388f7daa5103db92debe06842ae3be4c0749ef6db68b444518666cdcc", size = 29817, upload-time = "2025-11-14T09:51:02.493Z" },
     { url = "https://files.pythonhosted.org/packages/76/66/4fce8755f25d77324401886c00017c556be7ca3039575b94037aff905385/murmurhash-1.0.15-cp314-cp314t-win_arm64.whl", hash = "sha256:c22e56c6a0b70598a66e456de5272f76088bc623688da84ef403148a6d41851d", size = 26219, upload-time = "2025-11-14T09:51:03.563Z" },
+]
+
+[[package]]
+name = "mvlearn"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "joblib" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "seaborn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bd/ef/366cb69abc5c947cf0b9ac95709c0959dde6e94f7842e859c2db97263efd/mvlearn-0.4.1.tar.gz", hash = "sha256:e4bc58150f5284ed1a04bd281a7e40336410678ab313452acb607ef59b5d6a49", size = 1967914, upload-time = "2020-12-03T21:41:23.874Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f8/a1/77ee37d526442c7680734d9a30e671f6dcaca7b38ce49e50f76796301e07/mvlearn-0.4.1-py3-none-any.whl", hash = "sha256:552ce84139e9b960af6b1df091e0957029a74d5d0213b181d2f43551d1e1a791", size = 2054357, upload-time = "2020-12-03T21:41:20.399Z" },
 ]
 
 [[package]]

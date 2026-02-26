@@ -18,6 +18,7 @@ dependencies = [
     "great-tables>=0.20.0",
     "ipykernel>=7.1.0",
     "ipywidgets>=8.1.8",
+    "mvlearn>=0.4.1",
     "nbstripout>=0.8.2",
     "numpy<2.2",
     "nx-cugraph-cu13==25.10.* ; sys_platform == 'linux'",
