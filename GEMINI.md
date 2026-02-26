@@ -79,3 +79,8 @@ python run_optimizer.py --exp yelp_opt_spectral
 *   **scikit-learn:** For machine learning utilities.
 *   **Great Tables:** For creating publication-ready tables of results.
 *   **uv:** For python package management.
+
+## Coding Style
+
+This project follows the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
+All Python code should adhere to these conventions.
