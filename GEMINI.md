@@ -52,6 +52,13 @@ For example, to run the `yelp_opt_spectral.yaml` optimization:
 python run_optimizer.py --exp yelp_opt_spectral
 ```
 
+## Running Tests
+
+To run the test suite, use the following command:
+```bash
+uv run -m pytest
+```
+
 ## Project Structure
 
 ```
