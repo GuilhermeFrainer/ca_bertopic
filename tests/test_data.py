@@ -192,6 +192,6 @@ def test_sample_with_replacement(sample_lf):
     sampled_df = sampled_lf.collect()
     
     assert len(sampled_df) == n_larger_than_df
-    # Check if there are duplicates, which are highly likely
+    # Check if there are duplicates, which are guaranteed
     assert sampled_df["index"].is_duplicated().any()
 
