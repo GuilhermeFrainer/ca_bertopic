@@ -2,7 +2,7 @@ import pytest
 import polars as pl
 import numpy as np
 
-from src.data import process_metadata
+from src.data import process_metadata, sample_from_lf
 
 # Most basic test case
 def test_no_cols_produces_empty_array():
@@ -146,4 +146,52 @@ def test_legacy_config():
     
     assert result.shape == (3, 2)
     assert np.all((result >= 0) & (result <= 1))
+
+# --- Tests for sample_from_lf ---
+
+@pytest.fixture
+def sample_lf():
+    """Provides a sample LazyFrame for testing."""
+    n_rows = 100
+    return pl.DataFrame({
+        # we need the index column for the sampling function to work
+        "index": np.arange(n_rows),
+        "values": np.arange(n_rows)
+    }).lazy()
+
+def test_sample_returns_correct_size(sample_lf):
+    n = 20
+    sampled_lf = sample_from_lf(sample_lf, n=n, seed=42)
+    
+    assert isinstance(sampled_lf, pl.LazyFrame)
+    
+    sampled_df = sampled_lf.collect()
+    assert len(sampled_df) == n
+
+def test_sample_is_reproducible_with_seed(sample_lf):
+    sample1 = sample_from_lf(sample_lf, n=10, seed=42).collect()
+    sample2 = sample_from_lf(sample_lf, n=10, seed=42).collect()
+    sample3 = sample_from_lf(sample_lf, n=10, seed=1337).collect()
+    
+    # Same seed should produce the same result
+    assert sample1.equals(sample2)
+    # Different seed should produce a different result
+    assert not sample1.equals(sample3)
+
+def test_sample_without_replacement_raises_error(sample_lf):
+    n_larger_than_df = 200 # sample_lf has 100 rows
+    
+    with pytest.raises(ValueError):
+        sample_from_lf(sample_lf, n=n_larger_than_df, replace=False, seed=42)
+
+def test_sample_with_replacement(sample_lf):
+    n_larger_than_df = 200
+    
+    # This should not raise an error
+    sampled_lf = sample_from_lf(sample_lf, n=n_larger_than_df, replace=True, seed=42)
+    sampled_df = sampled_lf.collect()
+    
+    assert len(sampled_df) == n_larger_than_df
+    # Check if there are duplicates, which are highly likely
+    assert sampled_df["index"].is_duplicated().any()
 

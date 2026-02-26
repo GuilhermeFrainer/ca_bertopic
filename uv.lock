@@ -385,7 +385,6 @@ dependencies = [
     { name = "polars" },
     { name = "pyarrow" },
     { name = "pylibraft-cu13", marker = "sys_platform == 'linux'" },
-    { name = "pytest" },
     { name = "raft-dask-cu13", marker = "sys_platform == 'linux'" },
     { name = "rbo" },
     { name = "scikit-learn" },
@@ -394,6 +393,11 @@ dependencies = [
     { name = "torchvision" },
     { name = "vegafusion" },
     { name = "vl-convert-python" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
 ]
 
 [package.metadata]
@@ -418,7 +422,6 @@ requires-dist = [
     { name = "polars", specifier = ">=1.35.2" },
     { name = "pyarrow", specifier = ">=22.0.0" },
     { name = "pylibraft-cu13", marker = "sys_platform == 'linux'", specifier = "==25.10.*" },
-    { name = "pytest", specifier = ">=9.0.2" },
     { name = "raft-dask-cu13", marker = "sys_platform == 'linux'", specifier = "==25.10.*" },
     { name = "rbo", specifier = ">=0.1.3" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
@@ -428,6 +431,9 @@ requires-dist = [
     { name = "vegafusion", specifier = ">=2.0.3" },
     { name = "vl-convert-python", specifier = ">=1.8.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
 
 [[package]]
 name = "cachetools"
