@@ -7,6 +7,7 @@ import pathlib
 import src.models as models
 import src.training as training
 
+
 class Optimizer:
     """
     Orchestrates a hyperparameter search by training and evaluating multiple
@@ -43,51 +44,25 @@ class Optimizer:
 
     def _generate_hyperparameter_combinations(self) -> list[tuple[dict, dict]]:
         """
-        Generates hyperparameter combinations based on the user's heuristic:
-        parameters to vary are in dimensionality_reduction.params or clustering.params.
+        Generates all possible hyperparameter combinations for the search.
         """
         import copy
-        import numpy as np
 
-        param_paths = []
-        param_values = []
-
-        def collect_params(component_name):
-            component = self.model_config.get(component_name, {})
-            params = component.get("params", {})
-            for key, value in params.items():
-                path = [component_name, "params", key]
-                
-                # A list of non-strings is considered a hyperparameter to vary
-                if isinstance(value, list) and not all(isinstance(i, str) for i in value):
-                    param_paths.append(path)
-                    param_values.append(value)
-                
-                # A dictionary with start/stop is a range
-                elif isinstance(value, dict) and "start" in value and "stop" in value:
-                    start = value["start"]
-                    stop = value["stop"]
-                    step = value.get("step", 1)
-                    
-                    # Use np.arange for float support
-                    generated_values = np.arange(start, stop, step).tolist()
-                    
-                    param_paths.append(path)
-                    param_values.append(generated_values)
-
-        collect_params("dimensionality_reduction")
-        collect_params("clustering")
+        param_paths, param_values = _collect_hyperparameters(self.model_config)
 
         if not param_paths:
             return [(self.model_config, {})]
 
         combinations = []
+        # Create the Cartesian product of all hyperparameter values.
+        # For each resulting combination, create a new model configuration.
         for value_combination in itertools.product(*param_values):
             new_config = copy.deepcopy(self.model_config)
             varied_params = {}
             for path, value in zip(param_paths, value_combination):
-                # Set nested item: e.g., new_config['clustering']['params']['n_clusters'] = value
+                # Set the specific hyperparameter value in the new config copy
                 new_config[path[0]][path[1]][path[2]] = value
+                # Keep track of the parameters that were varied for this run
                 varied_params[".".join(path)] = value
             combinations.append((new_config, varied_params))
         
@@ -175,3 +150,55 @@ class Optimizer:
 
         df.write_csv(filepath, float_precision=decimal_digits)
         self.logger.info(f"Results saved to {filepath}")
+
+
+def _collect_hyperparameters(model_config: dict) -> tuple[list, list]:
+    """
+    Collects hyperparameter search spaces from the model configuration.
+
+    This function identifies hyperparameters to be tuned by looking for lists
+    of values or range specifications (dict with start, stop, step) within
+    the 'dimensionality_reduction' and 'clustering' parameter sections of
+    the model config.
+
+    Args:
+        model_config: The model configuration dictionary.
+
+    Returns:
+        A tuple containing two lists:
+        - param_paths: A list of paths to the hyperparameters in the config dict.
+        - param_values: A list of lists, where each inner list contains the
+          values to be tested for the corresponding hyperparameter.
+    """
+    import numpy as np
+
+    param_paths = []
+    param_values = []
+
+    def collect_from_component(component_name: str):
+        component = model_config.get(component_name, {})
+        params = component.get("params", {})
+        for key, value in params.items():
+            path = [component_name, "params", key]
+            
+            # A list of non-strings is considered a hyperparameter to vary
+            if isinstance(value, list) and not all(isinstance(i, str) for i in value):
+                param_paths.append(path)
+                param_values.append(value)
+            
+            # A dictionary with start/stop is a range
+            elif isinstance(value, dict) and "start" in value and "stop" in value:
+                start = value["start"]
+                stop = value["stop"]
+                step = value.get("step", 1)
+                
+                # Use np.arange for float support and consistency
+                generated_values = np.arange(start, stop, step).tolist()
+                
+                param_paths.append(path)
+                param_values.append(generated_values)
+
+    collect_from_component("dimensionality_reduction")
+    collect_from_component("clustering")
+    
+    return param_paths, param_values
