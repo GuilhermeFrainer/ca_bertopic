@@ -47,6 +47,7 @@ class Optimizer:
         parameters to vary are in dimensionality_reduction.params or clustering.params.
         """
         import copy
+        import numpy as np
 
         param_paths = []
         param_values = []
@@ -55,11 +56,24 @@ class Optimizer:
             component = self.model_config.get(component_name, {})
             params = component.get("params", {})
             for key, value in params.items():
+                path = [component_name, "params", key]
+                
                 # A list of non-strings is considered a hyperparameter to vary
                 if isinstance(value, list) and not all(isinstance(i, str) for i in value):
-                    path = [component_name, "params", key]
                     param_paths.append(path)
                     param_values.append(value)
+                
+                # A dictionary with start/stop is a range
+                elif isinstance(value, dict) and "start" in value and "stop" in value:
+                    start = value["start"]
+                    stop = value["stop"]
+                    step = value.get("step", 1)
+                    
+                    # Use np.arange for float support
+                    generated_values = np.arange(start, stop, step).tolist()
+                    
+                    param_paths.append(path)
+                    param_values.append(generated_values)
 
         collect_params("dimensionality_reduction")
         collect_params("clustering")
