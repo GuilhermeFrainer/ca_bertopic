@@ -1,0 +1,165 @@
+# -*- coding: utf-8 -*-
+"""Tests for the dataset preprocessing script."""
+
+import pytest
+import polars as pl
+from polars.testing import assert_frame_equal
+import yaml
+from transformers import AutoTokenizer, PreTrainedTokenizer
+
+# These imports will fail until the actual script is created
+from src.preprocess_datasets import (
+    remove_urls,
+    add_log_transformation,
+    format_as_yaml,
+    chunk_text_with_overlap,
+    process_dataset,
+)
+
+@pytest.fixture
+def sample_trump_df() -> pl.DataFrame:
+    """Provides a sample DataFrame mimicking the Trump dataset structure."""
+    return pl.DataFrame({
+        "text": [
+            "A great day at the office! http://example.com #Trump. What a great day!",
+            "covfefe",
+            "Making America Great Again! And again.",
+        ],
+        "retweets": [100, 10, 1000],
+        "favorites": [500, 20, 2000],
+        "is_retweet": [False, False, True],
+        "is_deleted": [False, True, False],
+        "is_flagged": [True, False, False],
+        "date": ["2020-01-01", "2020-01-02", "2020-01-03"],
+        "device": ["Twitter for iPhone", "Android", "Twitter for iPhone"],
+    })
+
+@pytest.fixture
+def sample_yelp_df() -> pl.DataFrame:
+    """Provides a sample DataFrame mimicking the Yelp dataset structure."""
+    return pl.DataFrame({
+        "text": [
+            "This place is amazing! The food is great. I will come back for sure.",
+            "I would not recommend this restaurant. The service was slow.",
+        ],
+        "user_review_count": [50, 5],
+        "business_review_count": [1000, 200],
+        "state": ["CA", "NV"],
+    })
+
+def test_remove_urls():
+    """Tests the remove_urls function."""
+    df = pl.DataFrame({
+        "text": [
+            "This is a text with a url http://example.com",
+            "Another text with https://another.com/path",
+            "No url here",
+        ]
+    })
+    result = df.with_columns(clean_text=remove_urls(pl.col("text")))
+    expected = pl.Series("clean_text", ["This is a text with a url ", "Another text with ", "No url here"])
+    assert_frame_equal(result["clean_text"].to_frame(), expected.to_frame())
+
+def test_add_log_transformation():
+    """Tests the add_log_transformation function."""
+    df = pl.DataFrame({"numbers": [1, 9, 99]})
+    result = add_log_transformation(df, "numbers")
+    expected = df.with_columns(
+        (pl.col("numbers") + 1).log().alias("log_numbers")
+    )
+    assert_frame_equal(result, expected)
+
+def test_format_as_yaml():
+    """Tests the format_as_yaml function."""
+    df = pl.DataFrame({
+        "device": ["Twitter for iPhone", "Android"],
+        "log_retweets": [5.4, 2.1]
+    })
+    result = format_as_yaml(df, ["device", "log_retweets"])
+    expected_yaml_0 = yaml.dump({"device": "Twitter for iPhone", "log_retweets": 5.4}, sort_keys=False, default_flow_style=False)
+    expected_yaml_1 = yaml.dump({"device": "Android", "log_retweets": 2.1}, sort_keys=False, default_flow_style=False)
+    expected = pl.Series("", [expected_yaml_0, expected_yaml_1])
+    assert all(result == expected)
+
+def test_chunk_text_with_overlap(tmp_path):
+    """Tests the chunk_text_with_overlap function."""
+    long_text = ". ".join([f"This is sentence number {i}" for i in range(20)])
+    
+    df = pl.DataFrame({
+        "id": [1],
+        "text": [long_text],
+        "metadata": ["some_value"]
+    })
+
+    tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+    
+    # Mocking the tokenizer to have predictable token counts for testing
+    original_encode = tokenizer.encode
+    def mock_encode(text, add_special_tokens=False):
+        return list(range(len(text.split())))
+    tokenizer.encode = mock_encode
+
+    result = chunk_text_with_overlap(df, "text", tokenizer, max_tokens=30, overlap_sentences=1)
+    
+    tokenizer.encode = original_encode  # Restore original method
+
+    assert result.height > 1
+    assert "token_count" in result.columns
+    assert all(result["id"] == 1)
+    assert all(result["metadata"] == "some_value")
+    assert all(result["token_count"] <= 30)
+
+def test_process_dataset_trump(sample_trump_df, tmp_path):
+    """Tests the overall processing for the 'trump' dataset."""
+    
+    input_path = tmp_path / "dummy_trump.csv"
+    output_path = tmp_path / "trump_processed.parquet"
+    sample_trump_df.write_csv(input_path)
+
+    # The function is expected to read the csv and process it
+    processed_df = process_dataset(
+        dataset_name="trump",
+        input_path=str(input_path),
+        output_path=str(output_path),
+        tokenizer_name="sentence-transformers/all-MiniLM-L6-v2",
+        max_tokens=20,
+    )
+
+    assert "id" in processed_df.columns
+    assert "log_retweets" in processed_df.columns
+    assert "log_favorites" in processed_df.columns
+    
+    assert "clean_text" in processed_df.columns
+    assert "clean_text_lower" in processed_df.columns
+    assert "clean_text_lower_punctless" in processed_df.columns
+
+    assert "clean_text_with_metadata" in processed_df.columns
+    
+    # Check that YAML frontmatter is present
+    assert processed_df["clean_text_with_metadata"][0].startswith("---")
+    
+    # Check that chunking was done (more rows than original)
+    assert processed_df.height > sample_trump_df.height
+
+def test_process_dataset_yelp(sample_yelp_df, tmp_path):
+    """Tests the overall processing for the 'yelp' dataset."""
+
+    input_path = tmp_path / "dummy_yelp.csv"
+    output_path = tmp_path / "yelp_processed.parquet"
+    sample_yelp_df.write_csv(input_path)
+
+    processed_df = process_dataset(
+        dataset_name="yelp",
+        input_path=str(input_path),
+        output_path=str(output_path),
+        tokenizer_name="sentence-transformers/all-MiniLM-L6-v2",
+        max_tokens=20,
+    )
+
+    assert "id" in processed_df.columns
+    
+    assert "log_user_review_count" in processed_df.columns
+    assert "log_business_review_count" in processed_df.columns
+    
+    assert "clean_text_with_metadata" in processed_df.columns
+    assert processed_df.height > sample_yelp_df.height
