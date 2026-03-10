@@ -43,7 +43,7 @@ def main():
     lf = pl.scan_parquet(DATA_DIR / "full_yelp_reviews.parquet")
     lf = change_lf(lf, select_cols=RELEVANT_COLS)
     lf = lf.with_row_index()
-    lf.sink_parquet("data/processed/yelp_reviews.parquet")
+    lf.sink_parquet("data/interim/yelp_reviews.parquet")
 
 
 def write_parquet_files(
