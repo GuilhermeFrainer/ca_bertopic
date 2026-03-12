@@ -66,6 +66,43 @@ METADATA_COLS = {
 }
 
 
+def rename_trump_columns(df: pl.DataFrame) -> pl.DataFrame:
+    """Hardcodes the renaming of Trump dataset columns for consistency.
+
+    This function specifically targets columns that are not correctly
+    standardized by a generic snake_case conversion, such as 'isRetweet'
+    or the reported 'isretween'.
+
+    Args:
+        df: The input Polars DataFrame with original column names.
+
+    Returns:
+        A Polars DataFrame with standardized column names.
+    """
+    # First, apply a generic standardization to handle most columns
+    df = df.rename({col: col.lower().replace(" ", "_") for col in df.columns})
+
+    # Second, correct specific columns that are not handled correctly by the
+    # generic approach (e.g., camelCase like 'isRetweet' becomes 'isretweet').
+    # We also account for the reported 'isretween' typo.
+    corrections = {
+        "isretweet": "is_retweet",
+        "isretween": "is_retweet", # Handle reported typo
+        "isdeleted": "is_deleted",
+        "isflagged": "is_flagged",
+    }
+
+    # Create a map of renames that can actually be performed
+    actual_renames = {
+        k: v for k, v in corrections.items() if k in df.columns
+    }
+
+    if actual_renames:
+        df = df.rename(actual_renames)
+    
+    return df
+
+
 def remove_urls(text_expr: pl.Expr) -> pl.Expr:
     """Removes URLs from a Polars expression.
 
@@ -220,7 +257,10 @@ def process_dataset(
     original_row_count = df.height
     
     # 2. Standardize column names
-    df = df.rename({col: col.lower().replace(" ", "_") for col in df.columns})
+    if dataset_name == "trump":
+        df = rename_trump_columns(df)
+    else:
+        df = df.rename({col: col.lower().replace(" ", "_") for col in df.columns})
     
     # 3. Add sequential ID
     df = df.with_columns(pl.arange(0, df.height).alias("id"))
