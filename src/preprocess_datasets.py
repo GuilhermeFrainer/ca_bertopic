@@ -171,7 +171,7 @@ def chunk_text_with_overlap(
     max_tokens: int,
     overlap_sentences: int = 1,
 ) -> pl.DataFrame:
-    """Chunks text into smaller pieces with overlapping sentences using NLTK.
+    """Chunks text into smaller pieces only if it exceeds a token limit.
 
     Args:
         df: The input Polars DataFrame.
@@ -181,48 +181,68 @@ def chunk_text_with_overlap(
         overlap_sentences: The number of sentences to overlap between chunks.
 
     Returns:
-        A new DataFrame with text chunked into multiple rows.
+        A new DataFrame with text chunked into multiple rows if necessary.
     """
     new_rows = []
-    chunks_exceeding_limit = 0
+    rows_to_chunk = 0
+
     for row in tqdm(df.to_dicts(), desc="Chunking text"):
-        sentences = nltk.sent_tokenize(row[text_column])
+        original_text = row.get(text_column, "")
+        if not original_text:
+            new_rows.append(row)
+            continue
+
+        total_tokens = len(tokenizer.encode(original_text, add_special_tokens=False))
+
+        # 1. If the text is within the limit, don't chunk it.
+        if total_tokens <= max_tokens:
+            new_row = row.copy()
+            new_row["token_count"] = total_tokens
+            new_rows.append(new_row)
+            continue
+
+        # 2. If the text exceeds the limit, proceed with chunking.
+        rows_to_chunk += 1
+        sentences = nltk.sent_tokenize(original_text)
         if not sentences:
             continue
 
-        i = 0
-        while i < len(sentences):
-            current_chunk_sentences = []
-            current_token_count = 0
+        current_pos = 0
+        while current_pos < len(sentences):
+            # Build a chunk starting from current_pos
+            chunk_sentences = []
+            chunk_tokens = 0
+            end_pos = current_pos
             
-            # Aggregate sentences into a chunk until max_tokens is reached
-            for j in range(i, len(sentences)):
-                sentence = sentences[j]
-                sentence_token_count = len(tokenizer.encode(sentence, add_special_tokens=False))
+            while end_pos < len(sentences):
+                sent = sentences[end_pos]
+                sent_tokens = len(tokenizer.encode(sent, add_special_tokens=False))
                 
-                # If adding the next sentence exceeds the token limit, finalize the current chunk
-                if current_chunk_sentences and current_token_count + sentence_token_count > max_tokens:
-                    chunks_exceeding_limit += 1
+                if chunk_tokens + sent_tokens > max_tokens and chunk_sentences:
                     break
                 
-                current_chunk_sentences.append(sentence)
-                current_token_count += sentence_token_count
-            
-            # If a chunk was created, add it as a new row
-            if current_chunk_sentences:
-                chunk_text = " ".join(current_chunk_sentences)
-                new_row = row.copy()
-                new_row[text_column] = chunk_text
-                new_row["token_count"] = current_token_count
-                new_rows.append(new_row)
+                chunk_sentences.append(sent)
+                chunk_tokens += sent_tokens
+                end_pos += 1
 
-            # Determine the starting point of the next chunk, considering the overlap
-            if len(current_chunk_sentences) > overlap_sentences:
-                i += len(current_chunk_sentences) - overlap_sentences
-            else:
-                i += 1
-    
-    logging.info(f"Created {chunks_exceeding_limit} chunks by reaching the token limit.")
+            # Append the created chunk
+            new_row = row.copy()
+            new_row[text_column] = " ".join(chunk_sentences)
+            new_row["token_count"] = chunk_tokens
+            new_rows.append(new_row)
+
+            # Move current_pos for the next chunk
+            if end_pos >= len(sentences):  # Reached the end
+                break
+            
+            # Determine overlap
+            num_sentences_in_chunk = len(chunk_sentences)
+            step = max(1, num_sentences_in_chunk - overlap_sentences)
+            current_pos += step
+
+    if rows_to_chunk > 0:
+        logging.info(f"Chunked {rows_to_chunk} rows that exceeded the token limit.")
+
     if not new_rows:
         return df.with_columns(pl.lit(0).alias("token_count"))
         

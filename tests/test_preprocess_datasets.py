@@ -27,10 +27,10 @@ def sample_trump_df() -> pl.DataFrame:
         ],
         "retweets": [100, 10, 1000],
         "favorites": [500, 20, 2000],
-        "is_retweet": [False, False, True],
-        "is_deleted": [False, True, False],
-        "is_flagged": [True, False, False],
-        "date": ["2020-01-01", "2020-01-02", "2020-01-03"],
+        "isRetweet": ["f", "f", "t"],
+        "isDeleted": ["f", "t", "f"],
+        "isFlagged": ["t", "f", "f"],
+        "date": ["2020-01-01 12:00:00", "2020-01-02 12:00:00", "2020-01-03 12:00:00"],
         "device": ["Twitter for iPhone", "Android", "Twitter for iPhone"],
     })
 
@@ -39,7 +39,7 @@ def sample_yelp_df() -> pl.DataFrame:
     """Provides a sample DataFrame mimicking the Yelp dataset structure."""
     return pl.DataFrame({
         "text": [
-            "This place is amazing! The food is great. I will come back for sure.",
+            "This place is absolutely amazing and I love it. The food is great, the service is even better. I will come back for sure next week.",
             "I would not recommend this restaurant. The service was slow.",
         ],
         "user_review_count": [50, 5],
@@ -138,8 +138,8 @@ def test_process_dataset_trump(sample_trump_df, tmp_path):
     # Check that YAML frontmatter is present
     assert processed_df["clean_text_with_metadata"][0].startswith("---")
     
-    # Check that chunking was done (more rows than original)
-    assert processed_df.height > sample_trump_df.height
+    # Check that chunking was not done (same number of rows)
+    assert processed_df.height == sample_trump_df.height
 
 def test_process_dataset_yelp(sample_yelp_df, tmp_path):
     """Tests the overall processing for the 'yelp' dataset."""
