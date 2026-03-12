@@ -38,7 +38,7 @@ ARTIFACTS_TO_REMOVE = {
 }
 RAW_DATA_PATHS = {
     "trump": "data/raw/trump_tweets.csv",
-    "yelp": "data/raw/yelp_reviews.csv",
+    "yelp": "data/interim/yelp_reviews.parquet",
 }
 INTERIM_DATA_PATHS = {
     "trump": "data/interim/trump_processed.parquet",
@@ -272,7 +272,13 @@ def process_dataset(
 
     # 1. Load data
     logging.info(f"Loading data from {input_path}")
-    df = pl.read_csv(input_path)
+    if input_path.endswith("csv"):
+        df = pl.read_csv(input_path)
+    elif input_path.endswith("parquet"):
+        df = pl.read_parquet(input_path)
+    else:
+        raise ValueError(f"Unexpected file format: {input_path}")
+
     original_row_count = df.height
     
     # 2. Standardize schema and apply data type conversions
