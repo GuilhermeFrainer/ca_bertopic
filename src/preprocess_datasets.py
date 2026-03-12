@@ -66,40 +66,39 @@ METADATA_COLS = {
 }
 
 
-def rename_trump_columns(df: pl.DataFrame) -> pl.DataFrame:
-    """Hardcodes the renaming of Trump dataset columns for consistency.
+def apply_trump_schema_and_types(df: pl.DataFrame) -> pl.DataFrame:
+    """Applies Trump-specific schema and type conversions.
 
-    This function specifically targets columns that are not correctly
-    standardized by a generic snake_case conversion, such as 'isRetweet'
-    or the reported 'isretween'.
+    This function implements the data type and naming conversions discovered
+    in the 'trump_tweets_exploration.ipynb' notebook. It handles the specific
+    way booleans ('t'/'f'), datetimes, and categoricals are stored in the
+    raw Trump dataset.
 
     Args:
-        df: The input Polars DataFrame with original column names.
+        df: The raw Trump dataset as a Polars DataFrame.
 
     Returns:
-        A Polars DataFrame with standardized column names.
+        A DataFrame with corrected data types and column names.
     """
-    # First, apply a generic standardization to handle most columns
-    df = df.rename({col: col.lower().replace(" ", "_") for col in df.columns})
+    df = df.with_columns(
+        # Convert boolean-like columns ('t'/'f') to actual booleans
+        (pl.col("isRetweet").str.to_lowercase() == "t").alias("is_retweet"),
+        (pl.col("isDeleted").str.to_lowercase() == "t").alias("is_deleted"),
+        (pl.col("isFlagged").str.to_lowercase() == "t").alias("is_flagged"),
 
-    # Second, correct specific columns that are not handled correctly by the
-    # generic approach (e.g., camelCase like 'isRetweet' becomes 'isretweet').
-    # We also account for the reported 'isretween' typo.
-    corrections = {
-        "isretweet": "is_retweet",
-        "isretween": "is_retweet", # Handle reported typo
-        "isdeleted": "is_deleted",
-        "isflagged": "is_flagged",
-    }
+        # Convert date column using the specific format
+        pl.col("date").str.to_datetime("%Y-%m-%d %H:%M:%S"),
 
-    # Create a map of renames that can actually be performed
-    actual_renames = {
-        k: v for k, v in corrections.items() if k in df.columns
-    }
+        # Cast device to categorical
+        pl.col("device").cast(pl.Categorical),
+    ).drop("isRetweet", "isDeleted", "isFlagged")
 
-    if actual_renames:
-        df = df.rename(actual_renames)
+    # Rename 'content' to 'text' for consistency across datasets
+    if "content" in df.columns:
+        df = df.rename({"content": "text"})
     
+    # Ensure all other columns are snake_case
+    df = df.rename({col: col.lower().replace(" ", "_") for col in df.columns})
     return df
 
 
@@ -256,22 +255,22 @@ def process_dataset(
     df = pl.read_csv(input_path)
     original_row_count = df.height
     
-    # 2. Standardize column names
+    # 2. Standardize schema and apply data type conversions
     if dataset_name == "trump":
-        df = rename_trump_columns(df)
+        df = apply_trump_schema_and_types(df)
     else:
+        # Generic standardization for other datasets
         df = df.rename({col: col.lower().replace(" ", "_") for col in df.columns})
-    
+        for col in BOOLEAN_COLS.get(dataset_name, []):
+             if df[col].dtype != pl.Boolean:
+                df = df.with_columns((pl.col(col).str.to_lowercase() == "true").alias(col))
+        for col in DATETIME_COLS.get(dataset_name, []):
+            df = df.with_columns(pl.col(col).str.to_datetime())
+        for col in CATEGORICAL_COLS.get(dataset_name, []):
+            df = df.with_columns(pl.col(col).cast(pl.Categorical))
+
     # 3. Add sequential ID
     df = df.with_columns(pl.arange(0, df.height).alias("id"))
-
-    # 4. Data type conversions
-    for col in BOOLEAN_COLS.get(dataset_name, []):
-        df = df.with_columns(pl.col(col).cast(pl.Boolean))
-    for col in DATETIME_COLS.get(dataset_name, []):
-        df = df.with_columns(pl.col(col).str.to_datetime())
-    for col in CATEGORICAL_COLS.get(dataset_name, []):
-        df = df.with_columns(pl.col(col).cast(pl.Categorical))
 
     # 5. Numerical transformations
     for col in NUMERICAL_COLS.get(dataset_name, []):
