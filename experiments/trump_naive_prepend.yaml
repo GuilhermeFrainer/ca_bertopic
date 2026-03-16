@@ -1,0 +1,41 @@
+experiment:
+  name: "trump_naive_prepend"
+  description: "Testing prepending the metadata to the document as yaml frontmatter."
+  dataset_path: "data/processed/trump_embeddings.parquet"
+  random_state: 36201624
+  embedding_col: "clean_text_with_metadata_embedding"
+  text_col: "clean_text_with_metadata"
+  covariates:
+    numerical:
+      - log_favorites
+      - log_retweets
+      - date
+    categorical:
+      - device
+    binary:
+      - is_retweet
+      - is_deleted
+      - is_flagged
+  coherence_metrics:
+    - u_mass
+    - c_v
+    - c_npmi
+  diversity_metrics:
+    - irbo
+    - topic_diversity
+
+models:
+  - id: "baseline"
+    description: "Standard BERTopic: no metadata and default hiperparameters."
+    is_baseline: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "hdbscan"
+      params:
+        min_cluster_size: 15
+        prediction_data: true

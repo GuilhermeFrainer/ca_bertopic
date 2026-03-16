@@ -1,0 +1,40 @@
+experiment:
+  name: "yelp_naive_prepend"
+  description: "Testing the naive approach of prepending the metadata to the document as yaml frontmatter."
+  dataset_path: "data/processed/yelp_embeddings.parquet"
+  random_state: 36201624
+  sample_size: 1000
+  embedding_col: "clean_text_with_metadata_embedding"
+  text_col: "clean_text_with_metadata"
+  covariates:
+    numerical:
+      - date
+      - stars
+      - user_average_stars
+      - yelping_since
+      - business_stars
+    categorical:
+      - state
+  coherence_metrics:
+    - u_mass
+    - c_v
+    - c_npmi
+  diversity_metrics:
+    - irbo
+    - topic_diversity
+
+models:
+  - id: "baseline"
+    description: "Standard BERTopic: no metadata and default hiperparameters."
+    is_baseline: true
+    dimensionality_reduction:
+      type: "umap"
+      params:
+        min_dist: 0.0
+        n_components: 5
+        metric: "cosine"
+    clustering:
+      type: "hdbscan"
+      params:
+        min_cluster_size: 15
+        prediction_data: true
