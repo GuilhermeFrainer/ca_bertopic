@@ -1,9 +1,11 @@
+from pathlib import Path
 import polars as pl
 import argparse
-import pathlib
 
 
-DATA_DIR = pathlib.Path("data/raw")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data" / "raw"
+INTERIM_DIR = PROJECT_ROOT / "data" / "interim"
 RELEVANT_COLS = [
     "date",
     "stars",
@@ -28,6 +30,8 @@ def main():
     
     args = parser.parse_args()
 
+    INTERIM_DIR.mkdir(parents=True, exist_ok=True)
+
     if not args.skip_convert:
         write_parquet_files(data_dir=DATA_DIR)
 
@@ -43,11 +47,11 @@ def main():
     lf = pl.scan_parquet(DATA_DIR / "full_yelp_reviews.parquet")
     lf = change_lf(lf, select_cols=RELEVANT_COLS)
     lf = lf.with_row_index()
-    lf.sink_parquet("data/interim/yelp_reviews.parquet")
+    lf.sink_parquet(INTERIM_DIR / "yelp_reviews.parquet")
 
 
 def write_parquet_files(
-    data_dir: pathlib.Path,
+    data_dir: Path,
     filename_prefix: str = "yelp_academic_dataset_",
     files: list[str] = ["business", "review", "user"]
 ):

@@ -88,9 +88,10 @@ def process_dataset(
     Orchestrates the data loading, processing loop, and file saving.
     """
     # 1. Path Updates & I/O
-    input_path = Path(f"data/interim/{dataset_name}_processed.parquet")
-    batch_dir = Path(f"data/interim/{dataset_name}_embeddings_batches")
-    final_output_path = Path(f"data/processed/{dataset_name}_embeddings.parquet")
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    input_path = PROJECT_ROOT / f"data/interim/{dataset_name}_processed.parquet"
+    batch_dir = PROJECT_ROOT / f"data/interim/{dataset_name}_embeddings_batches"
+    final_output_path = PROJECT_ROOT / f"data/processed/{dataset_name}_embeddings.parquet"
 
     os.makedirs(batch_dir, exist_ok=True)
 

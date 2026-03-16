@@ -32,6 +32,7 @@ except LookupError:
     nltk.download('punkt')
 
 # Constants
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TOKENIZER_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 BATCH_SIZE = 10000  # Process 10,000 rows at a time
 ARTIFACTS_TO_REMOVE = {
@@ -39,12 +40,12 @@ ARTIFACTS_TO_REMOVE = {
     "yelp": [], # No specific artifacts for yelp
 }
 RAW_DATA_PATHS = {
-    "trump": "data/raw/trump_tweets.csv",
-    "yelp": "data/interim/yelp_reviews.parquet",
+    "trump": PROJECT_ROOT / "data/raw/trump_tweets.csv",
+    "yelp": PROJECT_ROOT / "data/interim/yelp_reviews.parquet",
 }
 INTERIM_DATA_PATHS = {
-    "trump": "data/interim/trump_processed.parquet",
-    "yelp": "data/interim/yelp_processed.parquet",
+    "trump": PROJECT_ROOT / "data/interim/trump_processed.parquet",
+    "yelp": PROJECT_ROOT / "data/interim/yelp_processed.parquet",
 }
 NUMERICAL_COLS = {
     "trump": ["retweets", "favorites"],

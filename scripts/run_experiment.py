@@ -1,7 +1,14 @@
+import sys
+from pathlib import Path
+
+# Add project root to sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import polars as pl
 from tqdm import tqdm
 
-from pathlib import Path
 import datetime
 import argparse
 import logging
@@ -15,11 +22,10 @@ import src.models as models
 import src.logger_config as logger_config
 
 
-BASE_DIR = Path(__file__).resolve().parent
-EXPERIMENTS_DIR = BASE_DIR / "experiments"
-RESULTS_DIR = BASE_DIR / "results"
-LOG_DIR = BASE_DIR / "logs"
-TABLES_DIR = BASE_DIR / "tables"
+EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
+RESULTS_DIR = PROJECT_ROOT / "results"
+LOG_DIR = PROJECT_ROOT / "logs"
+TABLES_DIR = PROJECT_ROOT / "tables"
 
 
 def main():
