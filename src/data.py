@@ -136,19 +136,35 @@ def sample_from_lf(
     replace: bool = False
 ) -> pl.LazyFrame:
     rng = np.random.default_rng(seed)
-    lf_len = lf.select("index").count().collect().item()
+
+    lf_len = lf.select(pl.len()).collect().item()
+    if n > lf_len and not replace:
+        raise ValueError(f"Cannot sample {n} rows without replacement from a dataset of {lf_len} rows.")
+
+    # Determines id column
+    schema = lf.collect_schema()
+    cols = schema.names()
+    if "index" in cols:
+        id_col = "index"
+    elif "id" in cols:
+        id_col = "id"
+    else:
+        raise ValueError((
+            "Unable to find ID column to sample from LazyFrame"
+            "Available columns:\n"
+            f"{cols}"
+        ))
 
     # numpy's choice will raise a ValueError if sampling without replacement is
     # not possible, which is the desired behavior.
-    all_possible_rows = np.arange(lf_len)
-    sample_idxs = rng.choice(all_possible_rows, size=n, replace=replace)
+    sample_idxs = rng.choice(lf_len, size=n, replace=replace)
 
     # Create a LazyFrame of sampled indices.
-    sampled_indices_lf = pl.DataFrame({"index": sample_idxs}).lazy()
+    sampled_indices_lf = pl.DataFrame({id_col: sample_idxs}).lazy()
 
     # We must join the sampled indices back to the original LazyFrame.
     # Using `filter(pl.col("index").is_in(sample_idxs))` would not work for
     # sampling with replacement, as `is_in` only filters unique values.
     # A join correctly preserves all sampled rows, including duplicates.
-    return sampled_indices_lf.join(lf, on="index", how="inner")
+    return sampled_indices_lf.join(lf, on=id_col, how="inner")
 
