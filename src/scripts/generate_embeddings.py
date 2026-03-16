@@ -1,132 +1,185 @@
+import argparse
+import os
+import re
+from pathlib import Path
+
 import polars as pl
+import torch
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
-from pathlib import Path
-import argparse
-import glob
-import os
-
-DEFAULT_BATCH_SIZE = 1000
-DEFAULT_MODEL = "all-MiniLM-L6-v2"
-
-DATA_DIR = Path("data/processed")
-DATASETS = {
-    "yelp": DATA_DIR / "yelp_reviews.parquet",
-    "trump": DATA_DIR / "trump_cleaned.parquet"
-}
-
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate text embeddings for specific datasets.")
+    """Main entry point of the script."""
+    parser = argparse.ArgumentParser(
+        description="Generate sentence embeddings for preprocessed datasets."
+    )
     parser.add_argument(
-        "--dataset", 
-        type=str, 
-        required=True, 
-        choices=DATASETS.keys(), 
-        help="The key of the dataset to process (e.g., 'yelp')."
+        "--dataset",
+        type=str,
+        required=True,
+        help="The name of the dataset to process (e.g., 'yelp', 'trump').",
     )
     parser.add_argument(
         "--columns",
         nargs="+",
         default=["text"],
-        help="List of columns to embed (e.g. --columns text title summary). Default: 'text'"
+        help="List of columns to embed (e.g., --columns text title). Default: 'text'",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="all-MiniLM-L6-v2",
+        help="The SentenceTransformer model to use.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1000,
+        help="The number of rows to process in each batch.",
     )
     args = parser.parse_args()
-    
-    try:
-        process_dataset(args.dataset, args.columns)
-    except KeyError:
-        print(f"Error: Dataset '{args.dataset}' not found in registry.")
+
+    process_dataset(
+        args.dataset, args.columns, args.model_name, args.batch_size
+    )
 
 
-def get_start_index(output_dir: Path, batch_size: int) -> int:
+def get_next_batch_index(batch_dir: Path) -> int:
     """
-    Calculates the starting row index based on existing batch files on disk.
+    Determines the next batch index by parsing filenames in the batch directory.
+    Filenames are expected to be in the format 'batch_{index}.parquet'.
     """
-    existing_files = glob.glob(os.path.join(output_dir, "*.parquet"))
-    return len(existing_files) * batch_size
+    if not batch_dir.exists():
+        return 0
+
+    max_index = -1
+    for f in batch_dir.glob("*.parquet"):
+        match = re.search(r"batch_(\d+)\.parquet$", f.name)
+        if match:
+            index = int(match.group(1))
+            if index > max_index:
+                max_index = index
+    return max_index + 1
 
 
-def process_dataset(dataset_key: str, target_columns: list[str]):
+def sort_batch_files(batch_files: list[Path]) -> list[Path]:
+    """
+    Sorts a list of batch file paths numerically based on the index in the filename.
+    """
+
+    def get_batch_number(p: Path):
+        match = re.search(r"batch_(\d+)\.parquet$", p.name)
+        if match:
+            return int(match.group(1))
+        # This case should ideally not be reached with controlled filenames
+        return -1
+
+    return sorted(batch_files, key=get_batch_number)
+
+
+def process_dataset(
+    dataset_name: str,
+    target_columns: list[str],
+    model_name: str,
+    batch_size: int,
+):
     """
     Orchestrates the data loading, processing loop, and file saving.
     """
-    file_path = DATASETS[dataset_key]
-    
-    # Setup
-    output_dir = DATA_DIR / (dataset_key + "_embeddings_batches")
-    os.makedirs(output_dir, exist_ok=True)
-    embedding_model = SentenceTransformer(DEFAULT_MODEL)
-    
+    # 1. Path Updates & I/O
+    input_path = Path(f"data/interim/{dataset_name}_processed.parquet")
+    batch_dir = Path(f"data/interim/{dataset_name}_embeddings_batches")
+    final_output_path = Path(f"data/processed/{dataset_name}_embeddings.parquet")
+
+    os.makedirs(batch_dir, exist_ok=True)
+
+    # 2. Embedding Optimization
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
+    print(f"Using device: {device}")
+    embedding_model = SentenceTransformer(model_name, device=device)
+
     # Load Data
-    lf = pl.scan_parquet(file_path)
+    lf = pl.scan_parquet(input_path)
+    assert isinstance(lf, pl.LazyFrame)
 
     schema = lf.collect_schema()
     for col in target_columns:
         if col not in schema.names():
-            print(f"Error: Column '{col}' not found in dataset '{dataset_key}'. Available columns: {schema.names()}")
+            print(
+                f"Error: Column '{col}' not found in dataset '{dataset_name}'. "
+                f"Available columns: {schema.names()}"
+            )
             return
 
-    total_rows = lf.select(pl.len()).collect().item()
-    
-    # Check Resume Status
-    start_index = get_start_index(output_dir, DEFAULT_BATCH_SIZE)
-    
-    print(f"Processing dataset: {dataset_key}")
+    total_rows = lf.select(pl.len()).collect().item() # ty: ignore
+    total_batches = (total_rows + batch_size - 1) // batch_size
+
+    # 3. Robust Checkpointing
+    start_batch = get_next_batch_index(batch_dir)
+
+    print(f"Processing dataset: {dataset_name}")
     print(f"Target columns: {target_columns}")
     print(f"Total rows: {total_rows}")
-    
-    if start_index >= total_rows:
-        print("All rows processed. Skipping to stitching phase...")
+    print(f"Batch size: {batch_size}")
+
+    if start_batch >= total_batches:
+        print("All batches processed. Skipping to stitching phase...")
     else:
-        print(f"Resuming from row {start_index}...")
+        print(f"Resuming from batch {start_batch}...")
 
         # Main Loop
-        for i in tqdm(range(start_index, total_rows, DEFAULT_BATCH_SIZE), desc="Generating Embeddings"):
-            chunk = lf.slice(i, DEFAULT_BATCH_SIZE).collect()
+        for i in tqdm(
+            range(start_batch, total_batches),
+            initial=start_batch,
+            total=total_batches,
+            desc="Generating Embeddings",
+        ):
+            offset = i * batch_size
+            chunk = lf.slice(offset, batch_size).collect()
 
             # Loop through every requested column and generate embeddings
             for col in target_columns:
-                texts = chunk[col].to_list()
-                embeddings = embedding_model.encode(texts)
-                
+                texts = chunk[col].to_list() # ty: ignore
+                embeddings = embedding_model.encode(
+                    texts, show_progress_bar=False
+                )
+
                 # Add the new column with suffix
-                chunk = chunk.with_columns(
+                chunk = chunk.with_columns( # ty: ignore
                     pl.Series(name=f"{col}_embedding", values=embeddings)
                 )
-            output_filepath = f"{dataset_key}_batch_{i}.parquet"
-            save_path = output_dir / output_filepath
-            chunk.write_parquet(save_path)
+
+            output_filepath = f"batch_{i}.parquet"
+            save_path = batch_dir / output_filepath
+            chunk.write_parquet(save_path) # ty: ignore
 
     # Stitch files at the end
-    stitch_batches(output_dir, dataset_key)
+    stitch_batches(batch_dir, final_output_path)
 
 
-def stitch_batches(output_dir: Path, dataset_key: str):
+def stitch_batches(batch_dir: Path, final_output_path: Path):
     """
     Combines all batch files into a single parquet file.
     """
-    final_output_path = DATA_DIR / f"{dataset_key}_embeddings.parquet"
     print(f"Stitching batches into {final_output_path}...")
 
-    batch_files = list(output_dir.glob("*.parquet"))
-    
+    batch_files = list(batch_dir.glob("*.parquet"))
+
     if not batch_files:
         print("No batch files found to stitch.")
         return
 
-    # Sort files by the batch index (integer at the end of filename)
-    # Filename format: "{dataset_key}_batch_{i}.parquet"
-    # We split by '_' and take the last part, removing '.parquet'
-    try:
-        batch_files.sort(key=lambda p: int(p.stem.split('_')[-1]))
-    except ValueError:
-        print("Warning: Could not sort files by index. Stitching in default order.")
+    # Sort files numerically before stitching
+    sorted_batch_files = sort_batch_files(batch_files)
 
-    # 3. Use scan_parquet + sink_parquet for memory-efficient merging
     try:
-        pl.scan_parquet(batch_files).sink_parquet(final_output_path)
+        pl.scan_parquet(sorted_batch_files).sink_parquet(final_output_path)
         print("Stitching complete.")
     except Exception as e:
         print(f"Error during stitching: {e}")
