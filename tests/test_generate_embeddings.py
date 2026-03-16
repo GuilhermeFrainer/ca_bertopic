@@ -2,7 +2,7 @@ import pytest
 from pathlib import Path
 import tempfile
 
-from src.scripts.generate_embeddings import get_next_batch_index, sort_batch_files
+from src.embeddings import get_next_batch_index, sort_batch_files
 
 
 # --- Test Suite ---
