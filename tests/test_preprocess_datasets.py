@@ -7,8 +7,8 @@ from polars.testing import assert_frame_equal
 import yaml
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
-# These imports will fail until the actual script is created
-from src.preprocess_datasets import (
+# These imports should now work from src.processing
+from src.processing import (
     remove_urls,
     add_log_transformation,
     format_as_yaml,
