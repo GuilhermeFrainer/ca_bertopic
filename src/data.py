@@ -23,19 +23,30 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
     logger.info(f"Target Text Column: '{text_col}'")
     logger.info(f"Target Embedding Column: '{embedding_col}'")
 
-    # Lazy load and sample
+    # Lazy load
     full_lf = pl.scan_parquet(data_path)
-    dataset_len = full_lf.select(text_col).count().collect().item()
-
+    
+    # Calculate total length before filtering
+    total_len = full_lf.select(pl.len()).collect().item()
+    
+    # Filter empty rows immediately
+    clean_lf = full_lf.filter(pl.col(text_col) != "")
+    
+    # Calculate length after filtering
+    clean_len = clean_lf.select(pl.len()).collect().item()
+    
+    # Explicitly log dropped empty rows
+    dropped_empty_rows = total_len - clean_len
+    if dropped_empty_rows > 0:
+        logger.info(f"Dropped {dropped_empty_rows} rows for being empty strings.")
+    
+    # Sample from the CLEAN LazyFrame if requested
     if sample_size is not None:
         logger.info(f"Subsampling dataset to {sample_size} rows.")
-        lf = sample_from_lf(full_lf, n=sample_size, seed=random_state)
+        lf = sample_from_lf(clean_lf, n=sample_size, seed=random_state)
     else:
-        logger.info(f"Using full dataset. Total rows: {dataset_len}")
-        lf = full_lf
-    
-    # We must drop empty rows, as we can't compute Coherence scores for them
-    non_empty_lf = lf.filter(pl.col(text_col) != "")
+        logger.info(f"Using full dataset. Total rows: {clean_len}")
+        lf = clean_lf
 
     # Identify required columns for selection
     if isinstance(covariates_config, list):
@@ -51,16 +62,13 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
     relevant_cols = list(set([text_col, embedding_col] + cov_cols))
 
     try:
-        df = non_empty_lf.select(relevant_cols).collect()
+        df = lf.select(relevant_cols).collect()
     except pl.exceptions.ColumnNotFoundError:
         available_cols = full_lf.collect_schema().names()
         logger.error(f"Column not found in dataset. Available columns: {available_cols}")
         raise
 
-    dropped_rows = dataset_len - len(df)
-    if dropped_rows > 0:
-        logger.info(f"Dropped {dropped_rows} rows for being empty strings.")
-        logger.info(f"Running experiment on {len(df)} rows.")
+    logger.info(f"Running experiment on {len(df)} rows.")
     
     text = df[text_col].to_list()
     embeddings = df[embedding_col].to_numpy()
@@ -152,34 +160,26 @@ def sample_from_lf(
 ) -> pl.LazyFrame:
     rng = np.random.default_rng(seed)
 
-    lf_len = lf.select(pl.len()).collect().item()
+    # Add temporary index for sampling to handle potential gaps in original IDs
+    indexed_lf = lf.with_row_index(name="temp_sample_idx")
+    
+    # Calculate length of indexed LazyFrame
+    lf_len = indexed_lf.select(pl.len()).collect().item()
+    
     if n > lf_len and not replace:
         raise ValueError(f"Cannot sample {n} rows without replacement from a dataset of {lf_len} rows.")
 
-    # Determines id column
-    schema = lf.collect_schema()
-    cols = schema.names()
-    if "index" in cols:
-        id_col = "index"
-    elif "id" in cols:
-        id_col = "id"
-    else:
-        raise ValueError((
-            "Unable to find ID column to sample from LazyFrame"
-            "Available columns:\n"
-            f"{cols}"
-        ))
-
-    # numpy's choice will raise a ValueError if sampling without replacement is
-    # not possible, which is the desired behavior.
+    # Generate sample indices based on the fresh contiguous row index
     sample_idxs = rng.choice(lf_len, size=n, replace=replace)
 
     # Create a LazyFrame of sampled indices.
-    sampled_indices_lf = pl.DataFrame({id_col: sample_idxs}).lazy()
+    sampled_indices_lf = pl.DataFrame({"temp_sample_idx": sample_idxs}, 
+                                      schema={"temp_sample_idx": pl.UInt32}).lazy()
 
-    # We must join the sampled indices back to the original LazyFrame.
-    # Using `filter(pl.col("index").is_in(sample_idxs))` would not work for
-    # sampling with replacement, as `is_in` only filters unique values.
-    # A join correctly preserves all sampled rows, including duplicates.
-    return sampled_indices_lf.join(lf, on=id_col, how="inner")
+    # Join back and drop the temporary index
+    return (
+        sampled_indices_lf
+        .join(indexed_lf, on="temp_sample_idx", how="inner")
+        .drop("temp_sample_idx")
+    )
 
