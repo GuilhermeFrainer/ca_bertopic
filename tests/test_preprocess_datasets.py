@@ -123,6 +123,7 @@ def test_process_dataset_trump(sample_trump_df, tmp_path):
         output_path=str(output_path),
         tokenizer_name="sentence-transformers/all-MiniLM-L6-v2",
         max_tokens=20,
+        include_metadata=True,
     )
 
     assert "id" in processed_df.columns
@@ -154,6 +155,7 @@ def test_process_dataset_yelp(sample_yelp_df, tmp_path):
         output_path=str(output_path),
         tokenizer_name="sentence-transformers/all-MiniLM-L6-v2",
         max_tokens=20,
+        include_metadata=True,
     )
 
     assert "id" in processed_df.columns

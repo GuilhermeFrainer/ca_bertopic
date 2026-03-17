@@ -26,6 +26,11 @@ def main():
     parser = argparse.ArgumentParser(description="Preprocess datasets for topic modeling.")
     parser.add_argument("--dataset", type=str, required=True, choices=["trump", "yelp"])
     parser.add_argument("--max-tokens", type=int, help="Maximum number of tokens per chunk.")
+    parser.add_argument(
+        "--include-metadata",
+        action="store_true",
+        help="Whether to include YAML frontmatter with metadata in the text columns."
+    )
     args = parser.parse_args()
 
     process_dataset(
@@ -33,6 +38,7 @@ def main():
         input_path=str(RAW_DATA_PATHS[args.dataset]),
         output_path=str(INTERIM_DATA_PATHS[args.dataset]),
         max_tokens=args.max_tokens,
+        include_metadata=args.include_metadata,
     )
 
 

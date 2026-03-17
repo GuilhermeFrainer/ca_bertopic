@@ -179,6 +179,7 @@ def process_dataset(
     output_path: str,
     tokenizer_name: str = TOKENIZER_NAME,
     max_tokens: int | None = None,
+    include_metadata: bool = False,
 ) -> pl.DataFrame:
     """Main function to process a single dataset using lazy evaluation and batching.
 
@@ -244,13 +245,17 @@ def process_dataset(
             
             process_bar.set_postfix_str(f"Original: {original_rows}, Chunked: {chunked_df.height}")
 
-            yaml_frontmatter = format_as_yaml(chunked_df, METADATA_COLS[dataset_name])
-            
-            final_batch_df = chunked_df.with_columns(
-                clean_text_with_metadata=pl.concat_str([pl.lit('---\n'), yaml_frontmatter, pl.lit('---\n'), pl.col("clean_text")]),
-                clean_text_lower_with_metadata=pl.concat_str([pl.lit('---\n'), yaml_frontmatter, pl.lit('---\n'), pl.col("clean_text_lower")]),
-                clean_text_lower_punctless_with_metadata=pl.concat_str([pl.lit('---\n'), yaml_frontmatter, pl.lit('---\n'), pl.col("clean_text_lower_punctless")]),
-            )
+            if include_metadata:
+                yaml_frontmatter = format_as_yaml(chunked_df, METADATA_COLS[dataset_name])
+                
+                final_batch_df = chunked_df.with_columns(
+                    clean_text_with_metadata=pl.concat_str([pl.lit('---\n'), yaml_frontmatter, pl.lit('---\n'), pl.col("clean_text")]),
+                    clean_text_lower_with_metadata=pl.concat_str([pl.lit('---\n'), yaml_frontmatter, pl.lit('---\n'), pl.col("clean_text_lower")]),
+                    clean_text_lower_punctless_with_metadata=pl.concat_str([pl.lit('---\n'), yaml_frontmatter, pl.lit('---\n'), pl.col("clean_text_lower_punctless")]),
+                )
+            else:
+                final_batch_df = chunked_df
+
             final_batch_df.write_parquet(batch_dir / f"batch_{i}.parquet")
 
         logging.info(f"Stitching batches and saving to {output_path}")
