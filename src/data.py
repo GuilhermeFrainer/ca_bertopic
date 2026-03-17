@@ -36,19 +36,34 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
     
     # We must drop empty rows, as we can't compute Coherence scores for them
     non_empty_lf = lf.filter(pl.col(text_col) != "")
-    df = non_empty_lf.collect()
+
+    # Identify required columns for selection
+    if isinstance(covariates_config, list):
+        cov_cols = covariates_config
+    else:
+        cov_cols = (
+            covariates_config.get("numerical", []) +
+            covariates_config.get("categorical", []) +
+            covariates_config.get("binary", [])
+        )
+    
+    # Deduplicate required columns
+    relevant_cols = list(set([text_col, embedding_col] + cov_cols))
+
+    try:
+        df = non_empty_lf.select(relevant_cols).collect()
+    except pl.exceptions.ColumnNotFoundError:
+        available_cols = full_lf.collect_schema().names()
+        logger.error(f"Column not found in dataset. Available columns: {available_cols}")
+        raise
 
     dropped_rows = dataset_len - len(df)
     if dropped_rows > 0:
         logger.info(f"Dropped {dropped_rows} rows for being empty strings.")
         logger.info(f"Running experiment on {len(df)} rows.")
     
-    try:
-        text = df[text_col].to_list()
-        embeddings = df[embedding_col].to_numpy()
-    except pl.exceptions.ColumnNotFoundError as e:
-        logger.error(f"Column not found in dataset. Available columns: {df.columns}")
-        raise e
+    text = df[text_col].to_list()
+    embeddings = df[embedding_col].to_numpy()
     
     processed_metadata = process_metadata(df, covariates_config)
 
