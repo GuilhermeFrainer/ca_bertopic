@@ -201,6 +201,11 @@ def process_dataset(
     for col in NUMERICAL_COLS.get(dataset_name, []):
         lf = add_log_transformation(lf, col)
 
+    # Removes previous ID column
+    # This is necessary because otherwise row IDs will get duplicated when chunking text
+    # They are added once again when stitching in the dataset
+    lf = lf.drop(["index", "id"], strict=False)
+
     logging.info("Applying lazy text preprocessing...")
     lf = lf.with_columns(
         clean_text=remove_urls(pl.col("text"))
@@ -252,7 +257,8 @@ def process_dataset(
         batch_files = sorted(batch_dir.glob("*.parquet"), key=lambda p: int(p.stem.split('_')[-1]))
         
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        pl.scan_parquet(batch_files).sink_parquet(output_path)
+        # Adds index back at the end
+        pl.scan_parquet(batch_files).with_row_index().sink_parquet(output_path)
 
     logging.info("Preprocessing finished successfully.")
     return pl.read_parquet(output_path)
