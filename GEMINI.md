@@ -26,30 +26,30 @@ This project aims to modify BERTopic to incorporate document-level metadata into
 
 ## Running Experiments
 
-Experiments are defined by `.yaml` files in the `experiments/` directory and can be run using the `run_experiment.py` script.
+Experiments are defined by `.yaml` files in the `experiments/` directory and can be run using the `scripts/run_experiment.py` script.
 
 To run an experiment, use the following command:
 ```bash
-python run_experiment.py --exp <experiment_name>
+python scripts/run_experiment.py --exp <experiment_name>
 ```
 Replace `<experiment_name>` with the name of the yaml file in the `experiments` directory (without the `.yaml` extension).
 
 For example, to run the `trump.yaml` experiment:
 ```bash
-python run_experiment.py --exp trump
+python scripts/run_experiment.py --exp trump
 ```
 
 ### Running Hyperparameter Optimization
 
-For hyperparameter tuning, use the `run_optimizer.py` script. The setup is similar to a regular experiment, but the YAML file should contain a single `model` configuration. Within that configuration, any parameter that you want to search over should be specified as a list of values.
+For hyperparameter tuning, use the `scripts/run_optimizer.py` script. The setup is similar to a regular experiment, but the YAML file should contain a single `model` configuration. Within that configuration, any parameter that you want to search over should be specified as a list of values.
 
 To run an optimization, use the following command:
 ```bash
-python run_optimizer.py --exp <optimization_name>
+python scripts/run_optimizer.py --exp <optimization_name>
 ```
 For example, to run the `yelp_opt_spectral.yaml` optimization:
 ```bash
-python run_optimizer.py --exp yelp_opt_spectral
+python scripts/run_optimizer.py --exp yelp_opt_spectral
 ```
 
 ## Running Tests
@@ -67,14 +67,24 @@ uv run -m pytest
 ├── models/            # Saved model files
 ├── notebooks/         # Jupyter notebooks for exploration and analysis
 ├── results/           # Experiment results
+├── scripts/           # Utility scripts
+│   ├── build_yelp_dataset.py
+│   ├── generate_embeddings.py
+│   ├── preprocess_datasets.py
+│   ├── run_experiment.py
+│   └── run_optimizer.py
 ├── src/               # Source code
 │   ├── data.py        # Data loading and preprocessing
 │   ├── models.py      # Custom model definitions
 │   ├── optimizer.py   # Hyperparameter optimization
 │   ├── training.py    # Training scripts
-│   └── evaluation.py  # Evaluation metrics
-├── run_experiment.py  # Main script to run experiments
-├── run_optimizer.py   # Main script to run hyperparameter optimization
+│   ├── evaluation.py  # Evaluation metrics
+│   ├── processing.py  # Data processing utilities
+│   ├── embeddings.py  # Embedding generation
+│   ├── mvc_wrapper.py # Multi-view clustering wrapper
+│   ├── make_table.py  # Result table generation
+│   ├── logger_config.py
+│   └── utils.py       # General utilities
 └── pyproject.toml     # Project configuration and dependencies
 ```
 
