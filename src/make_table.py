@@ -1,7 +1,79 @@
 import polars as pl
+from great_tables import GT, style, loc
+
+
+def generate_gt_table(df: pl.DataFrame) -> GT:
+    """
+    Generates a Great Tables object from an experiment results DataFrame.
+    """
+    # 1. Preprocessing with Polars
+    processed_df = df.clone()
+
+    # Cast n_clusters to Int64 if it exists
+    if "n_clusters" in processed_df.columns:
+        processed_df = processed_df.with_columns(
+            pl.col("n_clusters").cast(pl.Int64, strict=False)
+        )
+
+    # Prepare for display
+    display_df = processed_df.with_columns(
+        pl.col("model_name").str.replace_all("_", " ")
+    )
+
+    # Core columns to show
+    core_cols = [
+        "model_name", "dataset_name", "timestamp", "n_observations",
+        "clustering_algo", "dim_red_algo", "n_topics"
+    ]
+    
+    # Identify metric columns (everything else that is numeric)
+    exclude_from_metrics = core_cols + ["duration_seconds", "outliers"]
+    metric_cols = [
+        col for col in display_df.columns 
+        if col not in exclude_from_metrics and display_df[col].dtype in [pl.Float64, pl.Float32]
+    ]
+
+    # Final selection and ordering
+    final_cols = core_cols + metric_cols
+    display_df = display_df.select([c for c in final_cols if c in display_df.columns])
+
+    # 2. Create Great Table
+    gt_table = (
+        GT(display_df.to_pandas())
+        .tab_header(
+            title="BERTopic Experiment Results",
+            subtitle="Comparison of topic modeling configurations and metrics"
+        )
+        .fmt_number(
+            columns=metric_cols,
+            decimals=3
+        )
+        .cols_label(
+            model_name="Model",
+            dataset_name="Dataset",
+            timestamp="Executed At",
+            n_observations="Obs",
+            clustering_algo="Clustering",
+            dim_red_algo="Dim Red",
+            n_topics="Topics"
+        )
+        .tab_options(
+            table_font_size="smaller",
+            column_labels_font_weight="bold"
+        )
+    )
+
+    return gt_table
 
 
 def generate_latex_table(df: pl.DataFrame) -> str:
+    """
+    Generates a LaTeX table from an experiment results DataFrame.
+    """
+    # Ensure n_clusters is Int64 for consistency
+    if "n_clusters" in df.columns:
+        df = df.with_columns(pl.col("n_clusters").cast(pl.Int64, strict=False))
+
     renamed_df = df.with_columns(
         pl.col("model_name").str.replace_all("_", " ")
     ).drop([
@@ -17,5 +89,8 @@ def generate_latex_table(df: pl.DataFrame) -> str:
         "topic_diversity": "Diversity"
     })
 
-    return renamed_df.to_pandas().to_latex(index=False, float_format="%.3f")
+    # Filter to only existing columns in the rename map + core ones
+    cols_to_keep = ["Model", "Topics", "$U_{Mass}$", "$c_v$", "$c_{npmi}$", "IRBO", "Diversity"]
+    final_df = renamed_df.select([c for c in cols_to_keep if c in renamed_df.columns])
 
+    return final_df.to_pandas().to_latex(index=False, float_format="%.3f")
