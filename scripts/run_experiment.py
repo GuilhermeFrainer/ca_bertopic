@@ -36,11 +36,22 @@ def main():
         required=True, 
         help="Name of the experiment yaml file (e.g., experiment_2)"
     )
+    parser.add_argument(
+        "--sample",
+        type=int,
+        help="Override the sample size specified in the config file."
+    )
     args = parser.parse_args()
 
     try:
         # Setup
         config = utils.load_config(args.exp, EXPERIMENTS_DIR)
+        
+        # Override sample size if requested
+        if args.sample is not None:
+            config["experiment"]["sample_size"] = args.sample
+            config["experiment"]["name"] += f"_dry_run_{args.sample}"
+
         exp_name = config["experiment"]["name"]
         random_state = utils.get_random_state(config["experiment"]["random_state"])
 
