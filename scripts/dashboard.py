@@ -39,15 +39,23 @@ def extract_model_type(name: str) -> str:
     return name
 
 
+import datetime
+import glob
+import os
+import re
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+import altair as alt
+import polars as pl
+import streamlit as st
+
+
+# ... (METRIC_CONFIG and extract_model_type remain the same)
+
+@st.cache_data
 def load_all_results(results_dir: str = "results") -> pl.DataFrame:
-    """Loads and concatenates all CSV result files from the results directory.
-
-    Args:
-        results_dir: Path to the directory containing CSV result files.
-
-    Returns:
-        A Polars DataFrame containing consolidated results.
-    """
+    """Loads and concatenates result files. Extracts dataset and date objects."""
     csv_files = glob.glob(os.path.join(results_dir, "*.csv"))
     if not csv_files:
         return pl.DataFrame()
@@ -55,19 +63,37 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
     dfs = []
     for file in csv_files:
         try:
-            # Using Polars to read the CSV
             df = pl.read_csv(file)
-            
-            # Add metadata about the source file
             file_basename = os.path.basename(file)
+            
+            # Extract Date as actual date object
+            date_match = re.search(r"-(\d{8})-", file_basename)
+            exp_date = None
+            if date_match:
+                d_str = date_match.group(1)
+                try:
+                    exp_date = datetime.date(int(d_str[:4]), int(d_str[4:6]), int(d_str[6:]))
+                except ValueError:
+                    exp_date = None
+            
+            # Dataset extraction
+            dataset = "unknown"
+            if "trump" in file_basename.lower():
+                dataset = "trump"
+            elif "yelp" in file_basename.lower():
+                dataset = "yelp"
+            else:
+                dataset = file_basename.split("-")[0].split("_")[0]
+
             df = df.with_columns(
                 pl.lit(file_basename).alias("source_file"),
+                pl.lit(dataset).alias("dataset"),
+                pl.lit(exp_date).cast(pl.Date).alias("experiment_date"),
                 pl.lit("optimizer" if "opt" in file_basename.lower() else "non-optimizer").alias(
                     "experiment_type"
                 ),
             )
             
-            # Extract model type
             if "model_name" in df.columns:
                 df = df.with_columns(
                     pl.col("model_name").map_elements(extract_model_type, return_dtype=pl.String).alias("model_type")
@@ -82,8 +108,6 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
     if not dfs:
         return pl.DataFrame()
 
-    # Vertical concatenation. We use how="diagonal" because optimizer results
-    # might have extra columns for hyperparameters.
     return pl.concat(dfs, how="diagonal")
 
 
@@ -96,9 +120,6 @@ def main():
     )
 
     st.title("📊 CA-BERTopic Experiment Dashboard")
-    st.markdown(
-        "Analyze and compare topic modeling experiments and optimizer results."
-    )
 
     # 1. Load Data
     results_dir = "results"
@@ -109,29 +130,74 @@ def main():
         return
 
     # 2. Sidebar Filters
-    st.sidebar.header("Filters & Options")
+    st.sidebar.header("Data Filters")
+
+    # Dataset Filter
+    all_datasets = sorted(df["dataset"].unique().to_list())
+    selected_datasets = st.sidebar.multiselect("Datasets:", options=all_datasets, default=all_datasets)
+
+    # Model Type Filter
+    all_model_types = sorted(df["model_type"].unique().to_list())
+    selected_model_types = st.sidebar.multiselect("Model Types:", options=all_model_types, default=all_model_types)
+
+    # Date Range Filter
+    st.sidebar.subheader("Date Filtering")
+    valid_dates = df.filter(pl.col("experiment_date").is_not_null())["experiment_date"]
+    
+    if not valid_dates.is_empty():
+        min_date, max_date = valid_dates.min(), valid_dates.max()
+        
+        date_selection = st.sidebar.date_input(
+            "Date Range:",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+            help="Select a start and end date for filtering experiments."
+        )
+        
+        # Handle range selection (returns a tuple of 1 or 2 items)
+        if isinstance(date_selection, tuple) and len(date_selection) == 2:
+            start_date, end_date = date_selection
+        elif isinstance(date_selection, tuple) and len(date_selection) == 1:
+            start_date = end_date = date_selection[0]
+        else:
+            start_date = end_date = date_selection
+
+        # Specific Date Multiselect (Inclusion)
+        all_available_dates = sorted(valid_dates.unique().to_list())
+        specific_dates = st.sidebar.multiselect(
+            "Filter to specific dates:", 
+            options=all_available_dates,
+            help="If selected, only these specific dates will be shown regardless of the range above."
+        )
+    else:
+        start_date = end_date = None
+        specific_dates = []
+
+    # Experiment Type Filter
+    exp_types = df["experiment_type"].unique().to_list()
+    selected_types = st.sidebar.multiselect("Experiment Types:", options=exp_types, default=exp_types)
 
     # File Exclusion Filter
-    all_files = sorted(df["source_file"].unique().to_list())
-    excluded_files = st.sidebar.multiselect(
-        "Exclude specific files:",
-        options=all_files,
-        help="Select result files to ignore in the analysis.",
-    )
+    with st.sidebar.expander("Exclude Specific Files"):
+        all_files = sorted(df["source_file"].unique().to_list())
+        excluded_files = st.multiselect("Files to ignore:", options=all_files)
 
-    # Filter by Experiment Type
-    exp_types = df["experiment_type"].unique().to_list()
-    selected_types = st.sidebar.multiselect(
-        "Filter by experiment type:",
-        options=exp_types,
-        default=exp_types,
-    )
-
-    # Filter the dataframe
-    filtered_df = df.filter(
+    # Apply all filters
+    filter_expr = (
+        (pl.col("dataset").is_in(selected_datasets)) &
+        (pl.col("model_type").is_in(selected_model_types)) &
+        (pl.col("experiment_type").is_in(selected_types)) &
         (~pl.col("source_file").is_in(excluded_files))
-        & (pl.col("experiment_type").is_in(selected_types))
     )
+    
+    # Date logic: use specific dates if provided, otherwise use range
+    if specific_dates:
+        filter_expr = filter_expr & (pl.col("experiment_date").is_in(specific_dates))
+    elif start_date and end_date:
+        filter_expr = filter_expr & (pl.col("experiment_date").is_between(start_date, end_date))
+
+    filtered_df = df.filter(filter_expr)
 
     if filtered_df.is_empty():
         st.info("No data matches the selected filters.")
@@ -140,38 +206,33 @@ def main():
     # 3. Data Table with Highlighting
     st.header("📋 Consolidated Results")
 
-    # Identify numeric columns for metrics and highlighting
-    # We exclude columns that are identifiers or metadata
-    metadata_cols = ["source_file", "experiment_type", "model_name", "model_type"]
+    # Metadata columns list
+    metadata_cols = ["dataset", "experiment_date", "model_type", "model_name", "experiment_type", "source_file"]
+    
+    # Identify numeric columns for metrics
     numeric_cols = [
-        col
-        for col, dtype in zip(filtered_df.columns, filtered_df.dtypes)
+        col for col, dtype in zip(filtered_df.columns, filtered_df.dtypes)
         if dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
         and col not in metadata_cols
     ]
 
-    # Display basic stats
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Experiments", len(filtered_df))
-    col2.metric("Result Files", filtered_df["source_file"].n_unique())
-    col3.metric("Available Metrics", len(numeric_cols))
+    # Metrics overview
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    m_col1.metric("Experiments", len(filtered_df))
+    m_col2.metric("Datasets", filtered_df["dataset"].n_unique())
+    m_col3.metric("Model Types", filtered_df["model_type"].n_unique())
+    m_col4.metric("Avg Duration (s)", round(filtered_df["duration_seconds"].mean(), 2) if "duration_seconds" in filtered_df.columns else 0)
 
-    # Function to highlight "best" in each column
+    # Table with highlighting
     pdf = filtered_df.to_pandas()
-
     def highlight_best(s):
-        """Highlights the 'best' value in a Series based on METRIC_CONFIG."""
         if s.name in METRIC_CONFIG:
             direction = METRIC_CONFIG[s.name]
-            if direction == "max":
-                is_best = s == s.max()
-            else:
-                is_best = s == s.min()
+            is_best = (s == s.max()) if direction == "max" else (s == s.min())
             return ["background-color: #2E7D32; color: white" if v else "" for v in is_best]
         return [""] * len(s)
 
-    styled_df = pdf.style.apply(highlight_best)
-    st.dataframe(styled_df, use_container_width=True)
+    st.dataframe(pdf.style.apply(highlight_best), use_container_width=True)
 
     # 4. Dynamic Plotting
     st.divider()
@@ -181,37 +242,26 @@ def main():
 
     with plot_col1:
         st.subheader("Plot Settings")
-        x_axis = st.selectbox("X-Axis Metric", options=numeric_cols, index=0)
-        y_axis = st.selectbox(
-            "Y-Axis Metric",
-            options=numeric_cols,
-            index=min(1, len(numeric_cols) - 1),
-        )
+        x_axis = st.selectbox("X-Axis", options=numeric_cols, index=0)
+        y_axis = st.selectbox("Y-Axis", options=numeric_cols, index=min(1, len(numeric_cols)-1))
         
-        color_options = ["model_type", "experiment_type", "model_name", "source_file"] + numeric_cols
-        default_color_index = color_options.index("model_type")
-        
-        color_by = st.selectbox(
-            "Color By", options=color_options, index=default_color_index
-        )
+        color_options = ["model_type", "dataset", "experiment_date", "experiment_type"] + numeric_cols
+        color_by = st.selectbox("Color By", options=color_options, index=0)
 
     with plot_col2:
-        # Determine color scale type (categorical vs quantitative)
         is_numeric_color = color_by in numeric_cols
         color_shorthand = f"{color_by}:Q" if is_numeric_color else f"{color_by}:N"
         
-        # Create Altair chart
+        # In Altair, we convert date objects to ISO strings or handle them as temporal
+        # but for simple categorical coloring, :N works fine even with date objects
+        
         chart = (
-            alt.Chart(pdf)
-            .mark_circle(size=100)
-            .encode(
+            alt.Chart(pdf).mark_circle(size=100).encode(
                 x=alt.X(x_axis, scale=alt.Scale(zero=False)),
                 y=alt.Y(y_axis, scale=alt.Scale(zero=False)),
                 color=alt.Color(color_shorthand, scale=alt.Scale(scheme="viridis" if is_numeric_color else "tableau10")),
-                tooltip=metadata_cols + numeric_cols,
-            )
-            .interactive()
-            .properties(height=500)
+                tooltip=metadata_cols + numeric_cols
+            ).interactive().properties(height=500)
         )
         st.altair_chart(chart, use_container_width=True)
 
