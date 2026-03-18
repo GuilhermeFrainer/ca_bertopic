@@ -165,7 +165,7 @@ def main():
                 tooltip=metadata_cols + numeric_cols,
             )
             .interactive()
-            .properties(width="100%", height=500)
+            .properties(height=500)
         )
         st.altair_chart(chart, use_container_width=True)
 
