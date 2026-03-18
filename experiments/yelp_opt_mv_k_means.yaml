@@ -1,7 +1,7 @@
 
 experiment:
-  name: "yelp_opt_spectral"
-  description: "Optimizing the parameters for MV Spectral Clustering."
+  name: "yelp_opt_mv_k_means"
+  description: "Optimizing the parameters for MV K-Means Clustering."
   dataset_path: "data/processed/yelp_embeddings.parquet"
   random_state: 36201624
   sample_size: 10000
@@ -26,8 +26,8 @@ experiment:
     - topic_diversity
 
 model:
-  id: "mv_co_reg_spectral"
-  description: "Multi-View Co-Regularized Spectral Clustering"
+  id: "mv_k_means"
+  description: "MV K-Means"
   dimensionality_reduction:
     type: "umap"
     params:
@@ -35,7 +35,7 @@ model:
       n_components: 5
       metric: "cosine"
   clustering:
-    type: "multi_view_spectral_clustering"
+    type: "multi_view_k_means"
     params:
       n_clusters:
         - 75

@@ -1,7 +1,7 @@
 
 experiment:
-  name: "yelp_opt_spectral"
-  description: "Optimizing the parameters for MV Spectral Clustering."
+  name: "yelp_opt_co_reg_spectral"
+  description: "Optimizing the parameters for MV Co-Regularized Spectral Clustering."
   dataset_path: "data/processed/yelp_embeddings.parquet"
   random_state: 36201624
   sample_size: 10000
@@ -35,7 +35,7 @@ model:
       n_components: 5
       metric: "cosine"
   clustering:
-    type: "multi_view_spectral_clustering"
+    type: "co_regularized_multi_view_spectral_clustering"
     params:
       n_clusters:
         - 75
