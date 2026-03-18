@@ -1,29 +1,12 @@
 
+extends: "datasets/yelp.yaml"
+
 experiment:
   name: "yelp_opt_spectral"
   description: "Optimizing the parameters for MV Spectral Clustering."
-  dataset_path: "data/processed/yelp_embeddings.parquet"
   random_state: 36201624
   sample_size: 10000
   decimal_digits: 3
-  embedding_col: "clean_text_embedding"
-  text_col: "clean_text"
-  covariates:
-    numerical:
-      - date
-      - stars
-      - user_average_stars
-      - yelping_since
-      - business_stars
-    categorical:
-      - state
-  coherence_metrics:
-    - u_mass
-    - c_v
-    - c_npmi
-  diversity_metrics:
-    - irbo
-    - topic_diversity
 
 model:
   id: "mv_co_reg_spectral"
