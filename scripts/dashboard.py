@@ -4,8 +4,10 @@ This module provides a Streamlit-based dashboard to load, filter, and visualize
 experimental results from CSV files in the results directory.
 """
 
+import datetime
 import glob
 import os
+import re
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -13,6 +15,9 @@ import altair as alt
 import polars as pl
 import streamlit as st
 
+# Default metrics for the visualization
+DEFAULT_X_AXIS = "u_mass"
+DEFAULT_Y_AXIS = "irbo"
 
 # Configuration for metrics: which direction is "better"
 # This can be easily extended in the future.
@@ -38,20 +43,6 @@ def extract_model_type(name: str) -> str:
         return "_".join(parts[:-1])
     return name
 
-
-import datetime
-import glob
-import os
-import re
-from pathlib import Path
-from typing import List, Optional, Tuple
-
-import altair as alt
-import polars as pl
-import streamlit as st
-
-
-# ... (METRIC_CONFIG and extract_model_type remain the same)
 
 @st.cache_data
 def load_all_results(results_dir: str = "results") -> pl.DataFrame:
@@ -242,8 +233,20 @@ def main():
 
     with plot_col1:
         st.subheader("Plot Settings")
-        x_axis = st.selectbox("X-Axis", options=numeric_cols, index=0)
-        y_axis = st.selectbox("Y-Axis", options=numeric_cols, index=min(1, len(numeric_cols)-1))
+        
+        # Calculate default indices based on constants
+        try:
+            x_default_idx = numeric_cols.index(DEFAULT_X_AXIS)
+        except ValueError:
+            x_default_idx = 0
+            
+        try:
+            y_default_idx = numeric_cols.index(DEFAULT_Y_AXIS)
+        except ValueError:
+            y_default_idx = min(1, len(numeric_cols)-1)
+
+        x_axis = st.selectbox("X-Axis", options=numeric_cols, index=x_default_idx)
+        y_axis = st.selectbox("Y-Axis", options=numeric_cols, index=y_default_idx)
         
         color_options = ["model_type", "dataset", "experiment_date", "experiment_type"] + numeric_cols
         color_by = st.selectbox("Color By", options=color_options, index=0)
