@@ -14,6 +14,31 @@ import polars as pl
 import streamlit as st
 
 
+# Configuration for metrics: which direction is "better"
+# This can be easily extended in the future.
+METRIC_CONFIG = {
+    "duration_seconds": "min",
+    "c_v": "max",
+    "c_npmi": "max",
+    "u_mass": "max",  # Higher (closer to 0) is better
+    "irbo": "max",
+    "topic_diversity": "max",
+    "n_topics": "max",
+}
+
+
+def extract_model_type(name: str) -> str:
+    """Extracts the base model type from a model name (e.g., baseline_1 -> baseline)."""
+    if not name or not isinstance(name, str):
+        return "unknown"
+    # Handles common patterns like 'baseline_1' or 'mv_spectral_2'
+    # We take the part before the last underscore if it's followed by a digit
+    parts = name.split("_")
+    if len(parts) > 1 and parts[-1].isdigit():
+        return "_".join(parts[:-1])
+    return name
+
+
 def load_all_results(results_dir: str = "results") -> pl.DataFrame:
     """Loads and concatenates all CSV result files from the results directory.
 
@@ -21,7 +46,7 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
         results_dir: Path to the directory containing CSV result files.
 
     Returns:
-        A Polars DataFrame containing consolidated results with a 'source_file' column.
+        A Polars DataFrame containing consolidated results.
     """
     csv_files = glob.glob(os.path.join(results_dir, "*.csv"))
     if not csv_files:
@@ -32,13 +57,24 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
         try:
             # Using Polars to read the CSV
             df = pl.read_csv(file)
+            
             # Add metadata about the source file
+            file_basename = os.path.basename(file)
             df = df.with_columns(
-                pl.lit(os.path.basename(file)).alias("source_file"),
-                pl.lit("optimizer" if "opt" in file.lower() else "non-optimizer").alias(
+                pl.lit(file_basename).alias("source_file"),
+                pl.lit("optimizer" if "opt" in file_basename.lower() else "non-optimizer").alias(
                     "experiment_type"
                 ),
             )
+            
+            # Extract model type
+            if "model_name" in df.columns:
+                df = df.with_columns(
+                    pl.col("model_name").map_elements(extract_model_type, return_dtype=pl.String).alias("model_type")
+                )
+            else:
+                df = df.with_columns(pl.lit("unknown").alias("model_type"))
+                
             dfs.append(df)
         except Exception as e:
             st.error(f"Error loading {file}: {e}")
@@ -106,7 +142,7 @@ def main():
 
     # Identify numeric columns for metrics and highlighting
     # We exclude columns that are identifiers or metadata
-    metadata_cols = ["source_file", "experiment_type", "model_name"]
+    metadata_cols = ["source_file", "experiment_type", "model_name", "model_type"]
     numeric_cols = [
         col
         for col, dtype in zip(filtered_df.columns, filtered_df.dtypes)
@@ -120,19 +156,21 @@ def main():
     col2.metric("Result Files", filtered_df["source_file"].n_unique())
     col3.metric("Available Metrics", len(numeric_cols))
 
-    # Function to highlight "best" (max value) in each column
-    # Streamlit's st.dataframe supports Pandas-style styling.
-    # We convert to pandas for styling as Polars doesn't have direct styling support yet.
+    # Function to highlight "best" in each column
     pdf = filtered_df.to_pandas()
 
-    def highlight_max(s):
-        """Highlights the maximum value in a Series."""
-        if s.name in numeric_cols:
-            is_max = s == s.max()
-            return ["background-color: #2E7D32; color: white" if v else "" for v in is_max]
+    def highlight_best(s):
+        """Highlights the 'best' value in a Series based on METRIC_CONFIG."""
+        if s.name in METRIC_CONFIG:
+            direction = METRIC_CONFIG[s.name]
+            if direction == "max":
+                is_best = s == s.max()
+            else:
+                is_best = s == s.min()
+            return ["background-color: #2E7D32; color: white" if v else "" for v in is_best]
         return [""] * len(s)
 
-    styled_df = pdf.style.apply(highlight_max)
+    styled_df = pdf.style.apply(highlight_best)
     st.dataframe(styled_df, use_container_width=True)
 
     # 4. Dynamic Plotting
@@ -149,11 +187,19 @@ def main():
             options=numeric_cols,
             index=min(1, len(numeric_cols) - 1),
         )
+        
+        color_options = ["model_type", "experiment_type", "model_name", "source_file"] + numeric_cols
+        default_color_index = color_options.index("model_type")
+        
         color_by = st.selectbox(
-            "Color By", options=["experiment_type", "model_name", "source_file"]
+            "Color By", options=color_options, index=default_color_index
         )
 
     with plot_col2:
+        # Determine color scale type (categorical vs quantitative)
+        is_numeric_color = color_by in numeric_cols
+        color_shorthand = f"{color_by}:Q" if is_numeric_color else f"{color_by}:N"
+        
         # Create Altair chart
         chart = (
             alt.Chart(pdf)
@@ -161,7 +207,7 @@ def main():
             .encode(
                 x=alt.X(x_axis, scale=alt.Scale(zero=False)),
                 y=alt.Y(y_axis, scale=alt.Scale(zero=False)),
-                color=color_by,
+                color=alt.Color(color_shorthand, scale=alt.Scale(scheme="viridis" if is_numeric_color else "tableau10")),
                 tooltip=metadata_cols + numeric_cols,
             )
             .interactive()
