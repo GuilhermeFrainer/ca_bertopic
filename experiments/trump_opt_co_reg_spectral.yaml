@@ -1,15 +1,15 @@
 extends: "datasets/trump.yaml"
 
 experiment:
-  name: "trump_opt_spectral"
-  description: "Optimizing the parameters for MV Spectral Clustering."
+  name: "trump_opt_co_reg_spectral"
+  description: "Optimizing the parameters for MV Co-Regularized Spectral Clustering."
   random_state: 36201624
   sample_size: 10000
   decimal_digits: 3
 
 model:
-  id: "mv_spectral"
-  description: "Multi-View Spectral Clustering"
+  id: "mv_co_reg_spectral"
+  description: "Multi-View Co-Regularized Spectral Clustering"
   dimensionality_reduction:
     type: "umap"
     params:
@@ -17,7 +17,7 @@ model:
       n_components: 5
       metric: "cosine"
   clustering:
-    type: "multi_view_spectral_clustering"
+    type: "co_regularized_multi_view_spectral_clustering"
     params:
       n_clusters:
         - 75

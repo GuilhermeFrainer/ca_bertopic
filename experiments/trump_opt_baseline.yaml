@@ -1,31 +1,11 @@
+extends: "datasets/trump.yaml"
 
 experiment:
   name: "trump_opt_baseline"
   description: "Optimizing the parameters for baseline model."
-  dataset_path: "data/processed/trump_embeddings.parquet"
   random_state: 36201624
   sample_size: 10000
   decimal_digits: 3
-  embedding_col: "clean_text_embedding"
-  text_col: "clean_text"
-  covariates:
-    numerical:
-      - log_favorites
-      - log_retweets
-      - date
-    categorical:
-      - device
-    binary:
-      - is_retweet
-      - is_deleted
-      - is_flagged
-  coherence_metrics:
-    - u_mass
-    - c_v
-    - c_npmi
-  diversity_metrics:
-    - irbo
-    - topic_diversity
 
 model:
   id: "baseline"
@@ -43,5 +23,9 @@ model:
   clustering:
     type: "hdbscan"
     params:
+      min_cluster_size:
+        - 5
+        - 10
+        - 15
+        - 20
       prediction_data: true
-      min_cluster_size: 15
