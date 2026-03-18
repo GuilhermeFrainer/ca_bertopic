@@ -52,6 +52,21 @@ For example, to run the `yelp_opt_spectral.yaml` optimization:
 python scripts/run_optimizer.py --exp yelp_opt_spectral
 ```
 
+## Visualizing Results
+
+The project includes an interactive dashboard built with Streamlit to visualize and compare experiment results.
+
+To run the dashboard:
+```bash
+uv run streamlit run scripts/dashboard.py
+```
+
+The dashboard allows you to:
+*   Filter experiments by dataset, model type, date, and experiment type.
+*   Compare models across various metrics (e.g., `u_mass`, `irbo`, `c_v`).
+*   Automatically highlight best-performing models in the results table.
+*   Identify trends using dynamic scatter plots.
+
 ## Running Tests
 
 To run the test suite, use the following command:
@@ -69,6 +84,7 @@ uv run -m pytest
 ├── results/           # Experiment results
 ├── scripts/           # Utility scripts
 │   ├── build_yelp_dataset.py
+│   ├── dashboard.py       # Interactive results dashboard
 │   ├── generate_embeddings.py
 │   ├── preprocess_datasets.py
 │   ├── run_experiment.py
