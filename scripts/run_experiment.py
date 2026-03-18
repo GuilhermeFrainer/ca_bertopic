@@ -51,6 +51,11 @@ def main():
         logger.info("Loading and preparing data...")
         text, embeddings, scaled_metadata = data.load_and_prep_data(
             config, random_state=random_state)
+        
+        # New Metadata Capture
+        start_timestamp = datetime.datetime.now().isoformat()
+        dataset_name = Path(config["experiment"]["dataset_path"]).stem
+        n_observations = len(text)
 
         # Model validation
         logger.info("Validating model configurations...")
@@ -98,6 +103,15 @@ def main():
                 embeddings=embeddings, 
                 config=config
             )
+
+            # Add Metadata
+            metrics.update({
+                "clustering_algo": baseline_config["clustering"]["type"],
+                "dim_red_algo": baseline_config["dimensionality_reduction"]["type"],
+                "n_observations": n_observations,
+                "timestamp": start_timestamp,
+                "dataset_name": dataset_name,
+            })
             results.append(metrics)
             
             baseline_n_topics = metrics["n_topics"]
@@ -121,6 +135,14 @@ def main():
                     embeddings=embeddings, 
                     config=config
                 )
+                # Add Metadata
+                metrics.update({
+                    "clustering_algo": model_config["clustering"]["type"],
+                    "dim_red_algo": model_config["dimensionality_reduction"]["type"],
+                    "n_observations": n_observations,
+                    "timestamp": start_timestamp,
+                    "dataset_name": dataset_name,
+                })
                 results.append(metrics)
 
             except Exception as e:

@@ -73,9 +73,16 @@ class Optimizer:
         Executes the optimization process: iterates through model configs,
         trains each one, and stores the evaluation metrics.
         """
+        import datetime
+        
         hyperparameter_combinations = self._generate_hyperparameter_combinations()
         num_combinations = len(hyperparameter_combinations)
         self.logger.info(f"Starting hyperparameter optimization for {num_combinations} models.")
+
+        # New Metadata Capture
+        start_timestamp = datetime.datetime.now().isoformat()
+        dataset_name = pathlib.Path(self.experiment_config["experiment"]["dataset_path"]).stem
+        n_observations = len(self.texts)
 
         for i, (model_config, varied_params) in enumerate(hyperparameter_combinations):
             model_id = self.model_config.get("id", "model")
@@ -105,7 +112,14 @@ class Optimizer:
                 config=self.experiment_config
             )
             
-            # 3. Store results, including the varied hyperparameters
+            # 3. Store results, including the varied hyperparameters and metadata
+            metrics.update({
+                "clustering_algo": model_config["clustering"]["type"],
+                "dim_red_algo": model_config["dimensionality_reduction"]["type"],
+                "n_observations": n_observations,
+                "timestamp": start_timestamp,
+                "dataset_name": dataset_name,
+            })
             metrics.update(cleaned_varied_params)
             self.results.append(metrics)
 
@@ -127,7 +141,10 @@ class Optimizer:
         # Reorder columns based on user's desired output format
         all_cols = df.columns
         
-        core_stats_cols = ["model_name", "duration_seconds", "n_topics", "outliers"]
+        core_stats_cols = [
+            "model_name", "dataset_name", "timestamp", "n_observations", 
+            "clustering_algo", "dim_red_algo", "duration_seconds", "n_topics", "outliers"
+        ]
         
         # Calculated metrics from the experiment config
         exp_metrics = []
