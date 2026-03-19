@@ -34,6 +34,25 @@ def compute_coherence(
     measure: str = "c_npmi",
     topk: int = 10
 ) -> float:
+    logger = logging.getLogger("pipeline")
+    
+    # Check if there are any topics to evaluate
+    if not model_output.get("topics"):
+        logger.warning(f"No topics found for evaluation of {measure}. Returning 0.0")
+        return 0.0
+
+    # Ensure all topic words are present in the dictionary/texts
+    # and that topics are not empty lists.
+    filtered_topics = [t for t in model_output["topics"] if len(t) > 0]
+    if len(filtered_topics) < len(model_output["topics"]):
+        logger.warning(f"Removed {len(model_output['topics']) - len(filtered_topics)} empty topics.")
+    
+    if not filtered_topics:
+        logger.warning(f"No non-empty topics found for evaluation of {measure}. Returning 0.0")
+        return 0.0
+    
+    model_output["topics"] = filtered_topics
+
     coherence_model = Coherence(
         texts=texts, 
         topk=topk,
@@ -42,12 +61,13 @@ def compute_coherence(
     try:
         return coherence_model.score(model_output)
     except IndexError as e:
-        logger = logging.getLogger("pipeline")
-        logger.error(f"Error when computing coherence. Model output:\n{model_output["topics"]}")
+        logger.error(f"Error when computing coherence ({measure}). Model output topics:\n{model_output['topics']}")
         raise e
     except ValueError as e:
-        logger = logging.getLogger("pipeline")
-        logger.error(f"Error when computing coherence. Model output:\n{texts}")
+        logger.error(f"Error when computing coherence ({measure}). Model output topics:\n{model_output['topics']}")
+        # Log a few examples of texts to help debugging without flooding the log
+        if texts:
+            logger.error(f"First 5 tokenized texts: {texts[:5]}")
         raise e
 
 
