@@ -78,8 +78,14 @@ def apply_trump_schema_and_types(df: Frame) -> Frame:
 
 
 def remove_urls(text_expr: pl.Expr) -> pl.Expr:
-    """Removes URLs from a Polars expression."""
-    return text_expr.str.replace_all(r"https?://\S+", "")
+    """Removes URLs and common URL residues from a Polars expression."""
+    # Matches http/https, common domain residues like t.co, and cases where punct was removed (httpstco)
+    return text_expr.str.replace_all(r"https?://\S+|www\.\S+|httpstco\S+|t\.co/\S+", "")
+
+
+def remove_numbers(text_expr: pl.Expr) -> pl.Expr:
+    """Removes digits from a Polars expression."""
+    return text_expr.str.replace_all(r"\d+", "")
 
 
 def remove_artifacts(text_expr: pl.Expr, artifacts: list[str]) -> pl.Expr:
@@ -209,13 +215,13 @@ def process_dataset(
 
     logging.info("Applying lazy text preprocessing...")
     lf = lf.with_columns(
-        clean_text=remove_urls(pl.col("text"))
+        clean_text=remove_numbers(remove_urls(pl.col("text")))
     ).with_columns(
         clean_text=remove_artifacts(pl.col("clean_text"), ARTIFACTS_TO_REMOVE.get(dataset_name, []))
     ).with_columns(
         clean_text_lower=pl.col("clean_text").str.to_lowercase(),
     ).with_columns(
-        clean_text_lower_punctless=pl.col("clean_text_lower").str.replace_all(r"[^\w\s]", "")
+        clean_text_lower_punctless=pl.col("clean_text_lower").str.replace_all(r"[^\w\s]", "").str.replace_all(r"\s+", " ").str.strip_chars()
     )
     
     logging.info("Starting batch processing for chunking and YAML injection...")
