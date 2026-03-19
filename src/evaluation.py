@@ -22,7 +22,11 @@ def bertopic_output_to_octis(
     for t_id in topic_ids:
         topic_info = m.get_topic(t_id) # type: ignore
         if isinstance(topic_info, list):
-            words = [str(word) for word, _ in topic_info[:topk]] # type: ignore
+            words = [
+                str(word).strip() 
+                for word, _ in topic_info[:topk] 
+                if str(word).strip() != "" and not str(word).strip().isdigit()
+            ]
             topic_words.append(words)
 
     return {"topics": topic_words}
