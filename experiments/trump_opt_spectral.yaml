@@ -4,7 +4,6 @@ experiment:
   name: "trump_opt_spectral"
   description: "Optimizing the parameters for MV Spectral Clustering."
   random_state: 36201624
-  sample_size: 10000
   decimal_digits: 3
 
 model:
@@ -20,8 +19,12 @@ model:
     type: "multi_view_spectral_clustering"
     params:
       n_clusters:
-        - 75
-        - 80
-        - 90
-        - 100
-        - 110
+        - 300
+        - 350
+        - 400
+        - 450
+        - 500
+        - 550
+        - 600
+        - 650
+        - 700

@@ -4,7 +4,6 @@ experiment:
   name: "trump_opt_baseline"
   description: "Optimizing the parameters for baseline model."
   random_state: 36201624
-  sample_size: 10000
   decimal_digits: 3
 
 model:
