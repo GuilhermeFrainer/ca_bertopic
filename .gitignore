@@ -15,6 +15,7 @@ output/
 logs/
 tables/
 results/
+*.bat
 
 .stignore
 .stfolder
