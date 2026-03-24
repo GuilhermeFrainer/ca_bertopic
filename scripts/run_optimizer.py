@@ -37,6 +37,11 @@ def main():
         type=int,
         help="Override the sample size specified in the config file."
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume an interrupted optimization run if existing results are found."
+    )
     args = parser.parse_args()
 
     logger = None  # Initialize logger to None
@@ -48,7 +53,6 @@ def main():
         # Override sample size if requested
         if args.sample is not None:
             config["experiment"]["sample_size"] = args.sample
-            config["experiment"]["name"] += f"_dry_run_{args.sample}"
 
         exp_name = config["experiment"]["name"]
         random_state = utils.get_random_state(config["experiment"]["random_state"])
@@ -69,6 +73,31 @@ def main():
         # Get optional rounding parameter
         decimal_digits = config.get("experiment", {}).get("decimal_digits")
 
+        # Check for existing results to resume if --resume is passed
+        start_index = 0
+        results_path = None
+        
+        if args.resume:
+            pattern = f"{exp_name}-*-{random_state}.csv"
+            matching_files = sorted(RESULTS_DIR.glob(pattern))
+            if matching_files:
+                latest_file = matching_files[-1]
+                try:
+                    # Read the file to see how many results it has
+                    existing_df = pl.read_csv(latest_file)
+                    start_index = len(existing_df)
+                    results_path = latest_file
+                    logger.info(f"Found existing results file: {latest_file}. Resuming from index {start_index}.")
+                except Exception as e:
+                    logger.warning(f"Could not read existing results file {latest_file}: {e}. Starting from scratch.")
+            else:
+                logger.info("No existing results file found for resumption. Starting from scratch.")
+
+        if results_path is None:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            results_filename = f"{exp_name}-{timestamp}-{random_state}"
+            results_path = RESULTS_DIR / f"{results_filename}.csv"
+
         # Initialize and run optimizer
         optimizer = Optimizer(
             texts=text,
@@ -77,27 +106,25 @@ def main():
             model_config=model_config,
             experiment_config=config
         )
-        optimizer.run()
+        optimizer.run(start_index=start_index)
 
         # Save Results
-        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        results_filename = f"{exp_name}-{timestamp}-{random_state}"
-        results_path = RESULTS_DIR / f"{results_filename}.csv"
         optimizer.save_results(results_path, decimal_digits=decimal_digits)
         
-        logger.info(f"Optimization finished. Results at {results_path}")
+        logger.info(f"Optimization session finished. Results saved/updated at {results_path}")
 
-        # Generate and save LaTeX table if there are results
-        if optimizer.results:
-            results_df = pl.DataFrame(optimizer.results)
-            latex_table = make_table.generate_latex_table(results_df)
-            table_filename = f"{results_filename}.tex"
-            table_path = TABLES_DIR / table_filename
-            with open(table_path, "w") as f:
-                f.write(latex_table)
-            logger.info(f"Latex table saved at {table_path}")
+        # Generate and save LaTeX table if there are any results in the final file
+        if results_path.exists():
+            final_results_df = pl.read_csv(results_path)
+            if not final_results_df.is_empty():
+                latex_table = make_table.generate_latex_table(final_results_df)
+                table_filename = f"{results_path.stem}.tex"
+                table_path = TABLES_DIR / table_filename
+                with open(table_path, "w") as f:
+                    f.write(latex_table)
+                logger.info(f"Latex table saved at {table_path}")
         else:
-            logger.warning("No results were generated, skipping LaTeX table creation.")
+            logger.warning("No results file found, skipping LaTeX table creation.")
 
     except Exception as e:
         if logger:

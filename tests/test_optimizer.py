@@ -233,3 +233,50 @@ def test_mixed_hyperparameters():
         for c in combinations
     ]
     assert sorted(generated_configs) == sorted(expected_configs)
+
+
+def test_determinism_via_sorting():
+    """
+    Tests that the order of hyperparameter combinations is deterministic
+    by ensuring it doesn't depend on the dictionary order of the config.
+    """
+    # Create two configs with the same keys but different insertion order
+    config_a = {
+        "dimensionality_reduction": {
+            "params": {
+                "n_components": [5, 10],
+                "some_param": [1, 2]
+            }
+        },
+        "clustering": {
+            "params": {
+                "n_clusters": [100, 200]
+            }
+        }
+    }
+    
+    config_b = {
+        "dimensionality_reduction": {
+            "params": {
+                "some_param": [1, 2],
+                "n_components": [5, 10]
+            }
+        },
+        "clustering": {
+            "params": {
+                "n_clusters": [100, 200]
+            }
+        }
+    }
+    
+    opt_a = create_optimizer(config_a)
+    opt_b = create_optimizer(config_b)
+    
+    comb_a = opt_a._generate_hyperparameter_combinations()
+    comb_b = opt_b._generate_hyperparameter_combinations()
+    
+    # Compare only the varied_params part for simplicity
+    params_a = [c[1] for c in comb_a]
+    params_b = [c[1] for c in comb_b]
+    
+    assert params_a == params_b

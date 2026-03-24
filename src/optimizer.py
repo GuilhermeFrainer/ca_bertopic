@@ -68,66 +68,81 @@ class Optimizer:
         
         return combinations
 
-    def run(self) -> None:
+    def run(self, start_index: int = 0) -> None:
         """
         Executes the optimization process: iterates through model configs,
         trains each one, and stores the evaluation metrics.
+
+        Args:
+            start_index: The index of the first configuration to evaluate.
+                         Allows resuming interrupted runs.
         """
         import datetime
-        
+
         hyperparameter_combinations = self._generate_hyperparameter_combinations()
         num_combinations = len(hyperparameter_combinations)
-        self.logger.info(f"Starting hyperparameter optimization for {num_combinations} models.")
+
+        if start_index >= num_combinations:
+            self.logger.info(f"Start index {start_index} is beyond total combinations {num_combinations}. Nothing to do.")
+            return
+
+        if start_index == 0:
+            self.logger.info(f"Starting hyperparameter optimization for {num_combinations} models.")
+        else:
+            self.logger.info(f"Resuming hyperparameter optimization for {num_combinations} models (starting at index {start_index+1}).")
 
         # New Metadata Capture
         start_timestamp = datetime.datetime.now().isoformat()
         dataset_name = pathlib.Path(self.experiment_config["experiment"]["dataset_path"]).stem
         n_observations = len(self.texts)
 
-        for i, (model_config, varied_params) in enumerate(hyperparameter_combinations):
-            model_id = self.model_config.get("id", "model")
-            run_id = f"{model_id}_{i+1}"
-            
-            # Clean up param names for reporting
-            cleaned_varied_params = {
-                key.replace("clustering.params.", "").replace("dimensionality_reduction.params.", ""): value
-                for key, value in varied_params.items()
-            }
-            self.logger.info(f"--- Training model [{run_id}] ({i+1}/{num_combinations}) ---")
-            self.logger.info(f"Varied Parameters: {cleaned_varied_params}")
+        try:
+            for i, (model_config, varied_params) in enumerate(hyperparameter_combinations[start_index:], start=start_index):
+                model_id = self.model_config.get("id", "model")
+                run_id = f"{model_id}_{i+1}"
 
-            # 1. Create Model Instance
-            topic_model = models.create_bertopic_instance(
-                model_config=model_config,
-                scaled_metadata=self.scaled_metadata,
-                random_state=self.experiment_config["experiment"]["random_state"]
-            )
+                # Clean up param names for reporting
+                cleaned_varied_params = {
+                    key.replace("clustering.params.", "").replace("dimensionality_reduction.params.", ""): value
+                    for key, value in varied_params.items()
+                }
+                self.logger.info(f"--- Training model [{run_id}] ({i+1}/{num_combinations}) ---")
+                self.logger.info(f"Varied Parameters: {cleaned_varied_params}")
 
-            # 2. Train and Evaluate
-            try:
-                metrics, _ = training.train_and_evaluate(
-                    topic_model=topic_model,
-                    model_id=run_id,
-                    text=self.texts,
-                    embeddings=self.embeddings,
-                    config=self.experiment_config
+                # 1. Create Model Instance
+                topic_model = models.create_bertopic_instance(
+                    model_config=model_config,
+                    scaled_metadata=self.scaled_metadata,
+                    random_state=self.experiment_config["experiment"]["random_state"]
                 )
-                
-                # 3. Store results, including the varied hyperparameters and metadata
-                metrics.update({
-                    "clustering_algo": model_config["clustering"]["type"],
-                    "dim_red_algo": model_config["dimensionality_reduction"]["type"],
-                    "n_observations": n_observations,
-                    "timestamp": start_timestamp,
-                    "dataset_name": dataset_name,
-                })
-                metrics.update(cleaned_varied_params)
-                self.results.append(metrics)
-            except Exception as e:
-                self.logger.error(f"Failed to train model [{run_id}] with params {cleaned_varied_params}: {e}")
-                continue
 
-        self.logger.info("Finished hyperparameter optimization.")
+                # 2. Train and Evaluate
+                try:
+                    metrics, _ = training.train_and_evaluate(
+                        topic_model=topic_model,
+                        model_id=run_id,
+                        text=self.texts,
+                        embeddings=self.embeddings,
+                        config=self.experiment_config
+                    )
+
+                    # 3. Store results, including the varied hyperparameters and metadata
+                    metrics.update({
+                        "clustering_algo": model_config["clustering"]["type"],
+                        "dim_red_algo": model_config["dimensionality_reduction"]["type"],
+                        "n_observations": n_observations,
+                        "timestamp": start_timestamp,
+                        "dataset_name": dataset_name,
+                    })
+                    metrics.update(cleaned_varied_params)
+                    self.results.append(metrics)
+                except Exception as e:
+                    self.logger.error(f"Failed to train model [{run_id}] with params {cleaned_varied_params}: {e}")
+                    continue
+        except KeyboardInterrupt:
+            self.logger.warning("Optimization interrupted by user. Cleaning up and saving results...")
+
+        self.logger.info("Finished hyperparameter optimization phase.")
 
     def save_results(self, filepath: str | pathlib.Path, decimal_digits: int | None = None) -> None:
         """
@@ -144,12 +159,12 @@ class Optimizer:
 
         # Reorder columns based on user's desired output format
         all_cols = df.columns
-        
+
         core_stats_cols = [
             "model_name", "dataset_name", "timestamp", "n_observations", 
             "clustering_algo", "dim_red_algo", "duration_seconds", "n_topics", "outliers"
         ]
-        
+
         # Calculated metrics from the experiment config
         exp_metrics = []
         if "experiment" in self.experiment_config:
@@ -160,7 +175,7 @@ class Optimizer:
         param_cols = [
             col for col in all_cols if col not in core_stats_cols and col not in exp_metrics
         ]
-        
+
         # New order: core stats, then params, then calculated metrics
         final_order = (
             [c for c in core_stats_cols if c in all_cols] +
@@ -169,8 +184,19 @@ class Optimizer:
         )
         df = df.select(final_order)
 
-        df.write_csv(filepath, float_precision=decimal_digits)
-        self.logger.info(f"Results saved to {filepath}")
+        # Handle appending/merging if the file already exists
+        save_path = pathlib.Path(filepath)
+        if save_path.exists():
+            try:
+                existing_df = pl.read_csv(save_path)
+                # Ensure we cast new results to match the existing schema for safe vertical concatenation
+                df = pl.concat([existing_df, df.cast(existing_df.schema)], how="vertical")
+            except Exception as e:
+                self.logger.error(f"Failed to merge with existing results file: {e}. Saving to a new file with suffix.")
+                save_path = save_path.with_name(f"{save_path.stem}_v2{save_path.suffix}")
+
+        df.write_csv(save_path, float_precision=decimal_digits)
+        self.logger.info(f"Results saved to {save_path}")
 
 
 def _collect_hyperparameters(model_config: dict) -> tuple[list, list]:
@@ -199,27 +225,29 @@ def _collect_hyperparameters(model_config: dict) -> tuple[list, list]:
     def collect_from_component(component_name: str):
         component = model_config.get(component_name, {})
         params = component.get("params", {})
-        for key, value in params.items():
+        # Sort keys to ensure deterministic order of combinations
+        for key in sorted(params.keys()):
+            value = params[key]
             path = [component_name, "params", key]
-            
+
             # A list of values is considered a hyperparameter to vary
             if isinstance(value, list) and len(value) > 1:
                 param_paths.append(path)
                 param_values.append(value)
-            
+
             # A dictionary with start/stop is a range
             elif isinstance(value, dict) and "start" in value and "stop" in value:
                 start = value["start"]
                 stop = value["stop"]
                 step = value.get("step", 1)
-                
+
                 # Use np.arange for float support and consistency
                 generated_values = np.arange(start, stop, step).tolist()
-                
+
                 param_paths.append(path)
                 param_values.append(generated_values)
 
     collect_from_component("dimensionality_reduction")
     collect_from_component("clustering")
-    
+
     return param_paths, param_values
