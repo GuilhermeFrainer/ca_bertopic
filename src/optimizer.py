@@ -104,24 +104,28 @@ class Optimizer:
             )
 
             # 2. Train and Evaluate
-            metrics, _ = training.train_and_evaluate(
-                topic_model=topic_model,
-                model_id=run_id,
-                text=self.texts,
-                embeddings=self.embeddings,
-                config=self.experiment_config
-            )
-            
-            # 3. Store results, including the varied hyperparameters and metadata
-            metrics.update({
-                "clustering_algo": model_config["clustering"]["type"],
-                "dim_red_algo": model_config["dimensionality_reduction"]["type"],
-                "n_observations": n_observations,
-                "timestamp": start_timestamp,
-                "dataset_name": dataset_name,
-            })
-            metrics.update(cleaned_varied_params)
-            self.results.append(metrics)
+            try:
+                metrics, _ = training.train_and_evaluate(
+                    topic_model=topic_model,
+                    model_id=run_id,
+                    text=self.texts,
+                    embeddings=self.embeddings,
+                    config=self.experiment_config
+                )
+                
+                # 3. Store results, including the varied hyperparameters and metadata
+                metrics.update({
+                    "clustering_algo": model_config["clustering"]["type"],
+                    "dim_red_algo": model_config["dimensionality_reduction"]["type"],
+                    "n_observations": n_observations,
+                    "timestamp": start_timestamp,
+                    "dataset_name": dataset_name,
+                })
+                metrics.update(cleaned_varied_params)
+                self.results.append(metrics)
+            except Exception as e:
+                self.logger.error(f"Failed to train model [{run_id}] with params {cleaned_varied_params}: {e}")
+                continue
 
         self.logger.info("Finished hyperparameter optimization.")
 
@@ -198,8 +202,8 @@ def _collect_hyperparameters(model_config: dict) -> tuple[list, list]:
         for key, value in params.items():
             path = [component_name, "params", key]
             
-            # A list of non-strings is considered a hyperparameter to vary
-            if isinstance(value, list) and not all(isinstance(i, str) for i in value):
+            # A list of values is considered a hyperparameter to vary
+            if isinstance(value, list) and len(value) > 1:
                 param_paths.append(path)
                 param_values.append(value)
             
