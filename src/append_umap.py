@@ -7,56 +7,65 @@ from typing import Optional
 
 class AppendUMAP(UMAP):
     """
-    A custom UMAP class that extends the standard UMAP functionality to include
-    user-specified dimensions in the final output. This is useful for
-    applications like BERTopic where you may want to include metadata
-    alongside the reduced embeddings.
+    A custom UMAP class that extends the standard UMAP functionality to concatenate
+    user-specified dimensions (metadata) to the input embeddings BEFORE running
+    dimensionality reduction.
 
     Args:
-        additional_dimensions (np.ndarray):
-            An array containing extra dimensions
-            to be appended to the output embedding.
+        metadata (np.ndarray):
+            An array containing metadata dimensions to be concatenated
+            to the input document embeddings.
         **kwargs: 
             Any additional keyword arguments to be passed to the
             underlying umap.UMAP constructor, such as n_components,
             n_neighbors, min_dist, etc.
     """
-    def __init__(self, additional_dimensions: Optional[np.ndarray] = None, **kwargs):
-        
+    def __init__(self, metadata: Optional[np.ndarray] = None, **kwargs):
         # Call the constructor of the parent UMAP class, passing all other kwargs.
         super().__init__(**kwargs)
         
-        # Store the custom parameters for later use in fit_transform.
-        self.additional_dimensions = additional_dimensions
+        # Store the metadata for later use in concatenation.
+        self.metadata = metadata
 
 
-    def fit_transform(self, X, y=None) -> np.ndarray: # type: ignore
+    def _concatenate_metadata(self, X: np.ndarray) -> np.ndarray:
         """
-        Fits the data and transforms it into the embedding space, then appends
-        the additional dimensions to the output.
-
-        Args:
-            X (np.ndarray):
-                The data to be embedded.
-            y (np.ndarray, optional):
-                A target array used for supervised UMAP,
-                    passed to the parent's fit_transform method.
-        
-        Returns:
-            np.ndarray:
-                The transformed data with the additional dimensions appended.
+        Concatenates the metadata to the input document embeddings.
         """
-        # First, perform the standard UMAP fit and transform.
-        embedding = super().fit_transform(X, y)
+        if self.metadata is not None:
+            if X.shape[0] != self.metadata.shape[0]:
+                raise ValueError(
+                    f"Shape mismatch: X has {X.shape[0]} samples, "
+                    f"but metadata has {self.metadata.shape[0]} samples."
+                )
+            return np.hstack((X, self.metadata))
+        return X
 
-        # Check if additional dimensions were provided and have the correct shape.
-        if self.additional_dimensions is not None:
-            if self.additional_dimensions.shape[0] != embedding.shape[0]: # type: ignore
-                raise ValueError("The 'additional_dimensions' must have the same number of samples as the data.")
-            
-            # Concatenate the additional dimensions to the embedding.
-            embedding = np.hstack((embedding, self.additional_dimensions)) # type: ignore
-        return embedding # type: ignore
+
+    def fit(self, X, y=None):
+        """
+        Fits the UMAP model on the concatenated embeddings and metadata.
+        """
+        X_combined = self._concatenate_metadata(X)
+        super().fit(X_combined, y)
+        return self
+
+
+    def transform(self, X) -> np.ndarray:
+        """
+        Transforms the data into the embedding space after concatenating metadata.
+        """
+        X_combined = self._concatenate_metadata(X)
+        return super().transform(X_combined)
+
+
+    def fit_transform(self, X, y=None) -> np.ndarray:
+        """
+        Fits the data and transforms it into the embedding space on the
+        concatenated input.
+        """
+        X_combined = self._concatenate_metadata(X)
+        return super().fit_transform(X_combined, y)
 
 
     @staticmethod
@@ -95,4 +104,3 @@ class AppendUMAP(UMAP):
         cols = df_clean.columns
         reoriented_dims = tuple(df_clean[c].to_numpy().reshape(-1,1) for c in cols)
         return np.hstack(reoriented_dims)
-

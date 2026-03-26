@@ -68,6 +68,12 @@ def get_algorithm(
         from umap import UMAP
         return UMAP(random_state=random_state, **params)
     
+    elif algo_type == 'append_umap':
+        from src.append_umap import AppendUMAP
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+        return AppendUMAP(metadata=metadata, random_state=random_state, **params)
+    
     elif algo_type == "aligned_umap":
         from umap import AlignedUMAP
         from src.mvc_wrapper import AlignedUMAPWrapper

@@ -3,6 +3,8 @@ from pathlib import Path
 import yaml
 import random
 
+import polars as pl
+
 
 def load_config(exp_name: str, experiments_dir: Path) -> dict:
     """

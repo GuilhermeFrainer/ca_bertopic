@@ -1,0 +1,37 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_opt_append_umap"
+  description: "Hyperparameter optimization for Append UMAP on Yelp dataset."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "append_umap"
+  description: "BERTopic with Append UMAP (metadata concatenation before dimensionality reduction)."
+  dimensionality_reduction:
+    type: "append_umap"
+    params:
+      n_neighbors:
+        - 15
+        - 30
+        - 60
+      min_dist:
+        - 0.0
+        - 0.1
+        - 0.5
+      n_components:
+        - 5
+        - 10
+        - 20
+      metric: "cosine"
+  clustering:
+    type: "hdbscan"
+    params:
+      min_cluster_size:
+        - 5
+        - 10
+        - 15
+        - 30
+        - 50
+      prediction_data: true
