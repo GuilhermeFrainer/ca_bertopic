@@ -1,11 +1,9 @@
-
 extends: "datasets/yelp.yaml"
 
 experiment:
   name: "yelp_opt_spectral"
   description: "Optimizing the parameters for MV Spectral Clustering."
   random_state: 36201624
-  sample_size: 10000
   decimal_digits: 3
 
 model:

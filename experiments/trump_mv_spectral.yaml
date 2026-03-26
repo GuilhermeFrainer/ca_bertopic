@@ -1,28 +1,9 @@
+extends: "datasets/trump.yaml"
+
 experiment:
   name: "trump_mv_spectral"
   description: "Testing the two versions of MV Spectral Clustering."
-  dataset_path: "data/processed/trump_embeddings.parquet"
   random_state: 36201624
-  embedding_col: "clean_text_embedding"
-  text_col: "clean_text"
-  covariates:
-    numerical:
-      - log_favorites
-      - log_retweets
-      - date
-    categorical:
-      - device
-    binary:
-      - is_retweet
-      - is_deleted
-      - is_flagged
-  coherence_metrics:
-    - u_mass
-    - c_v
-    - c_npmi
-  diversity_metrics:
-    - irbo
-    - topic_diversity
 
 models:
   - id: "baseline"

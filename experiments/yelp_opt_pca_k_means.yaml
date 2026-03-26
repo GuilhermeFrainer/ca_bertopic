@@ -4,7 +4,6 @@ experiment:
   name: "yelp_opt_pca_k_means"
   description: "Optimizing the parameters for PCA + K-Means on Yelp dataset."
   random_state: 36201624
-  sample_size: 10000
   decimal_digits: 3
 
 model:

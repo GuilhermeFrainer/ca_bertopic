@@ -1,25 +1,9 @@
+extends: "datasets/yelp.yaml"
+
 experiment:
   name: "yelp_mv_spectral"
   description: "Testing the two versions of MV Spectral Clustering."
-  dataset_path: "data/processed/yelp_with_embeddings_processed.parquet"
   random_state: 36201624
-  sample_size: 10000
-  covariates:
-    numerical:
-      - date
-      - stars
-      - user_average_stars
-      - yelping_since
-      - business_stars
-    categorical:
-      - state
-  coherence_metrics:
-    - u_mass
-    - c_v
-    - c_npmi
-  diversity_metrics:
-    - irbo
-    - topic_diversity
 
 models:
   - id: "baseline"

@@ -1,11 +1,9 @@
-
 extends: "datasets/trump.yaml"
 
 experiment:
   name: "trump"
   description: "Testing the two versions of MV Spectral Clustering."
   random_state: 36201624
-  sample_size: 1000
 
 models:
   - id: "baseline"
