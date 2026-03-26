@@ -9,12 +9,32 @@ wheels/
 # Virtual environments
 .venv
 
-data/
+# Research directories - keep structure but ignore content
+data/*
+!data/.gitkeep
+!data/interim/
+!data/processed/
+!data/raw/
+data/interim/*
+!data/interim/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+results/*
+!results/.gitkeep
+
+output/*
+!output/.gitkeep
+
+tables/*
+!tables/.gitkeep
+
 models/
-output/
-logs/
-tables/
-results/
 *.bat
 
 .stignore
