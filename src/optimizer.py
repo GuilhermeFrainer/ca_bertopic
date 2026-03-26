@@ -93,7 +93,7 @@ class Optimizer:
 
         # New Metadata Capture
         start_timestamp = datetime.datetime.now().isoformat()
-        dataset_name = pathlib.Path(self.experiment_config["experiment"]["dataset_path"]).stem
+        dataset_name = pathlib.Path(self.experiment_config["experiment"]["dataset_path"]).stem.replace("_embeddings", "")
         n_observations = len(self.texts)
 
         try:

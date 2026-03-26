@@ -87,6 +87,9 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
                 dataset = "yelp"
             else:
                 dataset = file_basename.split("-")[0].split("_")[0]
+            
+            # Legacy fallback: ensure _embeddings suffix is stripped
+            dataset = dataset.replace("_embeddings", "")
 
             df = df.with_columns(
                 pl.lit(file_basename).alias("source_file"),
@@ -135,40 +138,66 @@ def main():
     # 2. Sidebar Filters
     st.sidebar.header("Data Filters")
 
+    # --- Cascading Filter Logic Setup ---
+    # We use session state to track selections and allow bidirectional filtering
+    filter_config = {
+        "dataset_label": {"label": "Datasets:", "is_sidebar": True},
+        "model_type": {"label": "Model Types:", "is_sidebar": True},
+        "experiment_type": {"label": "Experiment Types:", "is_sidebar": True},
+        "clustering_algo": {"label": "Clustering Algo:", "is_sidebar": False},
+        "dim_red_algo": {"label": "Dim Red Algo:", "is_sidebar": False},
+        "n_observations": {"label": "N Observations:", "is_sidebar": False},
+    }
+
+    for key in filter_config:
+        if key not in st.session_state:
+            st.session_state[key] = []
+
+    def get_filtered_df(exclude_key: Optional[str] = None) -> pl.DataFrame:
+        """Returns the dataframe filtered by all active filters except the one specified."""
+        f_df = df
+        for k in filter_config:
+            if k != exclude_key and st.session_state[k]:
+                f_df = f_df.filter(pl.col(k).is_in(st.session_state[k]))
+        
+        # Also apply date and file filters if they are not the excluded ones
+        # (These are currently treated as "always apply" for simplicity in this helper)
+        if "excluded_files" in st.session_state and st.session_state.excluded_files:
+            f_df = f_df.filter(~pl.col("source_file").is_in(st.session_state.excluded_files))
+        
+        return f_df
+
     # Dataset Filter
-    all_datasets = sorted(df["dataset_label"].unique().to_list())
-    selected_datasets = st.sidebar.multiselect("Datasets:", options=all_datasets, default=all_datasets)
+    dataset_opts = sorted(get_filtered_df("dataset_label")["dataset_label"].unique().to_list())
+    st.sidebar.multiselect("Datasets:", options=dataset_opts, key="dataset_label")
 
     # Model Type Filter
-    all_model_types = sorted(df["model_type"].unique().to_list())
-    selected_model_types = st.sidebar.multiselect("Model Types:", options=all_model_types, default=all_model_types)
+    model_type_opts = sorted(get_filtered_df("model_type")["model_type"].unique().to_list())
+    st.sidebar.multiselect("Model Types:", options=model_type_opts, key="model_type")
 
     # Metadata Filters
     with st.sidebar.expander("Algorithmic & Data Filters", expanded=True):
         # Clustering Algo Filter
         if "clustering_algo" in df.columns:
-            all_clustering = sorted(df["clustering_algo"].unique().drop_nulls().to_list())
-            selected_clustering = st.multiselect("Clustering Algo:", options=all_clustering, default=all_clustering)
-        else:
-            selected_clustering = None
+            clustering_opts = sorted(get_filtered_df("clustering_algo")["clustering_algo"].unique().drop_nulls().to_list())
+            st.multiselect("Clustering Algo:", options=clustering_opts, key="clustering_algo")
 
         # Dim Red Algo Filter
         if "dim_red_algo" in df.columns:
-            all_dim_red = sorted(df["dim_red_algo"].unique().drop_nulls().to_list())
-            selected_dim_red = st.multiselect("Dim Red Algo:", options=all_dim_red, default=all_dim_red)
-        else:
-            selected_dim_red = None
+            dim_red_opts = sorted(get_filtered_df("dim_red_algo")["dim_red_algo"].unique().drop_nulls().to_list())
+            st.multiselect("Dim Red Algo:", options=dim_red_opts, key="dim_red_algo")
 
         # N Observations Filter
         if "n_observations" in df.columns:
-            all_n_obs = sorted(df["n_observations"].unique().drop_nulls().to_list())
-            selected_n_obs = st.multiselect("N Observations:", options=all_n_obs, default=all_n_obs)
-        else:
-            selected_n_obs = None
+            n_obs_opts = sorted(get_filtered_df("n_observations")["n_observations"].unique().drop_nulls().to_list())
+            st.multiselect("N Observations:", options=n_obs_opts, key="n_observations")
 
-    # Date Range Filter
+    # Date Range Filter (Not strictly cascaded with others to avoid circular complexity, 
+    # but we'll use the filtered DF for available dates)
     st.sidebar.subheader("Date Filtering")
-    valid_dates = df.filter(pl.col("experiment_date").is_not_null())["experiment_date"]
+    # Use DF filtered by everything else to find valid dates
+    date_filtered_df = get_filtered_df()
+    valid_dates = date_filtered_df.filter(pl.col("experiment_date").is_not_null())["experiment_date"]
     
     if not valid_dates.is_empty():
         min_date, max_date = valid_dates.min(), valid_dates.max()
@@ -201,13 +230,13 @@ def main():
         specific_dates = []
 
     # Experiment Type Filter
-    exp_types = df["experiment_type"].unique().to_list()
-    selected_types = st.sidebar.multiselect("Experiment Types:", options=exp_types, default=exp_types)
+    exp_type_opts = sorted(get_filtered_df("experiment_type")["experiment_type"].unique().to_list())
+    st.sidebar.multiselect("Experiment Types:", options=exp_type_opts, key="experiment_type")
 
     # File Exclusion Filter
     with st.sidebar.expander("Exclude Specific Files"):
         all_files = sorted(df["source_file"].unique().to_list())
-        excluded_files = st.multiselect("Files to ignore:", options=all_files)
+        st.multiselect("Files to ignore:", options=all_files, key="excluded_files")
 
     # Column Visibility Selector
     st.sidebar.header("Column Visibility")
@@ -223,20 +252,15 @@ def main():
         default=default_show
     )
 
-    # Apply all filters
-    filter_expr = (
-        (pl.col("dataset_label").is_in(selected_datasets)) &
-        (pl.col("model_type").is_in(selected_model_types)) &
-        (pl.col("experiment_type").is_in(selected_types)) &
-        (~pl.col("source_file").is_in(excluded_files))
-    )
+    # Final Filter Application
+    filter_expr = pl.lit(True) # Start with always True
     
-    if selected_clustering is not None:
-        filter_expr = filter_expr & (pl.col("clustering_algo").is_in(selected_clustering) | pl.col("clustering_algo").is_null())
-    if selected_dim_red is not None:
-        filter_expr = filter_expr & (pl.col("dim_red_algo").is_in(selected_dim_red) | pl.col("dim_red_algo").is_null())
-    if selected_n_obs is not None:
-        filter_expr = filter_expr & (pl.col("n_observations").is_in(selected_n_obs) | pl.col("n_observations").is_null())
+    for key in filter_config:
+        if st.session_state[key]:
+            filter_expr = filter_expr & (pl.col(key).is_in(st.session_state[key]))
+    
+    if "excluded_files" in st.session_state and st.session_state.excluded_files:
+        filter_expr = filter_expr & (~pl.col("source_file").is_in(st.session_state.excluded_files))
 
     # Date logic: use specific dates if provided, otherwise use range
     if specific_dates:
@@ -317,7 +341,7 @@ def main():
         x_axis = st.selectbox("X-Axis", options=numeric_cols, index=x_default_idx)
         y_axis = st.selectbox("Y-Axis", options=numeric_cols, index=y_default_idx)
         
-        color_options = ["model_type", "dataset", "experiment_date", "experiment_type"] + numeric_cols
+        color_options = ["model_type", "dataset_label", "experiment_date", "experiment_type"] + numeric_cols
         color_by = st.selectbox("Color By", options=color_options, index=0)
 
     with plot_col2:

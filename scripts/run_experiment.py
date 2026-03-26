@@ -65,7 +65,7 @@ def main():
         
         # New Metadata Capture
         start_timestamp = datetime.datetime.now().isoformat()
-        dataset_name = Path(config["experiment"]["dataset_path"]).stem
+        dataset_name = Path(config["experiment"]["dataset_path"]).stem.replace("_embeddings", "")
         n_observations = len(text)
 
         # Model validation
