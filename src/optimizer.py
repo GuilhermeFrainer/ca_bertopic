@@ -40,6 +40,7 @@ class Optimizer:
         self.model_config = model_config
         self.experiment_config = experiment_config
         self.results = []
+        self.qualitative_results = []
         self.logger = logging.getLogger("pipeline")
 
     def _generate_hyperparameter_combinations(self) -> list[tuple[dict, dict]]:
@@ -78,6 +79,7 @@ class Optimizer:
                          Allows resuming interrupted runs.
         """
         import datetime
+        import src.utils as utils
 
         hyperparameter_combinations = self._generate_hyperparameter_combinations()
         num_combinations = len(hyperparameter_combinations)
@@ -118,7 +120,7 @@ class Optimizer:
 
                 # 2. Train and Evaluate
                 try:
-                    metrics, _ = training.train_and_evaluate(
+                    metrics, trained_model = training.train_and_evaluate(
                         topic_model=topic_model,
                         model_id=run_id,
                         text=self.texts,
@@ -127,15 +129,23 @@ class Optimizer:
                     )
 
                     # 3. Store results, including the varied hyperparameters and metadata
-                    metrics.update({
+                    run_metadata = {
                         "clustering_algo": model_config["clustering"]["type"],
                         "dim_red_algo": model_config["dimensionality_reduction"]["type"],
                         "n_observations": n_observations,
                         "timestamp": start_timestamp,
                         "dataset_name": dataset_name,
-                    })
+                    }
+                    metrics.update(run_metadata)
                     metrics.update(cleaned_varied_params)
                     self.results.append(metrics)
+
+                    # 4. Extract Qualitative Data
+                    qual_metadata = run_metadata.copy()
+                    qual_metadata.update(cleaned_varied_params)
+                    qual_df = utils.extract_qualitative_data(trained_model, run_id, qual_metadata)
+                    self.qualitative_results.append(qual_df)
+
                 except Exception as e:
                     self.logger.error(f"Failed to train model [{run_id}] with params {cleaned_varied_params}: {e}")
                     continue
@@ -197,6 +207,24 @@ class Optimizer:
 
         df.write_csv(save_path, float_precision=decimal_digits)
         self.logger.info(f"Results saved to {save_path}")
+
+        # Save Qualitative Data
+        if self.qualitative_results:
+            consolidated_qual_df = pl.concat(self.qualitative_results, how="diagonal")
+            output_dir = save_path.parent.parent / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / save_path.name
+            
+            # Handle merging if the qualitative file already exists
+            if output_path.exists():
+                try:
+                    existing_qual_df = pl.read_csv(output_path)
+                    consolidated_qual_df = pl.concat([existing_qual_df, consolidated_qual_df.cast(existing_qual_df.schema)], how="vertical")
+                except Exception as e:
+                    self.logger.error(f"Failed to merge with existing qualitative results file: {e}")
+            
+            consolidated_qual_df.write_csv(output_path)
+            self.logger.info(f"Qualitative topic data saved at {output_path}")
 
 
 def _collect_hyperparameters(model_config: dict) -> tuple[list, list]:

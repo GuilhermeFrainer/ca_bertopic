@@ -26,6 +26,7 @@ EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
 RESULTS_DIR = PROJECT_ROOT / "results"
 LOG_DIR = PROJECT_ROOT / "logs"
 TABLES_DIR = PROJECT_ROOT / "tables"
+OUTPUT_DIR = PROJECT_ROOT / "output"
 
 
 def main():
@@ -96,6 +97,7 @@ def main():
         other_models = [m for m in models_config if m != baseline_config]
         
         results = []
+        qualitative_dfs = []
         baseline_n_topics = None
 
         # Run Baseline
@@ -116,15 +118,20 @@ def main():
             )
 
             # Add Metadata
-            metrics.update({
+            run_metadata = {
                 "clustering_algo": baseline_config["clustering"]["type"],
                 "dim_red_algo": baseline_config["dimensionality_reduction"]["type"],
                 "n_observations": n_observations,
                 "timestamp": start_timestamp,
                 "dataset_name": dataset_name,
-            })
+            }
+            metrics.update(run_metadata)
             results.append(metrics)
             
+            # Extract Qualitative Data
+            qual_df = utils.extract_qualitative_data(trained_model, b_id, run_metadata)
+            qualitative_dfs.append(qual_df)
+
             baseline_n_topics = metrics["n_topics"]
             logger.info(f"Baseline found {baseline_n_topics} topics.")
 
@@ -139,7 +146,7 @@ def main():
                     n_clusters=baseline_n_topics
                 )
 
-                metrics, _ = training.train_and_evaluate(
+                metrics, trained_model = training.train_and_evaluate(
                     topic_model=model_instance,
                     model_id=m_id,
                     text=text, 
@@ -147,14 +154,19 @@ def main():
                     config=config
                 )
                 # Add Metadata
-                metrics.update({
+                run_metadata = {
                     "clustering_algo": model_config["clustering"]["type"],
                     "dim_red_algo": model_config["dimensionality_reduction"]["type"],
                     "n_observations": n_observations,
                     "timestamp": start_timestamp,
                     "dataset_name": dataset_name,
-                })
+                }
+                metrics.update(run_metadata)
                 results.append(metrics)
+
+                # Extract Qualitative Data
+                qual_df = utils.extract_qualitative_data(trained_model, m_id, run_metadata)
+                qualitative_dfs.append(qual_df)
 
             except Exception as e:
                 tb_str = traceback.format_exc()
@@ -179,6 +191,13 @@ def main():
         results_df.write_csv(results_path)
         
         logger.info(f"Experiment finished. Results at {results_path}")
+
+        # Save Qualitative Data
+        if qualitative_dfs:
+            consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
+            output_path = OUTPUT_DIR / f"{results_filename}.csv"
+            consolidated_qual_df.write_csv(output_path)
+            logger.info(f"Qualitative topic data saved at {output_path}")
 
         latex_table = make_table.generate_latex_table(results_df)
         table_filename = f"{results_filename}.tex"

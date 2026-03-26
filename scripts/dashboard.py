@@ -104,6 +104,10 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
                 df = df.with_columns(
                     pl.col("model_name").map_elements(extract_model_type, return_dtype=pl.String).alias("model_type")
                 )
+            elif "model_id" in df.columns:
+                 df = df.with_columns(
+                    pl.col("model_id").map_elements(extract_model_type, return_dtype=pl.String).alias("model_type")
+                )
             else:
                 df = df.with_columns(pl.lit("unknown").alias("model_type"))
                 
@@ -129,7 +133,9 @@ def main():
 
     # 1. Load Data
     results_dir = "results"
+    output_dir = "output"
     df = load_all_results(results_dir)
+    qual_df = load_all_results(output_dir)
 
     if df.is_empty():
         st.warning(f"No result files found in `{results_dir}/`.")
@@ -274,92 +280,188 @@ def main():
         st.info("No data matches the selected filters.")
         return
 
-    # 3. Data Table with Great Tables
-    st.header("📋 Consolidated Results")
+    # 3. Main Tabs
+    tab_metrics, tab_qualitative = st.tabs(["📊 Quantitative Metrics", "🔍 Qualitative Analysis"])
 
-    # Metadata columns list
-    metadata_cols = [
-        "dataset_name", "dataset_label", "experiment_date", "timestamp",
-        "model_type", "model_name", "clustering_algo", "dim_red_algo",
-        "experiment_type", "source_file"
-    ]
-    
-    # Identify numeric columns for metrics
-    numeric_cols = [
-        col for col, dtype in zip(filtered_df.columns, filtered_df.dtypes)
-        if dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
-        and col not in metadata_cols
-    ]
+    with tab_metrics:
+        # 3. Data Table with Great Tables
+        st.header("📋 Consolidated Results")
 
-    # Metrics overview
-    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-    m_col1.metric("Experiments", len(filtered_df))
-    m_col2.metric("Datasets", filtered_df["dataset_label"].n_unique())
-    m_col3.metric("Model Types", filtered_df["model_type"].n_unique())
-    m_col4.metric("Avg Duration (s)", round(filtered_df["duration_seconds"].mean(), 2) if "duration_seconds" in filtered_df.columns else 0)
-
-    # Table with highlighting (Reverted to Pandas Style as requested)
-    # 1. Cast n_clusters to integer if it exists
-    display_df = filtered_df.clone()
-    if "n_clusters" in display_df.columns:
-        display_df = display_df.with_columns(pl.col("n_clusters").cast(pl.Int64, strict=False))
-    
-    pdf = display_df.to_pandas()
-    
-    def highlight_best(s):
-        if s.name in METRIC_CONFIG:
-            direction = METRIC_CONFIG[s.name]
-            is_best = (s == s.max()) if direction == "max" else (s == s.min())
-            return ["background-color: #2E7D32; color: white" if v else "" for v in is_best]
-        return [""] * len(s)
-
-    # Filter pdf to selected columns for display, while keeping original pdf for backend/plotting
-    pdf_display = pdf[selected_columns] if selected_columns else pdf
-    st.dataframe(pdf_display.style.apply(highlight_best), use_container_width=True)
-
-    # 4. Dynamic Plotting
-    st.divider()
-    st.header("📈 Visualization")
-
-    pdf = filtered_df.to_pandas()
-    plot_col1, plot_col2 = st.columns([1, 3])
-
-    with plot_col1:
-        st.subheader("Plot Settings")
+        # Metadata columns list
+        metadata_cols = [
+            "dataset_name", "dataset_label", "experiment_date", "timestamp",
+            "model_type", "model_name", "clustering_algo", "dim_red_algo",
+            "experiment_type", "source_file"
+        ]
         
-        # Calculate default indices based on constants
-        try:
-            x_default_idx = numeric_cols.index(DEFAULT_X_AXIS)
-        except ValueError:
-            x_default_idx = 0
+        # Identify numeric columns for metrics
+        numeric_cols = [
+            col for col, dtype in zip(filtered_df.columns, filtered_df.dtypes)
+            if dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
+            and col not in metadata_cols
+        ]
+
+        # Metrics overview
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        m_col1.metric("Experiments", len(filtered_df))
+        m_col2.metric("Datasets", filtered_df["dataset_label"].n_unique())
+        m_col3.metric("Model Types", filtered_df["model_type"].n_unique())
+        m_col4.metric("Avg Duration (s)", round(filtered_df["duration_seconds"].mean(), 2) if "duration_seconds" in filtered_df.columns else 0)
+
+        # Table with highlighting (Reverted to Pandas Style as requested)
+        # 1. Cast n_clusters to integer if it exists
+        display_df = filtered_df.clone()
+        if "n_clusters" in display_df.columns:
+            display_df = display_df.with_columns(pl.col("n_clusters").cast(pl.Int64, strict=False))
+        
+        pdf = display_df.to_pandas()
+        
+        def highlight_best(s):
+            if s.name in METRIC_CONFIG:
+                direction = METRIC_CONFIG[s.name]
+                is_best = (s == s.max()) if direction == "max" else (s == s.min())
+                return ["background-color: #2E7D32; color: white" if v else "" for v in is_best]
+            return [""] * len(s)
+
+        # Filter pdf to selected columns for display, while keeping original pdf for backend/plotting
+        pdf_display = pdf[selected_columns] if selected_columns else pdf
+        st.dataframe(pdf_display.style.apply(highlight_best), use_container_width=True)
+
+        # 4. Dynamic Plotting
+        st.divider()
+        st.header("📈 Visualization")
+
+        pdf = filtered_df.to_pandas()
+        plot_col1, plot_col2 = st.columns([1, 3])
+
+        with plot_col1:
+            st.subheader("Plot Settings")
             
-        try:
-            y_default_idx = numeric_cols.index(DEFAULT_Y_AXIS)
-        except ValueError:
-            y_default_idx = min(1, len(numeric_cols)-1)
+            # Calculate default indices based on constants
+            try:
+                x_default_idx = numeric_cols.index(DEFAULT_X_AXIS)
+            except ValueError:
+                x_default_idx = 0
+                
+            try:
+                y_default_idx = numeric_cols.index(DEFAULT_Y_AXIS)
+            except ValueError:
+                y_default_idx = min(1, len(numeric_cols)-1)
 
-        x_axis = st.selectbox("X-Axis", options=numeric_cols, index=x_default_idx)
-        y_axis = st.selectbox("Y-Axis", options=numeric_cols, index=y_default_idx)
-        
-        color_options = ["model_type", "dataset_label", "experiment_date", "experiment_type"] + numeric_cols
-        color_by = st.selectbox("Color By", options=color_options, index=0)
+            x_axis = st.selectbox("X-Axis", options=numeric_cols, index=x_default_idx)
+            y_axis = st.selectbox("Y-Axis", options=numeric_cols, index=y_default_idx)
+            
+            color_options = ["model_type", "dataset_label", "experiment_date", "experiment_type"] + numeric_cols
+            color_by = st.selectbox("Color By", options=color_options, index=0)
 
-    with plot_col2:
-        is_numeric_color = color_by in numeric_cols
-        color_shorthand = f"{color_by}:Q" if is_numeric_color else f"{color_by}:N"
-        
-        # In Altair, we convert date objects to ISO strings or handle them as temporal
-        # but for simple categorical coloring, :N works fine even with date objects
-        
-        chart = (
-            alt.Chart(pdf).mark_circle(size=100).encode(
-                x=alt.X(x_axis, scale=alt.Scale(zero=False)),
-                y=alt.Y(y_axis, scale=alt.Scale(zero=False)),
-                color=alt.Color(color_shorthand, scale=alt.Scale(scheme="viridis" if is_numeric_color else "tableau10")),
-                tooltip=metadata_cols + numeric_cols
-            ).interactive().properties(height=500)
-        )
-        st.altair_chart(chart, use_container_width=True)
+        with plot_col2:
+            is_numeric_color = color_by in numeric_cols
+            color_shorthand = f"{color_by}:Q" if is_numeric_color else f"{color_by}:N"
+            
+            # In Altair, we convert date objects to ISO strings or handle them as temporal
+            # but for simple categorical coloring, :N works fine even with date objects
+            
+            chart = (
+                alt.Chart(pdf).mark_circle(size=100).encode(
+                    x=alt.X(x_axis, scale=alt.Scale(zero=False)),
+                    y=alt.Y(y_axis, scale=alt.Scale(zero=False)),
+                    color=alt.Color(color_shorthand, scale=alt.Scale(scheme="viridis" if is_numeric_color else "tableau10")),
+                    tooltip=metadata_cols + numeric_cols
+                ).interactive().properties(height=500)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+    with tab_qualitative:
+        st.header("🔍 Qualitative Topic Analysis")
+
+        if qual_df.is_empty():
+            st.warning("No qualitative results found in `output/`.")
+        else:
+            # Filter qualitative results to match the current selection
+            active_source_files = filtered_df["source_file"].unique().to_list()
+            filtered_qual_df = qual_df.filter(pl.col("source_file").is_in(active_source_files))
+
+            if filtered_qual_df.is_empty():
+                st.info("No qualitative data matches the current filters.")
+            else:
+                # 1. Keyword Search
+                st.subheader("🔦 Keyword Search")
+                search_query = st.text_input("Search for keywords in topic representations or representative docs:", placeholder="e.g., 'covid' or 'fake news'")
+                
+                if search_query:
+                    search_expr = (
+                        pl.col("representation").str.contains(search_query, literal=False) |
+                        pl.col("representative_docs").str.contains(search_query, literal=False)
+                    )
+                    search_results = filtered_qual_df.filter(search_expr)
+                    st.write(f"Found {len(search_results)} topics matching '{search_query}'.")
+                    st.dataframe(search_results.to_pandas(), use_container_width=True)
+                
+                st.divider()
+
+                # 2. Side-by-Side Comparison
+                st.subheader("⚖️ Side-by-Side Model Comparison")
+                
+                # Create a selection of unique model identifiers from the filtered results
+                # We'll use a combination of source_file and model_id to be unique
+                filtered_qual_df = filtered_qual_df.with_columns(
+                    pl.concat_str([pl.col("source_file"), pl.lit(" | "), pl.col("model_id")]).alias("unique_model_id")
+                )
+                model_options = filtered_qual_df["unique_model_id"].unique().sort().to_list()
+                
+                col_left, col_right = st.columns(2)
+                
+                with col_left:
+                    model_a = st.selectbox("Select Model A:", options=model_options, index=0)
+                    df_a = filtered_qual_df.filter(pl.col("unique_model_id") == model_a)
+                    st.write(f"**Topics for {model_a.split('|')[-1].strip()}**")
+                    st.dataframe(df_a.select(["topic_id", "count", "name", "representation"]).to_pandas(), use_container_width=True, hide_index=True)
+
+                with col_right:
+                    # Default to second model if available
+                    default_idx = 1 if len(model_options) > 1 else 0
+                    model_b = st.selectbox("Select Model B:", options=model_options, index=default_idx)
+                    df_b = filtered_qual_df.filter(pl.col("unique_model_id") == model_b)
+                    st.write(f"**Topics for {model_b.split('|')[-1].strip()}**")
+                    st.dataframe(df_b.select(["topic_id", "count", "name", "representation"]).to_pandas(), use_container_width=True, hide_index=True)
+
+                st.divider()
+
+                # 3. Detailed Topic Explorer
+                st.subheader("🗺️ Detailed Topic Explorer")
+                selected_model = st.selectbox("Select a model to explore its topics in detail:", options=model_options)
+                
+                model_detail_df = filtered_qual_df.filter(pl.col("unique_model_id") == selected_model)
+                
+                topic_ids = model_detail_df["topic_id"].sort().to_list()
+                selected_topic = st.selectbox("Select Topic ID:", options=topic_ids)
+                
+                topic_data = model_detail_df.filter(pl.col("topic_id") == selected_topic).to_dicts()[0]
+                
+                det_col1, det_col2 = st.columns([1, 2])
+                
+                with det_col1:
+                    st.metric("Topic ID", topic_data["topic_id"])
+                    st.metric("Document Count", topic_data["count"])
+                    st.write("**Representation (c-TF-IDF words):**")
+                    # Try to parse as JSON list if it looks like one, otherwise just show
+                    try:
+                        import json
+                        repr_words = json.loads(topic_data["representation"])
+                        st.write(", ".join(repr_words))
+                    except:
+                        st.write(topic_data["representation"])
+
+                with det_col2:
+                    st.write("**Representative Documents:**")
+                    try:
+                        import json
+                        docs = json.loads(topic_data["representative_docs"])
+                        for i, doc in enumerate(docs):
+                            with st.expander(f"Document {i+1}", expanded=(i==0)):
+                                st.write(doc)
+                    except:
+                        st.write(topic_data["representative_docs"])
 
 
 if __name__ == "__main__":
