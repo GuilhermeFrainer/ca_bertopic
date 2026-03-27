@@ -58,13 +58,22 @@ def extract_model_type(name: str) -> str:
 def load_all_results(results_dir: str = "results") -> pl.DataFrame:
     """Loads and concatenates result files. Extracts dataset and date objects."""
     csv_files = glob.glob(os.path.join(results_dir, "*.csv"))
-    if not csv_files:
+    json_files = glob.glob(os.path.join(results_dir, "*.json"))
+    all_files = csv_files + json_files
+    
+    if not all_files:
         return pl.DataFrame()
 
     dfs = []
-    for file in csv_files:
+    for file in all_files:
         try:
-            df = pl.read_csv(file)
+            if file.endswith(".csv"):
+                df = pl.read_csv(file)
+            elif file.endswith(".json"):
+                df = pl.read_json(file)
+            else:
+                continue
+
             file_basename = os.path.basename(file)
             
             # Extract Date as actual date object

@@ -195,8 +195,8 @@ def main():
         # Save Qualitative Data
         if qualitative_dfs:
             consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
-            output_path = OUTPUT_DIR / f"{results_filename}.csv"
-            consolidated_qual_df.write_csv(output_path)
+            output_path = OUTPUT_DIR / f"{results_filename}.json"
+            consolidated_qual_df.write_json(output_path)
             logger.info(f"Qualitative topic data saved at {output_path}")
 
         latex_table = make_table.generate_latex_table(results_df)

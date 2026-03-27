@@ -213,17 +213,17 @@ class Optimizer:
             consolidated_qual_df = pl.concat(self.qualitative_results, how="diagonal")
             output_dir = save_path.parent.parent / "output"
             output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / save_path.name
+            output_path = output_dir / f"{save_path.stem}.json"
             
             # Handle merging if the qualitative file already exists
             if output_path.exists():
                 try:
-                    existing_qual_df = pl.read_csv(output_path)
+                    existing_qual_df = pl.read_json(output_path)
                     consolidated_qual_df = pl.concat([existing_qual_df, consolidated_qual_df.cast(existing_qual_df.schema)], how="vertical")
                 except Exception as e:
                     self.logger.error(f"Failed to merge with existing qualitative results file: {e}")
             
-            consolidated_qual_df.write_csv(output_path)
+            consolidated_qual_df.write_json(output_path)
             self.logger.info(f"Qualitative topic data saved at {output_path}")
 
 
