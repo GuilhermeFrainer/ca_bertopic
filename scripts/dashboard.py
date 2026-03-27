@@ -101,7 +101,7 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
             dataset = dataset.replace("_embeddings", "")
 
             df = df.with_columns(
-                pl.lit(file_basename).alias("source_file"),
+                pl.lit(os.path.splitext(file_basename)[0]).alias("source_file"),
                 pl.lit(dataset).alias("dataset_label"),
                 pl.lit(exp_date).cast(pl.Date).alias("experiment_date"),
                 pl.lit("optimizer" if "opt" in file_basename.lower() else "non-optimizer").alias(
