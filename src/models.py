@@ -96,6 +96,10 @@ def get_algorithm(
         from sklearn.cluster import KMeans
         return KMeans(random_state=random_state, **params)
     
+    elif algo_type == 'spectral_clustering':
+        from sklearn.cluster import SpectralClustering
+        return SpectralClustering(random_state=random_state, **params)
+    
     elif algo_type == 'multi_view_spectral_clustering':
         if metadata is None:
             raise ValueError("Metadata array is null")

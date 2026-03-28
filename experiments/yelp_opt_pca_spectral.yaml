@@ -1,0 +1,25 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_opt_pca_spectral"
+  description: "Optimizing the parameters for PCA + Single-View Spectral Clustering."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "pca_spectral"
+  description: "PCA + Single-View Spectral Clustering"
+  dimensionality_reduction:
+    type: "pca"
+    params:
+      n_components: 5
+  clustering:
+    type: "spectral_clustering"
+    params:
+      n_init: 10
+      n_clusters:
+        - 75
+        - 80
+        - 90
+        - 100
+        - 110

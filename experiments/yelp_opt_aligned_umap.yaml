@@ -21,6 +21,7 @@ model:
       n_components:
         - 5
         - 10
+      metric: "cosine"
   clustering:
     type: "hdbscan"
     params:

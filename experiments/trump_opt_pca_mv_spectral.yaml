@@ -1,0 +1,28 @@
+extends: "datasets/trump.yaml"
+
+experiment:
+  name: "trump_opt_pca_mv_spectral"
+  description: "Optimizing the parameters for PCA + MV Spectral Clustering."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "pca_mv_spectral"
+  description: "PCA + Multi-View Spectral Clustering"
+  dimensionality_reduction:
+    type: "pca"
+    params:
+      n_components: 5
+  clustering:
+    type: "multi_view_spectral_clustering"
+    params:
+      n_clusters:
+        - 300
+        - 350
+        - 400
+        - 450
+        - 500
+        - 550
+        - 600
+        - 650
+        - 700
