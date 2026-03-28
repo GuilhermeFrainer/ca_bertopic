@@ -15,15 +15,12 @@ model:
       n_neighbors:
         - 15
         - 30
-        - 60
       min_dist:
         - 0.0
         - 0.1
-        - 0.5
       n_components:
         - 5
         - 10
-        - 20
       metric: "cosine"
   clustering:
     type: "hdbscan"
@@ -32,6 +29,3 @@ model:
         - 5
         - 10
         - 15
-        - 30
-        - 50
-      prediction_data: true

@@ -27,4 +27,3 @@ model:
         - 10
         - 15
         - 20
-      prediction_data: true
