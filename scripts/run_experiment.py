@@ -13,6 +13,7 @@ import datetime
 import argparse
 import logging
 import traceback
+import json
 
 import src.utils as utils
 import src.data as data
@@ -196,7 +197,13 @@ def main():
         if qualitative_dfs:
             consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
             output_path = OUTPUT_DIR / f"{results_filename}.json"
-            consolidated_qual_df.write_json(output_path)
+            
+            # Serialize to JSON string and then pretty-print using the standard json library
+            json_str = consolidated_qual_df.write_json()
+            parsed_json = json.loads(json_str)
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(parsed_json, f, indent=4)
+
             logger.info(f"Qualitative topic data saved at {output_path}")
 
         latex_table = make_table.generate_latex_table(results_df)
