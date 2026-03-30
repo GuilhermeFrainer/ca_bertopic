@@ -20,17 +20,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DATA_PATHS = {
     "trump": PROJECT_ROOT / "data/raw/trump_tweets.csv",
     "yelp": PROJECT_ROOT / "data/interim/yelp_reviews.parquet",
+    "fed": PROJECT_ROOT / "data/interim/fed_communications.parquet",
 }
 INTERIM_DATA_PATHS = {
     "trump": PROJECT_ROOT / "data/interim/trump_processed.parquet",
     "yelp": PROJECT_ROOT / "data/interim/yelp_processed.parquet",
+    "fed": PROJECT_ROOT / "data/interim/fed_processed.parquet",
 }
 
 
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(description="Preprocess datasets for topic modeling.")
-    parser.add_argument("--dataset", type=str, required=True, choices=["trump", "yelp"])
+    parser.add_argument("--dataset", type=str, required=True, choices=["trump", "yelp", "fed"])
     parser.add_argument("--max-tokens", type=int, help="Maximum number of tokens per chunk.")
     parser.add_argument(
         "--include-metadata",

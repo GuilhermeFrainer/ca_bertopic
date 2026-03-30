@@ -24,6 +24,20 @@ This project aims to modify BERTopic to incorporate document-level metadata into
     ```
     **Note:** This project contains dependencies that are specific to a Linux environment with NVIDIA GPU support (e.g., `cudf`, `cuml`). On other operating systems like Windows or macOS, you may need to adjust the dependencies in `pyproject.toml`.
 
+## Preparing the FED Dataset
+
+The FED dataset requires an additional step to unify multiple raw data sources (communications, macro indicators, and political metadata).
+
+1.  Build the unified dataset:
+    ```bash
+    uv run scripts/build_fed_dataset.py
+    ```
+
+2.  Preprocess the dataset:
+    ```bash
+    uv run scripts/preprocess_datasets.py --dataset fed
+    ```
+
 ## Running Experiments
 
 Experiments are defined by `.yaml` files in the `experiments/` directory and can be run using the `scripts/run_experiment.py` script.

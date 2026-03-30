@@ -27,26 +27,32 @@ BATCH_SIZE = 10000  # Process 10,000 rows at a time
 ARTIFACTS_TO_REMOVE = {
     "trump": ["covfefe"],
     "yelp": [], # No specific artifacts for yelp
+    "fed": [],
 }
 NUMERICAL_COLS = {
     "trump": ["retweets", "favorites"],
     "yelp": ["user_review_count", "business_review_count"],
+    "fed": [], # Macro indicators are already rates or can be negative; skipping log transform
 }
 CATEGORICAL_COLS = {
     "trump": ["device"],
     "yelp": ["state"],
+    "fed": ["type", "president", "party", "fed_chair"],
 }
 BOOLEAN_COLS = {
     "trump": ["is_retweet", "is_deleted", "is_flagged"],
     "yelp": [],
+    "fed": [],
 }
 DATETIME_COLS = {
     "trump": ["date"],
     "yelp": [],
+    "fed": ["date", "release_date"],
 }
 METADATA_COLS = {
     "trump": ["device", "log_retweets", "log_favorites"],
     "yelp": ["state", "log_user_review_count", "log_business_review_count"],
+    "fed": ["type", "president", "party", "fed_chair", "gdp_monthly", "gdp_monthly_lag", "gdp_yearly", "gdp_yearly_lag", "cpi_monthly", "cpi_monthly_lag", "cpi_yearly", "cpi_yearly_lag", "funds_rate", "funds_rate_lag", "unemployment", "unemployment_lag"],
 }
 
 Frame = Union[pl.DataFrame, pl.LazyFrame]

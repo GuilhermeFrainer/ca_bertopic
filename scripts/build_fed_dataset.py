@@ -1,0 +1,89 @@
+# -*- coding: utf-8 -*-
+"""Builds the FED dataset by joining communications with macro indicators and political metadata."""
+
+import polars as pl
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RAW_DIR = PROJECT_ROOT / "data" / "raw"
+INTERIM_DIR = PROJECT_ROOT / "data" / "interim"
+
+def load_macro_data(file_name: str, value_col: str, new_name: str) -> pl.DataFrame:
+    """Loads a macro indicator CSV, parses dates, and includes both unlagged and 1-observation lagged values."""
+    path = RAW_DIR / file_name
+    df = pl.read_csv(path)
+    # Ensure date is parsed and sorted for join_asof
+    df = df.with_columns(pl.col("observation_date").str.to_date())
+    df = df.sort("observation_date")
+    
+    # Create both unlagged and lagged versions with simplified names
+    df = df.with_columns([
+        pl.col(value_col).alias(new_name),
+        pl.col(value_col).shift(1).alias(f"{new_name}_lag")
+    ])
+    return df.select(["observation_date", new_name, f"{new_name}_lag"])
+
+def main():
+    INTERIM_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 1. Load Communications (The base)
+    comm_df = pl.read_csv(RAW_DIR / "communications.csv")
+    comm_df = comm_df.with_columns(
+        pl.col("Date").str.to_date().alias("date"),
+        pl.col("Release Date").str.to_date().alias("release_date"),
+        # Collapse all whitespace (tabs, newlines, multiple spaces) into single spaces
+        pl.col("Text").str.replace_all(r"\s+", " ").str.strip_chars().alias("text")
+    ).drop(["Date", "Release Date", "Text"]).sort("date")
+
+    # 2. Load Macro Indicators (Using 1999_2026 series with monthly and yearly variants)
+    gdp_m_df = load_macro_data("us_gdp_monthly_1999_2026.csv", "GDP_PCH", "gdp_monthly")
+    gdp_y_df = load_macro_data("us_gdp_yearly_1999_2026.csv", "GDP_PC1", "gdp_yearly")
+    cpi_m_df = load_macro_data("cpi_monthly_1999_2026.csv", "CPIAUCSL_PCH", "cpi_monthly")
+    cpi_y_df = load_macro_data("cpi_yearly_1999_2026.csv", "CPIAUCSL_PC1", "cpi_yearly")
+    funds_df = load_macro_data("fed_funds_1999_2026.csv", "FEDFUNDS", "funds_rate")
+    unrate_df = load_macro_data("unemployment_1999_2026.csv", "UNRATE", "unemployment")
+
+    # 3. Load Political Metadata (Daily series)
+    pol_df = pl.read_csv(RAW_DIR / "presidents_and_chairmen.csv")
+    pol_df = pol_df.with_columns(pl.col("date").str.to_date()).sort("date")
+
+    # 4. Sequential Joins using join_asof (backward)
+    fed_df = comm_df.join_asof(
+        gdp_m_df, left_on="date", right_on="observation_date", strategy="backward"
+    ).drop("observation_date")
+
+    fed_df = fed_df.join_asof(
+        gdp_y_df, left_on="date", right_on="observation_date", strategy="backward"
+    ).drop("observation_date")
+
+    fed_df = fed_df.join_asof(
+        cpi_m_df, left_on="date", right_on="observation_date", strategy="backward"
+    ).drop("observation_date")
+
+    fed_df = fed_df.join_asof(
+        cpi_y_df, left_on="date", right_on="observation_date", strategy="backward"
+    ).drop("observation_date")
+
+    fed_df = fed_df.join_asof(
+        funds_df, left_on="date", right_on="observation_date", strategy="backward"
+    ).drop("observation_date")
+
+    fed_df = fed_df.join_asof(
+        unrate_df, left_on="date", right_on="observation_date", strategy="backward"
+    ).drop("observation_date")
+
+    fed_df = fed_df.join_asof(
+        pol_df, on="date", strategy="backward"
+    )
+
+    # 5. Final Cleanup and Save
+    fed_df = fed_df.rename({"Type": "type"})
+    
+    output_path = INTERIM_DIR / "fed_communications.parquet"
+    fed_df.write_parquet(output_path)
+    print(f"FED dataset built and saved to {output_path}")
+    print(f"Columns: {fed_df.columns}")
+    print(f"Total rows: {len(fed_df)}")
+
+if __name__ == "__main__":
+    main()
