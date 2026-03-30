@@ -1,12 +1,101 @@
 import polars as pl
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
 import logging
 import itertools
 import pathlib
 import json
+import copy
+import numpy as np
 
 import src.models as models
 import src.training as training
+
+
+def collect_hyperparameters(model_config: Dict[str, Any]) -> Tuple[List[List[str]], List[List[Any]]]:
+    """
+    Collects hyperparameter search spaces from the model configuration.
+
+    This function identifies hyperparameters to be tuned by looking for lists
+    of values or range specifications (dict with start, stop, step) within
+    the 'dimensionality_reduction' and 'clustering' parameter sections of
+    the model config.
+
+    Args:
+        model_config: The model configuration dictionary.
+
+    Returns:
+        A tuple containing two lists:
+        - param_paths: A list of paths to the hyperparameters in the config dict.
+        - param_values: A list of lists, where each inner list contains the
+          values to be tested for the corresponding hyperparameter.
+    """
+    param_paths = []
+    param_values = []
+
+    def collect_from_component(component_name: str):
+        component = model_config.get(component_name, {})
+        params = component.get("params", {})
+        # Sort keys to ensure deterministic order of combinations
+        for key in sorted(params.keys()):
+            value = params[key]
+            path = [component_name, "params", key]
+
+            # A list of values is considered a hyperparameter to vary
+            if isinstance(value, list) and len(value) > 1:
+                param_paths.append(path)
+                param_values.append(value)
+
+            # A dictionary with start/stop is a range
+            elif isinstance(value, dict) and "start" in value and "stop" in value:
+                start = value["start"]
+                stop = value["stop"]
+                step = value.get("step", 1)
+
+                # Use np.arange for float support and consistency
+                generated_values = np.arange(start, stop, step).tolist()
+
+                param_paths.append(path)
+                param_values.append(generated_values)
+
+    collect_from_component("dimensionality_reduction")
+    collect_from_component("clustering")
+
+    return param_paths, param_values
+
+
+def generate_hyperparameter_combinations(model_config: Dict[str, Any]) -> List[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    """
+    Generates all possible hyperparameter combinations for the search.
+    """
+    param_paths, param_values = collect_hyperparameters(model_config)
+
+    if not param_paths:
+        return [(model_config, {})]
+
+    combinations = []
+    # Create the Cartesian product of all hyperparameter values.
+    # For each resulting combination, create a new model configuration.
+    for value_combination in itertools.product(*param_values):
+        new_config = copy.deepcopy(model_config)
+        varied_params = {}
+        for path, value in zip(param_paths, value_combination):
+            # Set the specific hyperparameter value in the new config copy
+            new_config[path[0]][path[1]][path[2]] = value
+            # Keep track of the parameters that were varied for this run
+            varied_params[".".join(path)] = value
+        combinations.append((new_config, varied_params))
+    
+    return combinations
+
+
+def clean_varied_params(varied_params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Cleans up parameter names for reporting and results.
+    """
+    return {
+        key.replace("clustering.params.", "").replace("dimensionality_reduction.params.", ""): value
+        for key, value in varied_params.items()
+    }
 
 
 class Optimizer:
@@ -44,33 +133,7 @@ class Optimizer:
         self.qualitative_results = []
         self.logger = logging.getLogger("pipeline")
 
-    def _generate_hyperparameter_combinations(self) -> list[tuple[dict, dict]]:
-        """
-        Generates all possible hyperparameter combinations for the search.
-        """
-        import copy
-
-        param_paths, param_values = _collect_hyperparameters(self.model_config)
-
-        if not param_paths:
-            return [(self.model_config, {})]
-
-        combinations = []
-        # Create the Cartesian product of all hyperparameter values.
-        # For each resulting combination, create a new model configuration.
-        for value_combination in itertools.product(*param_values):
-            new_config = copy.deepcopy(self.model_config)
-            varied_params = {}
-            for path, value in zip(param_paths, value_combination):
-                # Set the specific hyperparameter value in the new config copy
-                new_config[path[0]][path[1]][path[2]] = value
-                # Keep track of the parameters that were varied for this run
-                varied_params[".".join(path)] = value
-            combinations.append((new_config, varied_params))
-        
-        return combinations
-
-    def run(self, start_index: int = 0) -> None:
+    def run(self, start_index: int = 0, target_index: int | None = None) -> None:
         """
         Executes the optimization process: iterates through model configs,
         trains each one, and stores the evaluation metrics.
@@ -78,21 +141,31 @@ class Optimizer:
         Args:
             start_index: The index of the first configuration to evaluate.
                          Allows resuming interrupted runs.
+            target_index: If provided, only this specific configuration index
+                          will be executed.
         """
         import datetime
         import src.utils as utils
 
-        hyperparameter_combinations = self._generate_hyperparameter_combinations()
+        hyperparameter_combinations = generate_hyperparameter_combinations(self.model_config)
         num_combinations = len(hyperparameter_combinations)
 
-        if start_index >= num_combinations:
-            self.logger.info(f"Start index {start_index} is beyond total combinations {num_combinations}. Nothing to do.")
-            return
-
-        if start_index == 0:
-            self.logger.info(f"Starting hyperparameter optimization for {num_combinations} models.")
+        if target_index is not None:
+            if target_index < 0 or target_index >= num_combinations:
+                self.logger.error(f"Target index {target_index+1} is out of range (1-{num_combinations}).")
+                return
+            run_indices = [target_index]
+            self.logger.info(f"Running specific model configuration index {target_index+1} of {num_combinations}.")
         else:
-            self.logger.info(f"Resuming hyperparameter optimization for {num_combinations} models (starting at index {start_index+1}).")
+            if start_index >= num_combinations:
+                self.logger.info(f"Start index {start_index} is beyond total combinations {num_combinations}. Nothing to do.")
+                return
+
+            run_indices = range(start_index, num_combinations)
+            if start_index == 0:
+                self.logger.info(f"Starting hyperparameter optimization for {num_combinations} models.")
+            else:
+                self.logger.info(f"Resuming hyperparameter optimization for {num_combinations} models (starting at index {start_index+1}).")
 
         # New Metadata Capture
         start_timestamp = datetime.datetime.now().isoformat()
@@ -100,15 +173,13 @@ class Optimizer:
         n_observations = len(self.texts)
 
         try:
-            for i, (model_config, varied_params) in enumerate(hyperparameter_combinations[start_index:], start=start_index):
+            for i in run_indices:
+                model_config, varied_params = hyperparameter_combinations[i]
                 model_id = self.model_config.get("id", "model")
                 run_id = f"{model_id}_{i+1}"
 
                 # Clean up param names for reporting
-                cleaned_varied_params = {
-                    key.replace("clustering.params.", "").replace("dimensionality_reduction.params.", ""): value
-                    for key, value in varied_params.items()
-                }
+                cleaned_varied_params = clean_varied_params(varied_params)
                 self.logger.info(f"--- Training model [{run_id}] ({i+1}/{num_combinations}) ---")
                 self.logger.info(f"Varied Parameters: {cleaned_varied_params}")
 
@@ -231,57 +302,3 @@ class Optimizer:
                 json.dump(parsed_json, f, indent=4)
 
             self.logger.info(f"Qualitative topic data saved at {output_path}")
-
-
-def _collect_hyperparameters(model_config: dict) -> tuple[list, list]:
-    """
-    Collects hyperparameter search spaces from the model configuration.
-
-    This function identifies hyperparameters to be tuned by looking for lists
-    of values or range specifications (dict with start, stop, step) within
-    the 'dimensionality_reduction' and 'clustering' parameter sections of
-    the model config.
-
-    Args:
-        model_config: The model configuration dictionary.
-
-    Returns:
-        A tuple containing two lists:
-        - param_paths: A list of paths to the hyperparameters in the config dict.
-        - param_values: A list of lists, where each inner list contains the
-          values to be tested for the corresponding hyperparameter.
-    """
-    import numpy as np
-
-    param_paths = []
-    param_values = []
-
-    def collect_from_component(component_name: str):
-        component = model_config.get(component_name, {})
-        params = component.get("params", {})
-        # Sort keys to ensure deterministic order of combinations
-        for key in sorted(params.keys()):
-            value = params[key]
-            path = [component_name, "params", key]
-
-            # A list of values is considered a hyperparameter to vary
-            if isinstance(value, list) and len(value) > 1:
-                param_paths.append(path)
-                param_values.append(value)
-
-            # A dictionary with start/stop is a range
-            elif isinstance(value, dict) and "start" in value and "stop" in value:
-                start = value["start"]
-                stop = value["stop"]
-                step = value.get("step", 1)
-
-                # Use np.arange for float support and consistency
-                generated_values = np.arange(start, stop, step).tolist()
-
-                param_paths.append(path)
-                param_values.append(generated_values)
-
-    collect_from_component("dimensionality_reduction")
-    collect_from_component("clustering")
-
-    return param_paths, param_values

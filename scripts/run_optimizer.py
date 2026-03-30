@@ -42,6 +42,11 @@ def main():
         action="store_true",
         help="Resume an interrupted optimization run if existing results are found."
     )
+    parser.add_argument(
+        "--model",
+        type=int,
+        help="Run only the n-th model configuration (1-indexed)."
+    )
     args = parser.parse_args()
 
     logger = None  # Initialize logger to None
@@ -106,7 +111,9 @@ def main():
             model_config=model_config,
             experiment_config=config
         )
-        optimizer.run(start_index=start_index)
+        
+        target_index = args.model - 1 if args.model is not None else None
+        optimizer.run(start_index=start_index, target_index=target_index)
 
         # Save Results
         optimizer.save_results(results_path, decimal_digits=decimal_digits)
