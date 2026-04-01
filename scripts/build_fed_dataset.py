@@ -21,7 +21,7 @@ def load_macro_data(file_name: str, value_col: str, new_name: str) -> pl.DataFra
     df = df.with_columns(
         pl.col(value_col)
         .fill_null(
-            pl.col(value_col).rolling_mean(window_size=5, center=True, min_periods=1)
+            pl.col(value_col).rolling_mean(window_size=5, center=True, min_samples=1)
         )
         .forward_fill()
         .backward_fill()
