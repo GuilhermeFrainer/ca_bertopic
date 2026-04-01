@@ -16,11 +16,26 @@ def load_macro_data(file_name: str, value_col: str, new_name: str) -> pl.DataFra
     df = df.with_columns(pl.col("observation_date").str.to_date())
     df = df.sort("observation_date")
     
+    # Fill missing values using a local window average (rolling mean of 5: 2 before, 2 after)
+    # This addresses gaps like those from government shutdowns using nearby values.
+    df = df.with_columns(
+        pl.col(value_col)
+        .fill_null(
+            pl.col(value_col).rolling_mean(window_size=5, center=True, min_periods=1)
+        )
+        .forward_fill()
+        .backward_fill()
+        .alias(value_col)
+    )
+    
     # Create both unlagged and lagged versions with simplified names
     df = df.with_columns([
         pl.col(value_col).alias(new_name),
         pl.col(value_col).shift(1).alias(f"{new_name}_lag")
     ])
+    # Handle the first row's lag null
+    df = df.with_columns(pl.col(f"{new_name}_lag").forward_fill().backward_fill())
+
     return df.select(["observation_date", new_name, f"{new_name}_lag"])
 
 def main():
@@ -29,11 +44,12 @@ def main():
     # 1. Load Communications (The base)
     comm_df = pl.read_csv(RAW_DIR / "communications.csv")
     comm_df = comm_df.with_columns(
+        pl.col("Type").alias("type"),
         pl.col("Date").str.to_date().alias("date"),
         pl.col("Release Date").str.to_date().alias("release_date"),
         # Collapse all whitespace (tabs, newlines, multiple spaces) into single spaces
         pl.col("Text").str.replace_all(r"\s+", " ").str.strip_chars().alias("text")
-    ).drop(["Date", "Release Date", "Text"]).sort("date")
+    ).drop(["Date", "Release Date", "Text", "Type"]).sort("date")
 
     # 2. Load Macro Indicators (Using 1999_2026 series with monthly and yearly variants)
     gdp_m_df = load_macro_data("us_gdp_monthly_1999_2026.csv", "GDP_PCH", "gdp_monthly")
@@ -77,7 +93,17 @@ def main():
     )
 
     # 5. Final Cleanup and Save
-    fed_df = fed_df.rename({"Type": "type"})
+    # Handle missing release dates: same day for statements, +21 days for minutes
+    fed_df = fed_df.with_columns(
+        pl.when(pl.col("release_date").is_null())
+        .then(
+            pl.when(pl.col("type") == "Statement")
+            .then(pl.col("date"))
+            .otherwise(pl.col("date").dt.offset_by("21d"))
+        )
+        .otherwise(pl.col("release_date"))
+        .alias("release_date")
+    )
     
     output_path = INTERIM_DIR / "fed_communications.parquet"
     fed_df.write_parquet(output_path)

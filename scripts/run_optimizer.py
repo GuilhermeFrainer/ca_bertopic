@@ -10,6 +10,7 @@ import polars as pl
 import datetime
 import argparse
 import traceback
+import numpy as np
 
 import src.utils as utils
 import src.data as data
@@ -68,6 +69,13 @@ def main():
         logger.info("Loading and preparing data...")
         text, embeddings, scaled_metadata = data.load_and_prep_data(
             config, random_state=random_state)
+
+        # Check for NaNs and warn if found
+        if np.isnan(scaled_metadata).any():
+            # Identifying columns with NaNs in the final metadata matrix
+            nan_indices = np.where(np.isnan(scaled_metadata).any(axis=0))[0]
+            logger.warning(f"Metadata contains NaN values in {len(nan_indices)} feature columns.")
+            logger.warning(f"NaN indices: {nan_indices.tolist()}")
 
         # Model configuration
         logger.info("Loading model configuration for optimization...")
