@@ -1,0 +1,37 @@
+extends: "datasets/fed.yaml"
+
+experiment:
+  name: "fed_opt_mv_k_means"
+  description: "Optimizing the parameters for MV K-Means Clustering."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "mv_k_means"
+  description: "MV K-Means"
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      n_components: 5
+      metric: "cosine"
+  clustering:
+    type: "multi_view_k_means"
+    params:
+      n_clusters:
+        - 50
+        - 60
+        - 70
+        - 80
+        - 90
+        - 100
+        - 110
+        - 120
+        - 130
+        - 140
+        - 150
+        - 160
+        - 170
+        - 180
+        - 190
+        - 200

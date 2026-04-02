@@ -1,0 +1,30 @@
+dataset_path: "data/processed/fed_embeddings.parquet"
+embedding_col: "clean_text_embedding"
+text_col: "clean_text"
+covariates:
+  numerical:
+    - gdp_monthly
+    - gdp_monthly_lag
+    - gdp_yearly
+    - gdp_yearly_lag
+    - cpi_monthly
+    - cpi_monthly_lag
+    - cpi_yearly
+    - cpi_yearly_lag
+    - funds_rate
+    - funds_rate_lag
+    - unemployment
+    - unemployment_lag
+  categorical:
+    - type
+    - president
+    - party
+    - fed_chair
+  binary: []
+coherence_metrics:
+  - u_mass
+  - c_v
+  - c_npmi
+diversity_metrics:
+  - irbo
+  - topic_diversity

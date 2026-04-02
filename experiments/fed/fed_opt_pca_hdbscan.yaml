@@ -1,0 +1,26 @@
+extends: "datasets/fed.yaml"
+
+experiment:
+  name: "fed_opt_pca_hdbscan"
+  description: "Optimizing the parameters for PCA + HDBSCAN model on Fed dataset."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "pca_hdbscan"
+  description: "PCA + HDBSCAN (no metadata)."
+  dimensionality_reduction:
+    type: "pca"
+    params:
+      n_components:
+        - 5
+        - 10
+        - 15
+  clustering:
+    type: "hdbscan"
+    params:
+      min_cluster_size:
+        - 5
+        - 10
+        - 15
+        - 20
