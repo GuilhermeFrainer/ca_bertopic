@@ -88,7 +88,7 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
             
             # Dataset extraction (New logic: use dataset_name column if it exists)
             dataset = "unknown"
-            if "dataset_name" in df.columns:
+            if "dataset_name" in df.columns and len(df) > 0:
                 dataset = df["dataset_name"][0]
             elif "trump" in file_basename.lower():
                 dataset = "trump"
@@ -387,8 +387,26 @@ def main():
             st.warning("No qualitative results found in `output/`.")
         else:
             # Filter qualitative results to match the current selection
-            active_source_files = filtered_df["source_file"].unique().to_list()
-            filtered_qual_df = qual_df.filter(pl.col("source_file").is_in(active_source_files))
+            # We use multiple criteria to be robust against file renaming/aggregation
+            active_datasets = filtered_df["dataset_label"].unique().to_list()
+            active_model_types = filtered_df["model_type"].unique().to_list()
+            active_timestamps = []
+            if "timestamp" in filtered_df.columns:
+                active_timestamps = filtered_df["timestamp"].unique().drop_nulls().to_list()
+
+            # Base filter: Match by Dataset and Model Type
+            filtered_qual_df = qual_df.filter(
+                (pl.col("dataset_label").is_in(active_datasets)) &
+                (pl.col("model_type").is_in(active_model_types))
+            )
+
+            # Refinement: If we have specific timestamps for the selected runs, use them
+            if active_timestamps:
+                ts_filtered = filtered_qual_df.filter(pl.col("timestamp").is_in(active_timestamps))
+                # Only use timestamp filter if it doesn't result in an empty set
+                # (helps handle cases with slightly mismatched timestamps or missing data)
+                if not ts_filtered.is_empty():
+                    filtered_qual_df = ts_filtered
 
             if filtered_qual_df.is_empty():
                 st.info("No qualitative data matches the current filters.")
