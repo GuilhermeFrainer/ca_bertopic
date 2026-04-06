@@ -1,18 +1,8 @@
 import pytest
-from src.optimizer import Optimizer
+from src.optimizer import Optimizer, generate_hyperparameter_combinations
 
 # A minimal experiment config for testing
 MOCK_EXPERIMENT_CONFIG = {"experiment": {}}
-
-def create_optimizer(model_config):
-    """Helper function to create a dummy Optimizer instance for testing."""
-    return Optimizer(
-        texts=[],
-        embeddings=None,
-        scaled_metadata=None,
-        model_config=model_config,
-        experiment_config=MOCK_EXPERIMENT_CONFIG
-    )
 
 def test_config_with_no_search_space():
     """
@@ -27,8 +17,7 @@ def test_config_with_no_search_space():
             }
         }
     }
-    optimizer = create_optimizer(model_config)
-    combinations = optimizer._generate_hyperparameter_combinations()
+    combinations = generate_hyperparameter_combinations(model_config)
     
     assert len(combinations) == 1
     assert combinations[0][0] == model_config
@@ -46,8 +35,7 @@ def test_single_hyperparameter():
             }
         }
     }
-    optimizer = create_optimizer(model_config)
-    combinations = optimizer._generate_hyperparameter_combinations()
+    combinations = generate_hyperparameter_combinations(model_config)
     
     assert len(combinations) == 3
     
@@ -78,8 +66,7 @@ def test_multiple_hyperparameters():
             }
         }
     }
-    optimizer = create_optimizer(model_config)
-    combinations = optimizer._generate_hyperparameter_combinations()
+    combinations = generate_hyperparameter_combinations(model_config)
     
     assert len(combinations) == 4 # 2 * 2
     
@@ -119,8 +106,7 @@ def test_string_list_is_ignored():
             }
         }
     }
-    optimizer = create_optimizer(model_config)
-    combinations = optimizer._generate_hyperparameter_combinations()
+    combinations = generate_hyperparameter_combinations(model_config)
 
     # Should only generate combinations for n_clusters
     assert len(combinations) == 2
@@ -145,8 +131,7 @@ def test_range_hyperparameter():
             }
         }
     }
-    optimizer = create_optimizer(model_config)
-    combinations = optimizer._generate_hyperparameter_combinations()
+    combinations = generate_hyperparameter_combinations(model_config)
     
     assert len(combinations) == 3
     
@@ -176,8 +161,7 @@ def test_float_range_hyperparameter():
             }
         }
     }
-    optimizer = create_optimizer(model_config)
-    combinations = optimizer._generate_hyperparameter_combinations()
+    combinations = generate_hyperparameter_combinations(model_config)
     
     assert len(combinations) == 3 # 0.1, 0.2, 0.3
     
@@ -217,8 +201,7 @@ def test_mixed_hyperparameters():
             }
         }
     }
-    optimizer = create_optimizer(model_config)
-    combinations = optimizer._generate_hyperparameter_combinations()
+    combinations = generate_hyperparameter_combinations(model_config)
     
     assert len(combinations) == 4 # 2 * 2
     
@@ -269,14 +252,12 @@ def test_determinism_via_sorting():
         }
     }
     
-    opt_a = create_optimizer(config_a)
-    opt_b = create_optimizer(config_b)
-    
-    comb_a = opt_a._generate_hyperparameter_combinations()
-    comb_b = opt_b._generate_hyperparameter_combinations()
+    comb_a = generate_hyperparameter_combinations(config_a)
+    comb_b = generate_hyperparameter_combinations(config_b)
     
     # Compare only the varied_params part for simplicity
     params_a = [c[1] for c in comb_a]
     params_b = [c[1] for c in comb_b]
     
     assert params_a == params_b
+
