@@ -127,6 +127,11 @@ uv run -m pytest
 *   **Great Tables:** For creating publication-ready tables of results.
 *   **uv:** For python package management.
 
+## Gemini CLI Mandates
+
+- **Test-Driven Development:** Always run the test suite (`uv run -m pytest`) after implementing new features, fixing bugs, or refactoring code, even if not explicitly asked.
+- **Verification:** Ensure all tests pass before considering a task complete. If tests fail, diagnose and fix the issues immediately.
+
 ## Coding Style
 
 This project follows the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
