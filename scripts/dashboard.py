@@ -334,7 +334,7 @@ def main():
 
         # Filter pdf to selected columns for display, while keeping original pdf for backend/plotting
         pdf_display = pdf[selected_columns] if selected_columns else pdf
-        st.dataframe(pdf_display.style.apply(highlight_best), use_container_width=True)
+        st.dataframe(pdf_display.style.apply(highlight_best), width="stretch")
 
         # 4. Dynamic Plotting
         st.divider()
@@ -378,7 +378,7 @@ def main():
                     tooltip=metadata_cols + numeric_cols
                 ).interactive().properties(height=500)
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
 
     with tab_qualitative:
         st.header("🔍 Qualitative Topic Analysis")
@@ -422,7 +422,7 @@ def main():
                     )
                     search_results = filtered_qual_df.filter(search_expr)
                     st.write(f"Found {len(search_results)} topics matching '{search_query}'.")
-                    st.dataframe(search_results.to_pandas(), use_container_width=True)
+                    st.dataframe(search_results.to_pandas(), width="stretch")
                 
                 st.divider()
 
@@ -442,7 +442,7 @@ def main():
                     model_a = st.selectbox("Select Model A:", options=model_options, index=0)
                     df_a = filtered_qual_df.filter(pl.col("unique_model_id") == model_a)
                     st.write(f"**Topics for {model_a.split('|')[-1].strip()}**")
-                    st.dataframe(df_a.select(["topic_id", "count", "name", "representation"]).to_pandas(), use_container_width=True, hide_index=True)
+                    st.dataframe(df_a.select(["topic_id", "count", "name", "representation"]).to_pandas(), width="stretch", hide_index=True)
 
                 with col_right:
                     # Default to second model if available
@@ -450,7 +450,7 @@ def main():
                     model_b = st.selectbox("Select Model B:", options=model_options, index=default_idx)
                     df_b = filtered_qual_df.filter(pl.col("unique_model_id") == model_b)
                     st.write(f"**Topics for {model_b.split('|')[-1].strip()}**")
-                    st.dataframe(df_b.select(["topic_id", "count", "name", "representation"]).to_pandas(), use_container_width=True, hide_index=True)
+                    st.dataframe(df_b.select(["topic_id", "count", "name", "representation"]).to_pandas(), width="stretch", hide_index=True)
 
                 st.divider()
 
