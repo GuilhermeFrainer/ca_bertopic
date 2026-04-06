@@ -30,7 +30,7 @@ def load_and_prep_data(config: dict, random_state: int) -> tuple[list[str], np.n
     total_len = full_lf.select(pl.len()).collect().item()
     
     # Filter empty rows immediately
-    clean_lf = full_lf.filter(pl.col(text_col) != "")
+    clean_lf = full_lf.filter(pl.col(text_col).str.strip_chars() != "")
     
     # Calculate length after filtering
     clean_len = clean_lf.select(pl.len()).collect().item()

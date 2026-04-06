@@ -22,7 +22,7 @@ def sample_trump_df() -> pl.DataFrame:
     return pl.DataFrame({
         "text": [
             "A great day at the office! http://example.com #Trump. What a great day!",
-            "covfefe",
+            "Some valid text here",
             "Making America Great Again! And again.",
         ],
         "retweets": [100, 10, 1000],
@@ -165,3 +165,75 @@ def test_process_dataset_yelp(sample_yelp_df, tmp_path):
     
     assert "clean_text_with_metadata" in processed_df.columns
     assert processed_df.height > sample_yelp_df.height
+
+
+def test_process_dataset_deduplication(tmp_path):
+    """Tests that deduplication correctly removes repeated clean_text rows."""
+    
+    df = pl.DataFrame({
+        "text": [
+            "Same text", 
+            "Same text", 
+            "Different text",
+            "Same text"
+        ],
+        "date": [
+            "2020-01-01 10:00:00",
+            "2020-01-01 09:00:00", # Earlier date, should be kept
+            "2020-01-01 11:00:00",
+            "2020-01-01 12:00:00"
+        ],
+        "val": [1, 2, 3, 4]
+    })
+    
+    input_path = tmp_path / "dummy_dups.parquet"
+    output_path = tmp_path / "dups_processed.parquet"
+    df.write_parquet(input_path)
+
+    # Process with deduplication
+    processed_df = process_dataset(
+        dataset_name="test_dataset", # Using neutral name to avoid trump-specific schema handling
+        input_path=str(input_path),
+        output_path=str(output_path),
+        deduplicate=True
+    )
+
+    # "Same text" and "Same text!" should both clean to "Same text"
+    # "Different text" is unique.
+    # Total unique should be 2.
+    assert processed_df.height == 2
+    
+    # Check that it kept the one with the earliest date (val=2)
+    # Note: process_dataset sorts by date then takes unique(keep='first')
+    assert 2 in processed_df["val"].to_list()
+    assert 3 in processed_df["val"].to_list()
+    assert 1 not in processed_df["val"].to_list()
+    assert 4 not in processed_df["val"].to_list()
+
+
+def test_process_dataset_drops_empty(tmp_path):
+    """Tests that process_dataset drops rows that result in empty clean_text."""
+    df = pl.DataFrame({
+        "text": [
+            "Valid text",
+            "http://only-url.com", # Becomes empty
+            "   ",                 # Whitespace only
+            "12345",               # Numbers only, becomes empty
+            "Another valid one"
+        ]
+    })
+    
+    input_path = tmp_path / "dummy_empty.parquet"
+    output_path = tmp_path / "empty_processed.parquet"
+    df.write_parquet(input_path)
+
+    processed_df = process_dataset(
+        dataset_name="test_dataset",
+        input_path=str(input_path),
+        output_path=str(output_path)
+    )
+
+    # Only "Valid text" and "Another valid one" should remain
+    assert processed_df.height == 2
+    assert "Valid text" in processed_df["clean_text"].to_list()
+    assert "Another valid one" in processed_df["clean_text"].to_list()

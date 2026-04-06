@@ -39,6 +39,11 @@ def main():
         action="store_true",
         help="Whether to include YAML frontmatter with metadata in the text columns."
     )
+    parser.add_argument(
+        "--deduplicate",
+        action="store_true",
+        help="Whether to deduplicate the dataset based on cleaned text."
+    )
     args = parser.parse_args()
 
     process_dataset(
@@ -47,6 +52,7 @@ def main():
         output_path=str(INTERIM_DATA_PATHS[args.dataset]),
         max_tokens=args.max_tokens,
         include_metadata=args.include_metadata,
+        deduplicate=args.deduplicate,
     )
 
 

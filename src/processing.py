@@ -192,6 +192,7 @@ def process_dataset(
     tokenizer_name: str = TOKENIZER_NAME,
     max_tokens: int | None = None,
     include_metadata: bool = False,
+    deduplicate: bool = False,
 ) -> pl.DataFrame:
     """Main function to process a single dataset using lazy evaluation and batching.
 
@@ -229,6 +230,31 @@ def process_dataset(
     ).with_columns(
         clean_text_lower_punctless=pl.col("clean_text_lower").str.replace_all(r"[^\w\s]", "").str.replace_all(r"\s+", " ").str.strip_chars()
     )
+
+    # Filter out empty or whitespace-only clean_text rows
+    initial_row_count = lf.select(pl.len()).collect().item()
+    lf = lf.filter(pl.col("clean_text").str.strip_chars() != "")
+    after_empty_filter_count = lf.select(pl.len()).collect().item()
+    
+    dropped_empty = initial_row_count - after_empty_filter_count
+    if dropped_empty > 0:
+        logging.info(f"Dropped {dropped_empty} rows because clean_text was empty or whitespace-only.")
+
+    if deduplicate:
+        logging.info("Deduplicating based on 'clean_text'...")
+        # We need to collect partially to count and deduplicate efficiently if it's not a huge dataset,
+        # or we can do it lazily. Polars 'unique' on LazyFrame works but we'll collect once to log.
+        initial_count = lf.select(pl.len()).collect().item()
+        
+        # Sort by date if it exists to keep the first occurrence chronologically
+        if "date" in lf.collect_schema().names():
+            lf = lf.sort("date").unique(subset=["clean_text"], keep="first", maintain_order=True)
+        else:
+            lf = lf.unique(subset=["clean_text"], keep="first")
+            
+        final_count = lf.select(pl.len()).collect().item()
+        dropped_count = initial_count - final_count
+        logging.info(f"Deduplication complete. Dropped {dropped_count} duplicate rows.")
     
     logging.info("Starting batch processing for chunking and YAML injection...")
     
