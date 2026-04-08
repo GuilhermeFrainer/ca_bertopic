@@ -75,6 +75,7 @@ def main():
         
         # New Metadata Capture
         start_timestamp = datetime.datetime.now().isoformat()
+        file_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         dataset_name = Path(config["experiment"]["dataset_path"]).stem.replace("_embeddings", "")
         n_observations = len(text)
 
@@ -128,10 +129,13 @@ def main():
 
             # Add Metadata
             run_metadata = {
+                "experiment_id": exp_name,
+                "random_state": random_state,
                 "clustering_algo": baseline_config["clustering"]["type"],
                 "dim_red_algo": baseline_config["dimensionality_reduction"]["type"],
                 "n_observations": n_observations,
                 "timestamp": start_timestamp,
+                "file_timestamp": file_timestamp,
                 "dataset_name": dataset_name,
             }
             metrics.update(run_metadata)
@@ -164,10 +168,13 @@ def main():
                 )
                 # Add Metadata
                 run_metadata = {
+                    "experiment_id": exp_name,
+                    "random_state": random_state,
                     "clustering_algo": model_config["clustering"]["type"],
                     "dim_red_algo": model_config["dimensionality_reduction"]["type"],
                     "n_observations": n_observations,
                     "timestamp": start_timestamp,
+                    "file_timestamp": file_timestamp,
                     "dataset_name": dataset_name,
                 }
                 metrics.update(run_metadata)
@@ -194,8 +201,7 @@ def main():
 
         # Save Results
         results_df = pl.DataFrame(results)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        results_filename = f"{exp_name}-{timestamp}-{random_state}"
+        results_filename = f"{exp_name}-{file_timestamp}-{random_state}"
         results_path = RESULTS_DIR / f"{results_filename}.csv"
         results_df.write_csv(results_path)
         

@@ -107,9 +107,18 @@ def main():
                 logger.info("No existing results file found for resumption. Starting from scratch.")
 
         if results_path is None:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            results_filename = f"{exp_name}-{timestamp}-{random_state}"
+            file_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            results_filename = f"{exp_name}-{file_timestamp}-{random_state}"
             results_path = RESULTS_DIR / f"{results_filename}.csv"
+        else:
+            # Extract timestamp from existing filename (format: exp_name-timestamp-random_state.csv)
+            # timestamp has a dash in it (e.g., 20260408-123456)
+            parts = results_path.stem.split("-")
+            if len(parts) >= 3:
+                # The last part is random_state, the two parts before it are the timestamp
+                file_timestamp = f"{parts[-3]}-{parts[-2]}"
+            else:
+                file_timestamp = "unknown"
 
         # Initialize and run optimizer
         optimizer = Optimizer(
@@ -117,7 +126,10 @@ def main():
             embeddings=embeddings,
             scaled_metadata=scaled_metadata,
             model_config=model_config,
-            experiment_config=config
+            experiment_config=config,
+            experiment_id=exp_name,
+            random_state=random_state,
+            file_timestamp=file_timestamp
         )
         
         target_index = args.model - 1 if args.model is not None else None

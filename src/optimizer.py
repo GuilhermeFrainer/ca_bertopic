@@ -111,7 +111,10 @@ class Optimizer:
         embeddings: Any,
         scaled_metadata: Any,
         model_config: Dict[str, Any],
-        experiment_config: Dict[str, Any]
+        experiment_config: Dict[str, Any],
+        experiment_id: str,
+        random_state: int,
+        file_timestamp: str
     ):
         """
         Initializes the Optimizer.
@@ -123,12 +126,18 @@ class Optimizer:
                 hyperparameters. Hyperparameters with multiple values 
                 should be in a list.
             experiment_config: The global experiment configuration.
+            experiment_id: The identifier for the experiment.
+            random_state: The random seed used for the experiment.
+            file_timestamp: The timestamp used in the results filename.
         """
         self.texts = texts
         self.embeddings = embeddings
         self.scaled_metadata = scaled_metadata
         self.model_config = model_config
         self.experiment_config = experiment_config
+        self.experiment_id = experiment_id
+        self.random_state = random_state
+        self.file_timestamp = file_timestamp
         self.results = []
         self.qualitative_results = []
         self.logger = logging.getLogger("pipeline")
@@ -202,10 +211,13 @@ class Optimizer:
 
                     # 3. Store results, including the varied hyperparameters and metadata
                     run_metadata = {
+                        "experiment_id": self.experiment_id,
+                        "random_state": self.random_state,
                         "clustering_algo": model_config["clustering"]["type"],
                         "dim_red_algo": model_config["dimensionality_reduction"]["type"],
                         "n_observations": n_observations,
                         "timestamp": start_timestamp,
+                        "file_timestamp": self.file_timestamp,
                         "dataset_name": dataset_name,
                     }
                     metrics.update(run_metadata)
@@ -243,8 +255,9 @@ class Optimizer:
         all_cols = df.columns
 
         core_stats_cols = [
-            "model_name", "dataset_name", "timestamp", "n_observations", 
-            "clustering_algo", "dim_red_algo", "duration_seconds", "n_topics", "outliers"
+            "experiment_id", "random_state", "file_timestamp", "model_name", "dataset_name", 
+            "timestamp", "n_observations", "clustering_algo", "dim_red_algo", "duration_seconds", 
+            "n_topics", "outliers"
         ]
 
         # Calculated metrics from the experiment config
