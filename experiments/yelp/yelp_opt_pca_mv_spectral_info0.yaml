@@ -1,0 +1,25 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_opt_pca_mv_spectral_info0"
+  description: "Optimizing the parameters for PCA + MV Spectral Clustering with info_view=0."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "pca_mv_spectral_info0"
+  description: "PCA + Multi-View Spectral Clustering (info_view=0)"
+  dimensionality_reduction:
+    type: "pca"
+    params:
+      n_components: 5
+  clustering:
+    type: "multi_view_spectral_clustering"
+    params:
+      info_view: 0
+      n_clusters:
+        - 75
+        - 80
+        - 90
+        - 100
+        - 110
