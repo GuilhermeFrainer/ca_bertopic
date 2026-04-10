@@ -86,6 +86,16 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
                 except ValueError:
                     exp_date = None
             
+            # Fallback to timestamp column if exp_date is still None
+            if exp_date is None and "timestamp" in df.columns and len(df) > 0:
+                ts_val = df["timestamp"][0]
+                if ts_val and isinstance(ts_val, str):
+                    try:
+                        # Handle ISO formats like 2026-04-02T13:05:32.462016
+                        exp_date = datetime.datetime.fromisoformat(ts_val).date()
+                    except (ValueError, TypeError):
+                        pass
+
             # Dataset extraction (New logic: use dataset_name column if it exists)
             dataset = "unknown"
             if "dataset_name" in df.columns and len(df) > 0:
