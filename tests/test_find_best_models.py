@@ -79,3 +79,22 @@ def test_find_best_models_exclusion():
     for m_df in res_no_kmeans.values():
         all_best_names.extend(m_df["best_model_name"].to_list())
     assert "k_means_1" not in all_best_names
+
+def test_find_best_models_dump():
+    data = {
+        "model_name": ["mv_1", "mv_2"],
+        "dataset_name": ["fed", "fed"],
+        "c_v": [0.5, 0.6]
+    }
+    df = pl.DataFrame(data)
+    
+    # Normal mode (only best per type)
+    res_normal = find_best_models(df, "fed", dump=False)
+    assert res_normal["c_v"].height == 1
+    assert res_normal["c_v"]["max_value"][0] == 0.6
+    
+    # Dump mode (all models)
+    res_dump = find_best_models(df, "fed", dump=True)
+    assert res_dump["c_v"].height == 2
+    assert 0.5 in res_dump["c_v"]["max_value"].to_list()
+    assert 0.6 in res_dump["c_v"]["max_value"].to_list()

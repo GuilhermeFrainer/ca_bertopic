@@ -19,7 +19,8 @@ def find_best_models(
     df: pl.DataFrame, 
     dataset: str, 
     exclude_clustering: List[str] | None = None, 
-    exclude_dim_red: List[str] | None = None
+    exclude_dim_red: List[str] | None = None,
+    dump: bool = False
 ) -> Dict[str, pl.DataFrame]:
     """
     Finds the best performing model of each model type for each metric in the given dataset.
@@ -29,9 +30,10 @@ def find_best_models(
         dataset: The name of the dataset to filter by.
         exclude_clustering: Optional list of clustering algorithms to exclude.
         exclude_dim_red: Optional list of dimensionality reduction algorithms to exclude.
+        dump: If True, returns all model configurations instead of just the best per type.
         
     Returns:
-        A dictionary where keys are metric names and values are DataFrames with the best models per type.
+        A dictionary where keys are metric names and values are DataFrames with models and their scores.
     """
     # Filter by dataset
     if "dataset_name" in df.columns:
@@ -68,16 +70,27 @@ def find_best_models(
         if metric_df.is_empty():
             continue
 
-        # For each metric, group by model_type and find the max
-        best_per_type = (
-            metric_df.sort(metric, descending=True)
-            .group_by("model_type")
-            .agg(
-                pl.col(metric).first().alias("max_value"),
-                pl.col("model_name").first().alias("best_model_name")
+        if dump:
+            # For dump mode, just sort by the metric and keep everything
+            best_per_type = (
+                metric_df.sort(metric, descending=True)
+                .select([
+                    pl.col("model_name").alias("best_model_name"),
+                    pl.col(metric).alias("max_value"),
+                    pl.col("model_type")
+                ])
             )
-            .sort("max_value", descending=True)
-        )
+        else:
+            # For each metric, group by model_type and find the max
+            best_per_type = (
+                metric_df.sort(metric, descending=True)
+                .group_by("model_type")
+                .agg(
+                    pl.col(metric).first().alias("max_value"),
+                    pl.col("model_name").first().alias("best_model_name")
+                )
+                .sort("max_value", descending=True)
+            )
         results[metric] = best_per_type
         
     return results

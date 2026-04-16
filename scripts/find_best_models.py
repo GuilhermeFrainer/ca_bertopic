@@ -18,7 +18,8 @@ def main():
     parser.add_argument("--dataset", type=str, required=True, help="Name of the dataset (e.g., fed, yelp, trump)")
     parser.add_argument("--exclude-clustering", type=str, nargs="+", help="Clustering algorithms to exclude.")
     parser.add_argument("--exclude-dim-red", type=str, nargs="+", help="Dimensionality reduction algorithms to exclude.")
-    parser.add_argument("--latex", action="store_true", help="Output the results as a LaTeX table.")
+    parser.add_argument("--latex", type=str, nargs='?', const='__STDOUT__', help="Output the results as a LaTeX table. Optionally specify a file path.")
+    parser.add_argument("--dump", action="store_true", help="Dump all results instead of only the best per type.")
     args = parser.parse_args()
 
     dataset = args.dataset
@@ -51,7 +52,8 @@ def main():
         df, 
         dataset, 
         exclude_clustering=args.exclude_clustering, 
-        exclude_dim_red=args.exclude_dim_red
+        exclude_dim_red=args.exclude_dim_red,
+        dump=args.dump
     )
 
     if not results:
@@ -59,11 +61,17 @@ def main():
         return
 
     if args.latex:
-        latex_table = generate_best_models_latex_table(results, dataset)
-        print("\n" + latex_table)
+        latex_table = generate_best_models_latex_table(results, dataset, dump=args.dump)
+        if args.latex == '__STDOUT__':
+            print("\n" + latex_table)
+        else:
+            output_path = Path(args.latex)
+            output_path.write_text(latex_table, encoding="utf-8")
+            print(f"LaTeX table saved to {output_path}")
     else:
-        print(f"\nBest models for dataset: {dataset}")
-        print("=" * (24 + len(dataset)))
+        title = "All model configurations" if args.dump else "Best models"
+        print(f"\n{title} for dataset: {dataset}")
+        print("=" * (len(title) + 14 + len(dataset)))
 
         for metric, best_per_type in results.items():
             print(f"\nMetric: {metric}")
@@ -71,10 +79,9 @@ def main():
             
             # Print results in a nice format
             for row in best_per_type.iter_rows(named=True):
-                model_type = row["model_type"]
+                model_name = row["best_model_name"]
                 max_value = row["max_value"]
-                best_model_name = row["best_model_name"]
-                print(f"  {model_type:<30} | {max_value:>8.4f} | ({best_model_name})")
+                print(f"  {model_name:<50} | {max_value:>8.4f}")
 
 if __name__ == "__main__":
     main()
