@@ -168,24 +168,58 @@ def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: 
     display_df = format_with_bold(final_df)
     display_df = display_df.rename(columns=actual_rename)
 
+    # Export to LaTeX
     latex = display_df.to_latex(
         index=False,
         caption=f"Best performing models by type for the {dataset} dataset." if not dump else f"All model configurations for the {dataset} dataset.",
         label=f"tab:best_models_{dataset}" if not dump else f"tab:all_models_{dataset}",
         escape=False,
-        column_format="l" + "r" * len(metric_cols)
+        column_format="l" + "r" * len(metric_cols),
+        position="h!"
     )
 
-    # Wrap in centering and resizebox
-    wrapped_latex = "\\begin{table}\n    \\centering\n"
-    wrapped_latex += f"    \\caption{{{display_df.attrs.get('caption', '')}}}\n" # to_latex already adds caption if provided, but we want custom wrapping
+    # Custom post-processing for indentation and wrapping
+    lines = latex.splitlines()
+    processed_lines = []
+    in_tabular = False
     
-    # Need to clean up the to_latex output to fit inside our manual table environment
-    # or just use the generated string and wrap it.
-    
-    # simpler approach: just use replace to add the wrappers
-    latex = latex.replace("\\begin{table}", "\\begin{table}\n    \\centering")
-    latex = latex.replace("\\begin{tabular}", "    \\resizebox{\\columnwidth}{!}{%\n        \\begin{tabular}")
-    latex = latex.replace("\\end{tabular}", "        \\end{tabular}%\n    }")
-    
-    return latex
+    for line in lines:
+        stripped = line.strip()
+        
+        # 1. Handle table environment wrapping and centering
+        if stripped.startswith("\\begin{table}"):
+            processed_lines.append("\\begin{table}")
+            processed_lines.append("\\centering")
+            continue
+        
+        if stripped.startswith("\\centering") or stripped.startswith("\\caption") or stripped.startswith("\\label"):
+            # Re-add these without indentation at the root level of the table environment
+            processed_lines.append(stripped)
+            continue
+            
+        # 2. Handle resizebox and tabular indentation
+        if stripped.startswith("\\begin{tabular}"):
+            processed_lines.append("\\resizebox{\\columnwidth}{!}{%")
+            processed_lines.append("    \\begin{tabular}" + stripped[15:])
+            in_tabular = True
+            continue
+            
+        if stripped.startswith("\\end{tabular}"):
+            processed_lines.append("    \\end{tabular}%")
+            processed_lines.append("}")
+            in_tabular = False
+            continue
+
+        # 3. Indent content within tabular
+        if in_tabular:
+            # Three levels deep (12 spaces)
+            processed_lines.append("            " + stripped)
+        else:
+            # Other lines (like \toprule outside, or \end{table})
+            if stripped == "\\end{table}":
+                processed_lines.append("\\end{table}")
+            elif stripped:
+                processed_lines.append(stripped)
+
+    return "\n".join(processed_lines)
+
