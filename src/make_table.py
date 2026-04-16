@@ -173,8 +173,7 @@ def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: 
         caption=f"Best performing models by type for the {dataset} dataset." if not dump else f"All model configurations for the {dataset} dataset.",
         label=f"tab:best_models_{dataset}" if not dump else f"tab:all_models_{dataset}",
         escape=False,
-        column_format="l" + "r" * len(metric_cols),
-        position="h!"
+        column_format="l" + "r" * len(metric_cols)
     )
 
     # Wrap in centering and resizebox
