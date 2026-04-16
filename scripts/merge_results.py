@@ -33,11 +33,11 @@ def get_dataset_name(file_path: pathlib.Path) -> str:
     try:
         if file_path.suffix == ".csv":
             # Just read the first few rows to get the dataset_name column
-            df = pl.read_csv(file_path, n_rows=5)
+            df = pl.read_csv(file_path, n_rows=5, infer_schema_length=None)
             if "dataset_name" in df.columns:
                 return df["dataset_name"][0]
         elif file_path.suffix == ".json":
-            df = pl.read_json(file_path)
+            df = pl.read_json(file_path, infer_schema_length=None)
             if "dataset_name" in df.columns:
                 return df["dataset_name"][0]
     except Exception as e:
@@ -98,9 +98,9 @@ def merge_files(files: List[pathlib.Path], output_path: pathlib.Path, dry_run: b
         dfs = []
         for f in files:
             if f.suffix == ".csv":
-                dfs.append(pl.read_csv(f))
+                dfs.append(pl.read_csv(f, infer_schema_length=None))
             elif f.suffix == ".json":
-                dfs.append(pl.read_json(f))
+                dfs.append(pl.read_json(f, infer_schema_length=None))
         
         if not dfs:
             return

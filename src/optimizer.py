@@ -283,7 +283,7 @@ class Optimizer:
         save_path = pathlib.Path(filepath)
         if save_path.exists():
             try:
-                existing_df = pl.read_csv(save_path)
+                existing_df = pl.read_csv(save_path, infer_schema_length=None)
                 # Ensure we cast new results to match the existing schema for safe vertical concatenation
                 df = pl.concat([existing_df, df.cast(existing_df.schema)], how="vertical")
             except Exception as e:
@@ -303,7 +303,7 @@ class Optimizer:
             # Handle merging if the qualitative file already exists
             if output_path.exists():
                 try:
-                    existing_qual_df = pl.read_json(output_path)
+                    existing_qual_df = pl.read_json(output_path, infer_schema_length=None)
                     consolidated_qual_df = pl.concat([existing_qual_df, consolidated_qual_df.cast(existing_qual_df.schema)], how="vertical")
                 except Exception as e:
                     self.logger.error(f"Failed to merge with existing qualitative results file: {e}")

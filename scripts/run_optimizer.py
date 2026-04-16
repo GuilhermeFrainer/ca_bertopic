@@ -97,7 +97,7 @@ def main():
                 latest_file = matching_files[-1]
                 try:
                     # Read the file to see how many results it has
-                    existing_df = pl.read_csv(latest_file)
+                    existing_df = pl.read_csv(latest_file, infer_schema_length=None)
                     start_index = len(existing_df)
                     results_path = latest_file
                     logger.info(f"Found existing results file: {latest_file}. Resuming from index {start_index}.")
@@ -142,7 +142,7 @@ def main():
 
         # Generate and save LaTeX table if there are any results in the final file
         if results_path.exists():
-            final_results_df = pl.read_csv(results_path)
+            final_results_df = pl.read_csv(results_path, infer_schema_length=None)
             if not final_results_df.is_empty():
                 latex_table = make_table.generate_latex_table(final_results_df)
                 table_filename = f"{results_path.stem}.tex"

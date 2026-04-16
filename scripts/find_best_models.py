@@ -32,7 +32,7 @@ def main():
     all_dfs = []
     for f in csv_files:
         try:
-            df = pl.read_csv(f)
+            df = pl.read_csv(f, infer_schema_length=None)
             # Filter by dataset early if possible
             if "dataset_name" in df.columns:
                 df = df.filter(pl.col("dataset_name") == dataset)

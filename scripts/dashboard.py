@@ -68,9 +68,9 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
     for file in all_files:
         try:
             if file.endswith(".csv"):
-                df = pl.read_csv(file)
+                df = pl.read_csv(file, infer_schema_length=None)
             elif file.endswith(".json"):
-                df = pl.read_json(file)
+                df = pl.read_json(file, infer_schema_length=None)
             else:
                 continue
 
