@@ -9,12 +9,16 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.results_analysis import find_best_models
+from src.make_table import generate_best_models_latex_table
 
 RESULTS_DIR = PROJECT_ROOT / "results"
 
 def main():
     parser = argparse.ArgumentParser(description="Find the best performing model of each type for each metric.")
     parser.add_argument("--dataset", type=str, required=True, help="Name of the dataset (e.g., fed, yelp, trump)")
+    parser.add_argument("--exclude-clustering", type=str, nargs="+", help="Clustering algorithms to exclude.")
+    parser.add_argument("--exclude-dim-red", type=str, nargs="+", help="Dimensionality reduction algorithms to exclude.")
+    parser.add_argument("--latex", action="store_true", help="Output the results as a LaTeX table.")
     args = parser.parse_args()
 
     dataset = args.dataset
@@ -43,25 +47,34 @@ def main():
     # Combine all dataframes
     df = pl.concat(all_dfs, how="diagonal")
 
-    results = find_best_models(df, dataset)
+    results = find_best_models(
+        df, 
+        dataset, 
+        exclude_clustering=args.exclude_clustering, 
+        exclude_dim_red=args.exclude_dim_red
+    )
 
     if not results:
         print(f"No valid metric results found for dataset: {dataset}")
         return
 
-    print(f"\nBest models for dataset: {dataset}")
-    print("=" * (24 + len(dataset)))
+    if args.latex:
+        latex_table = generate_best_models_latex_table(results, dataset)
+        print("\n" + latex_table)
+    else:
+        print(f"\nBest models for dataset: {dataset}")
+        print("=" * (24 + len(dataset)))
 
-    for metric, best_per_type in results.items():
-        print(f"\nMetric: {metric}")
-        print("-" * (8 + len(metric)))
-        
-        # Print results in a nice format
-        for row in best_per_type.iter_rows(named=True):
-            model_type = row["model_type"]
-            max_value = row["max_value"]
-            best_model_name = row["best_model_name"]
-            print(f"  {model_type:<30} | {max_value:>8.4f} | ({best_model_name})")
+        for metric, best_per_type in results.items():
+            print(f"\nMetric: {metric}")
+            print("-" * (8 + len(metric)))
+            
+            # Print results in a nice format
+            for row in best_per_type.iter_rows(named=True):
+                model_type = row["model_type"]
+                max_value = row["max_value"]
+                best_model_name = row["best_model_name"]
+                print(f"  {model_type:<30} | {max_value:>8.4f} | ({best_model_name})")
 
 if __name__ == "__main__":
     main()

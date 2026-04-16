@@ -54,3 +54,28 @@ def test_find_best_models_filtering():
     
     results_yelp = find_best_models(df, "yelp")
     assert results_yelp["c_v"].filter(pl.col("model_type") == "baseline")["max_value"][0] == 0.9
+
+def test_find_best_models_exclusion():
+    data = {
+        "model_name": ["pca_mv_1", "umap_mv_1", "k_means_1", "spectral_1"],
+        "dataset_name": ["fed", "fed", "fed", "fed"],
+        "clustering_algo": ["mv", "mv", "k_means", "spectral"],
+        "dim_red_algo": ["pca", "umap", "umap", "umap"],
+        "c_v": [0.5, 0.6, 0.7, 0.8]
+    }
+    df = pl.DataFrame(data)
+    
+    # Exclude PCA
+    res_no_pca = find_best_models(df, "fed", exclude_dim_red=["pca"])
+    # Should only have umap_mv_1, k_means_1, spectral_1
+    all_best_names = []
+    for m_df in res_no_pca.values():
+        all_best_names.extend(m_df["best_model_name"].to_list())
+    assert "pca_mv_1" not in all_best_names
+    
+    # Exclude K-Means
+    res_no_kmeans = find_best_models(df, "fed", exclude_clustering=["k_means"])
+    all_best_names = []
+    for m_df in res_no_kmeans.values():
+        all_best_names.extend(m_df["best_model_name"].to_list())
+    assert "k_means_1" not in all_best_names

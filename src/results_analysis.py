@@ -15,13 +15,20 @@ def extract_model_type(model_name: str) -> str:
             return "_".join(parts[:-1])
     return model_name
 
-def find_best_models(df: pl.DataFrame, dataset: str) -> Dict[str, pl.DataFrame]:
+def find_best_models(
+    df: pl.DataFrame, 
+    dataset: str, 
+    exclude_clustering: List[str] | None = None, 
+    exclude_dim_red: List[str] | None = None
+) -> Dict[str, pl.DataFrame]:
     """
     Finds the best performing model of each model type for each metric in the given dataset.
     
     Args:
         df: Polars DataFrame containing experiment results.
         dataset: The name of the dataset to filter by.
+        exclude_clustering: Optional list of clustering algorithms to exclude.
+        exclude_dim_red: Optional list of dimensionality reduction algorithms to exclude.
         
     Returns:
         A dictionary where keys are metric names and values are DataFrames with the best models per type.
@@ -30,6 +37,16 @@ def find_best_models(df: pl.DataFrame, dataset: str) -> Dict[str, pl.DataFrame]:
     if "dataset_name" in df.columns:
         df = df.filter(pl.col("dataset_name") == dataset)
     
+    if df.is_empty():
+        return {}
+
+    # Apply exclusion filters
+    if exclude_clustering:
+        df = df.filter(~pl.col("clustering_algo").is_in(exclude_clustering))
+    
+    if exclude_dim_red:
+        df = df.filter(~pl.col("dim_red_algo").is_in(exclude_dim_red))
+
     if df.is_empty():
         return {}
 

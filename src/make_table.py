@@ -94,3 +94,67 @@ def generate_latex_table(df: pl.DataFrame) -> str:
     final_df = renamed_df.select([c for c in cols_to_keep if c in renamed_df.columns])
 
     return final_df.to_pandas().to_latex(index=False, float_format="%.3f")
+
+
+def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: str) -> str:
+    """
+    Generates a consolidated LaTeX table from the best models analysis results.
+
+    Args:
+        results: Dictionary mapping metric names to Polars DataFrames of best models.
+        dataset: Name of the dataset.
+
+    Returns:
+        A LaTeX table string.
+    """
+    import pandas as pd
+
+    if not results:
+        return ""
+
+    # 1. Gather all unique model types present in any of the metric results
+    all_model_types = set()
+    for metric_df in results.values():
+        all_model_types.update(metric_df["model_type"].to_list())
+    
+    all_model_types = sorted(list(all_model_types))
+
+    # 2. Build a matrix: rows are model types, columns are metrics
+    rows = []
+    for mt in all_model_types:
+        row = {"Model Type": mt.replace("_", " ")}
+        for metric, metric_df in results.items():
+            # Find the max_value for this specific model_type
+            match = metric_df.filter(pl.col("model_type") == mt)
+            if not match.is_empty():
+                row[metric] = match["max_value"][0]
+            else:
+                row[metric] = None
+        rows.append(row)
+
+    # 3. Create Pandas DataFrame for easy LaTeX export
+    final_df = pd.DataFrame(rows)
+
+    # 4. Rename columns for a professional LaTeX look
+    rename_map = {
+        "u_mass": "$U_{Mass}$",
+        "c_v": "$c_v$",
+        "c_npmi": "$c_{npmi}$",
+        "irbo": "IRBO",
+        "topic_diversity": "Diversity"
+    }
+    # Only rename if the column exists
+    actual_rename = {k: v for k, v in rename_map.items() if k in final_df.columns}
+    final_df = final_df.rename(columns=actual_rename)
+
+    # 5. Export to LaTeX
+    latex = final_df.to_latex(
+        index=False,
+        float_format="%.3f",
+        caption=f"Best performing models by type for the {dataset} dataset.",
+        label=f"tab:best_models_{dataset}",
+        na_rep="-",
+        escape=False # Allow LaTeX math in headers
+    )
+
+    return latex
