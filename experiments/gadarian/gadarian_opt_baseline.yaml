@@ -1,0 +1,29 @@
+extends: "datasets/gadarian.yaml"
+
+experiment:
+  name: "gadarian_opt_baseline"
+  description: "Optimizing the parameters for baseline model on Gadarian dataset."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "baseline"
+  description: "Standard BERTopic: no metadata and default hyperparameters."
+  is_baseline: true
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      n_components:
+        - 5
+        - 10
+        - 15
+      metric: "cosine"
+  clustering:
+    type: "hdbscan"
+    params:
+      min_cluster_size:
+        - 5
+        - 10
+        - 15
+        - 20

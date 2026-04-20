@@ -1,0 +1,31 @@
+extends: "datasets/anes.yaml"
+
+experiment:
+  name: "anes_opt_aligned_umap"
+  description: "Hyperparameter optimization for Aligned UMAP on ANES dataset."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "aligned_umap"
+  description: "BERTopic with Aligned UMAP integration."
+  dimensionality_reduction:
+    type: "aligned_umap"
+    params:
+      n_neighbors:
+        - 15
+        - 30
+      min_dist:
+        - 0.0
+        - 0.1
+      n_components:
+        - 5
+        - 10
+      metric: "cosine"
+  clustering:
+    type: "hdbscan"
+    params:
+      min_cluster_size:
+        - 5
+        - 10
+        - 15
