@@ -45,25 +45,33 @@ def get_dataset_name(file_path: pathlib.Path) -> str:
     return None
 
 
-def group_files(directory: pathlib.Path, extension: str) -> Dict[str, List[pathlib.Path]]:
+def group_files(directory: pathlib.Path, extension: str, ignore_suffix: str = None) -> Dict[str, List[pathlib.Path]]:
     """
     Groups files by dataset_name and keeps only the latest run for each experiment.
+    Also includes files that don't match the experiment pattern but have a dataset_name.
     """
     latest_runs: Dict[Tuple[str, str, str], Tuple[str, pathlib.Path]] = {}
+    base_files: Dict[str, List[pathlib.Path]] = {}
     
     for file_path in directory.glob(f"*{extension}"):
-        exp_id, timestamp, random_state = parse_filename(file_path.name)
-        if not exp_id:
+        # Avoid including the file we might be writing to
+        if ignore_suffix and file_path.stem.endswith(ignore_suffix):
             continue
-            
+
+        exp_id, timestamp, random_state = parse_filename(file_path.name)
+        
         dataset_name = get_dataset_name(file_path)
         if not dataset_name:
             continue
             
-        key = (dataset_name, exp_id, random_state)
-        
-        if key not in latest_runs or timestamp > latest_runs[key][0]:
-            latest_runs[key] = (timestamp, file_path)
+        if exp_id:
+            key = (dataset_name, exp_id, random_state)
+            if key not in latest_runs or timestamp > latest_runs[key][0]:
+                latest_runs[key] = (timestamp, file_path)
+        else:
+            if dataset_name not in base_files:
+                base_files[dataset_name] = []
+            base_files[dataset_name].append(file_path)
             
     # Regroup by dataset_name
     grouped: Dict[str, List[pathlib.Path]] = {}
@@ -71,6 +79,14 @@ def group_files(directory: pathlib.Path, extension: str) -> Dict[str, List[pathl
         if dataset_name not in grouped:
             grouped[dataset_name] = []
         grouped[dataset_name].append(file_path)
+        
+    for dataset_name, files in base_files.items():
+        if dataset_name not in grouped:
+            grouped[dataset_name] = []
+        # Add base files, but avoid duplicates if they were somehow already in latest_runs
+        for bf in files:
+            if bf not in grouped[dataset_name]:
+                grouped[dataset_name].append(bf)
         
     return grouped
 
@@ -107,6 +123,10 @@ def merge_files(files: List[pathlib.Path], output_path: pathlib.Path, dry_run: b
 
         merged_df = pl.concat(dfs, how="diagonal")
         
+        # Deduplicate: only remove rows that are 100% identical across all columns
+        if output_path.suffix == ".csv":
+            merged_df = merged_df.unique(maintain_order=True)
+
         if output_path.suffix == ".csv":
             merged_df.write_csv(output_path)
         elif output_path.suffix == ".json":
@@ -156,7 +176,7 @@ def main():
     # Process CSV Results
     print("--- Processing CSV Results ---")
     if results_dir.exists():
-        grouped_csv = group_files(results_dir, ".csv")
+        grouped_csv = group_files(results_dir, ".csv", ignore_suffix=args.suffix)
         all_csv_to_move = []
         for dataset, files in grouped_csv.items():
             output_path = results_dir / f"{dataset}{args.suffix}.csv"
@@ -171,7 +191,7 @@ def main():
     # Process JSON Outputs
     print("\n--- Processing JSON Outputs ---")
     if output_dir.exists():
-        grouped_json = group_files(output_dir, ".json")
+        grouped_json = group_files(output_dir, ".json", ignore_suffix=args.suffix)
         all_json_to_move = []
         for dataset, files in grouped_json.items():
             output_path = output_dir / f"{dataset}{args.suffix}.json"
