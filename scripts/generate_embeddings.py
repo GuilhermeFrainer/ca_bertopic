@@ -22,7 +22,7 @@ def main():
         "--dataset",
         type=str,
         required=True,
-        choices=["trump", "yelp", "fed", "anes"],
+        choices=["trump", "yelp", "fed", "anes", "gadarian"],
         help="The name of the dataset to process.",
     )
     parser.add_argument(

@@ -22,19 +22,21 @@ RAW_DATA_PATHS = {
     "yelp": PROJECT_ROOT / "data/interim/yelp_reviews.parquet",
     "fed": PROJECT_ROOT / "data/interim/fed_communications.parquet",
     "anes": PROJECT_ROOT / "data/interim/anes_2008.parquet",
+    "gadarian": PROJECT_ROOT / "data/interim/gadarian.parquet",
 }
 INTERIM_DATA_PATHS = {
     "trump": PROJECT_ROOT / "data/interim/trump_processed.parquet",
     "yelp": PROJECT_ROOT / "data/interim/yelp_processed.parquet",
     "fed": PROJECT_ROOT / "data/interim/fed_processed.parquet",
     "anes": PROJECT_ROOT / "data/interim/anes_processed.parquet",
+    "gadarian": PROJECT_ROOT / "data/interim/gadarian_processed.parquet",
 }
 
 
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(description="Preprocess datasets for topic modeling.")
-    parser.add_argument("--dataset", type=str, required=True, choices=["trump", "yelp", "fed", "anes"])
+    parser.add_argument("--dataset", type=str, required=True, choices=["trump", "yelp", "fed", "anes", "gadarian"])
     parser.add_argument("--max-tokens", type=int, help="Maximum number of tokens per chunk.")
     parser.add_argument(
         "--include-metadata",
