@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.builders import fed, yelp
+from src.builders import fed, yelp, anes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -26,7 +26,7 @@ def main():
         "--dataset", 
         type=str, 
         required=True, 
-        choices=["fed", "yelp"], # Add future datasets here
+        choices=["fed", "yelp", "anes"], # Add future datasets here
         help="The dataset to build."
     )
     
@@ -45,6 +45,9 @@ def main():
     elif args.dataset == "yelp":
         logger.info("Building Yelp dataset...")
         yelp.build(raw_dir=RAW_DIR, interim_dir=INTERIM_DIR, skip_convert=args.skip_convert)
+    elif args.dataset == "anes":
+        logger.info("Building ANES dataset...")
+        anes.build(raw_dir=RAW_DIR, interim_dir=INTERIM_DIR)
     # Add future datasets here:
     # elif args.dataset == "new_dataset":
     #     logger.info("Building New Dataset...")

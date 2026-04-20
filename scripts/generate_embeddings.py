@@ -22,7 +22,8 @@ def main():
         "--dataset",
         type=str,
         required=True,
-        help="The name of the dataset to process (e.g., 'yelp', 'trump').",
+        choices=["trump", "yelp", "fed", "anes"],
+        help="The name of the dataset to process.",
     )
     parser.add_argument(
         "--columns",
@@ -44,7 +45,6 @@ def main():
     )
     args = parser.parse_args()
 
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent
     input_path = PROJECT_ROOT / f"data/interim/{args.dataset}_processed.parquet"
     batch_dir = PROJECT_ROOT / f"data/interim/{args.dataset}_embeddings_batches"
     final_output_path = PROJECT_ROOT / f"data/processed/{args.dataset}_embeddings.parquet"
