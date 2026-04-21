@@ -130,9 +130,7 @@ def process_dataset(
             # Loop through every requested column and generate embeddings
             for col in target_columns:
                 texts = chunk[col].to_list()
-                embeddings = embedding_model.encode(
-                    texts, show_progress_bar=False
-                )
+                embeddings = embedding_model.encode(texts, show_progress_bar=False)
 
                 # Add the new column with suffix
                 chunk = chunk.with_columns(

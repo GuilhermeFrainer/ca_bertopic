@@ -47,7 +47,9 @@ def main():
 
     input_path = PROJECT_ROOT / f"data/interim/{args.dataset}_processed.parquet"
     batch_dir = PROJECT_ROOT / f"data/interim/{args.dataset}_embeddings_batches"
-    final_output_path = PROJECT_ROOT / f"data/processed/{args.dataset}_embeddings.parquet"
+    final_output_path = (
+        PROJECT_ROOT / f"data/processed/{args.dataset}_embeddings.parquet"
+    )
 
     process_dataset(
         input_path=input_path,

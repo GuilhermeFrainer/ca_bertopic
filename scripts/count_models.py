@@ -1,6 +1,6 @@
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -8,17 +8,20 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import src.utils as utils
-from src.optimizer import generate_hyperparameter_combinations, clean_varied_params
+from src.optimizer import clean_varied_params, generate_hyperparameter_combinations
 
 EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Count and list model configurations in an experiment.")
+    parser = argparse.ArgumentParser(
+        description="Count and list model configurations in an experiment."
+    )
     parser.add_argument(
-        "--exp", 
-        type=str, 
-        required=True, 
-        help="Name of the optimization yaml file (e.g., yelp_opt_spectral)"
+        "--exp",
+        type=str,
+        required=True,
+        help="Name of the optimization yaml file (e.g., yelp_opt_spectral)",
     )
     args = parser.parse_args()
 
@@ -26,7 +29,9 @@ def main():
         config = utils.load_config(args.exp, EXPERIMENTS_DIR)
         model_config = config.get("model")
         if not model_config:
-            print(f"Error: Configuration file '{args.exp}' must contain a 'model' section for optimization.")
+            print(
+                f"Error: Configuration file '{args.exp}' must contain a 'model' section for optimization."
+            )
             return
 
         combinations = generate_hyperparameter_combinations(model_config)
@@ -42,6 +47,7 @@ def main():
         print(f"Error: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+
 
 if __name__ == "__main__":
     main()

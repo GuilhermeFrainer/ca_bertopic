@@ -1,9 +1,9 @@
 import logging
-from pathlib import Path
-import yaml
 import random
+from pathlib import Path
 
 import polars as pl
+import yaml
 
 
 def load_config(exp_name: str, experiments_dir: Path) -> dict:
@@ -25,7 +25,7 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
         base_rel_path = config.pop("extends")
         # Ensure we can load from subdirectories like 'datasets/'
         base_path = experiments_dir / base_rel_path
-        
+
         if not base_path.exists():
             raise FileNotFoundError(f"Base config file {base_path} not found.")
 
@@ -34,7 +34,11 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
             logger.info(f"Loaded base config from {base_path}")
 
         # If base file is flat (no 'experiment' key), treat it as 'experiment' data
-        if "experiment" not in base_config and "models" not in base_config and "model" not in base_config:
+        if (
+            "experiment" not in base_config
+            and "models" not in base_config
+            and "model" not in base_config
+        ):
             base_config = {"experiment": base_config}
 
         # Merge logic (Replace strategy)
@@ -45,7 +49,7 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
             else:
                 # Replace other top-level keys (e.g., 'models', 'model')
                 base_config[key] = value
-        
+
         config = base_config
 
     logger.info(f"Loaded config from {config_path}")
@@ -61,7 +65,9 @@ def get_random_state(random_state: str | int) -> int:
         raise ValueError(f"Invalid random state: {random_state}")
 
 
-def extract_qualitative_data(topic_model, model_id: str, metadata: dict) -> pl.DataFrame:
+def extract_qualitative_data(
+    topic_model, model_id: str, metadata: dict
+) -> pl.DataFrame:
     """
     Extracts c-TF-IDF words and representative documents from a BERTopic model.
 
@@ -73,8 +79,9 @@ def extract_qualitative_data(topic_model, model_id: str, metadata: dict) -> pl.D
     Returns:
         Polars DataFrame with topic information and metadata.
     """
-    import polars as pl
     import json
+
+    import polars as pl
 
     # Get topic info from BERTopic (returns a pandas DataFrame)
     topic_info = topic_model.get_topic_info()
@@ -88,7 +95,7 @@ def extract_qualitative_data(topic_model, model_id: str, metadata: dict) -> pl.D
         "Count": "count",
         "Name": "name",
         "Representation": "representation",
-        "Representative_Docs": "representative_docs"
+        "Representative_Docs": "representative_docs",
     }
     # Only rename if they exist
     actual_rename = {k: v for k, v in rename_dict.items() if k in df.columns}
@@ -110,4 +117,3 @@ def extract_qualitative_data(topic_model, model_id: str, metadata: dict) -> pl.D
 
     final_order = ["model_id"] + existing_topic_cols + metadata_keys
     return df.select(final_order)
-        

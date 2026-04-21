@@ -1,5 +1,5 @@
 import polars as pl
-from great_tables import GT, style, loc
+from great_tables import GT
 
 
 def generate_gt_table(df: pl.DataFrame) -> GT:
@@ -22,15 +22,22 @@ def generate_gt_table(df: pl.DataFrame) -> GT:
 
     # Core columns to show
     core_cols = [
-        "model_name", "dataset_name", "timestamp", "n_observations",
-        "clustering_algo", "dim_red_algo", "n_topics"
+        "model_name",
+        "dataset_name",
+        "timestamp",
+        "n_observations",
+        "clustering_algo",
+        "dim_red_algo",
+        "n_topics",
     ]
-    
+
     # Identify metric columns (everything else that is numeric)
     exclude_from_metrics = core_cols + ["duration_seconds", "outliers"]
     metric_cols = [
-        col for col in display_df.columns 
-        if col not in exclude_from_metrics and display_df[col].dtype in [pl.Float64, pl.Float32]
+        col
+        for col in display_df.columns
+        if col not in exclude_from_metrics
+        and display_df[col].dtype in [pl.Float64, pl.Float32]
     ]
 
     # Final selection and ordering
@@ -42,12 +49,9 @@ def generate_gt_table(df: pl.DataFrame) -> GT:
         GT(display_df.to_pandas())
         .tab_header(
             title="BERTopic Experiment Results",
-            subtitle="Comparison of topic modeling configurations and metrics"
+            subtitle="Comparison of topic modeling configurations and metrics",
         )
-        .fmt_number(
-            columns=metric_cols,
-            decimals=3
-        )
+        .fmt_number(columns=metric_cols, decimals=3)
         .cols_label(
             model_name="Model",
             dataset_name="Dataset",
@@ -55,12 +59,9 @@ def generate_gt_table(df: pl.DataFrame) -> GT:
             n_observations="Obs",
             clustering_algo="Clustering",
             dim_red_algo="Dim Red",
-            n_topics="Topics"
+            n_topics="Topics",
         )
-        .tab_options(
-            table_font_size="smaller",
-            column_labels_font_weight="bold"
-        )
+        .tab_options(table_font_size="smaller", column_labels_font_weight="bold")
     )
 
     return gt_table
@@ -74,29 +75,40 @@ def generate_latex_table(df: pl.DataFrame) -> str:
     if "n_clusters" in df.columns:
         df = df.with_columns(pl.col("n_clusters").cast(pl.Int64, strict=False))
 
-    renamed_df = df.with_columns(
-        pl.col("model_name").str.replace_all("_", " ")
-    ).drop([
-        "outliers",
-        "duration_seconds"
-    ]).rename({
-        "model_name": "Model",
-        "n_topics": "Topics",
-        "u_mass": "$U_{Mass}$",
-        "c_v": "$c_v$",
-        "c_npmi": "$c_{npmi}$",
-        "irbo": "IRBO",
-        "topic_diversity": "Diversity"
-    })
+    renamed_df = (
+        df.with_columns(pl.col("model_name").str.replace_all("_", " "))
+        .drop(["outliers", "duration_seconds"])
+        .rename(
+            {
+                "model_name": "Model",
+                "n_topics": "Topics",
+                "u_mass": "$U_{Mass}$",
+                "c_v": "$c_v$",
+                "c_npmi": "$c_{npmi}$",
+                "irbo": "IRBO",
+                "topic_diversity": "Diversity",
+            }
+        )
+    )
 
     # Filter to only existing columns in the rename map + core ones
-    cols_to_keep = ["Model", "Topics", "$U_{Mass}$", "$c_v$", "$c_{npmi}$", "IRBO", "Diversity"]
+    cols_to_keep = [
+        "Model",
+        "Topics",
+        "$U_{Mass}$",
+        "$c_v$",
+        "$c_{npmi}$",
+        "IRBO",
+        "Diversity",
+    ]
     final_df = renamed_df.select([c for c in cols_to_keep if c in renamed_df.columns])
 
     return final_df.to_pandas().to_latex(index=False, float_format="%.3f")
 
 
-def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: str, dump: bool = False) -> str:
+def generate_best_models_latex_table(
+    results: dict[str, pl.DataFrame], dataset: str, dump: bool = False
+) -> str:
     """
     Generates a consolidated LaTeX table from the best models analysis results.
 
@@ -109,7 +121,6 @@ def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: 
         A LaTeX table string.
     """
     import pandas as pd
-    import numpy as np
 
     if not results:
         return ""
@@ -119,7 +130,7 @@ def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: 
     all_ids = set()
     for metric_df in results.values():
         all_ids.update(metric_df[id_col].to_list())
-    
+
     all_ids = sorted(list(all_ids))
 
     # 2. Build a matrix: rows are model types/names, columns are metrics
@@ -141,17 +152,17 @@ def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: 
 
     # 4. Identify best values for bolding
     metric_cols = [c for c in final_df.columns if c not in ["Model Type", "Model"]]
-    
+
     # 5. Export to LaTeX with specific formatting
     rename_map = {
         "u_mass": "$C_{\\text{UMass}}$",
         "c_v": "$C_v$",
         "c_npmi": "$C_{npmi}$",
         "irbo": "IRBO",
-        "topic_diversity": "Diversity"
+        "topic_diversity": "Diversity",
     }
     actual_rename = {k: v for k, v in rename_map.items() if k in final_df.columns}
-    
+
     # We'll use a custom formatter for bolding
     def format_with_bold(df):
         formatted_df = df.copy()
@@ -161,7 +172,11 @@ def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: 
                 if not valid_vals.empty:
                     max_val = valid_vals.max()
                     formatted_df[col] = df[col].apply(
-                        lambda x: f"\\textbf{{{x:.3f}}}" if pd.notnull(x) and x == max_val else (f"{x:.3f}" if pd.notnull(x) else "-")
+                        lambda x: (
+                            f"\\textbf{{{x:.3f}}}"
+                            if pd.notnull(x) and x == max_val
+                            else (f"{x:.3f}" if pd.notnull(x) else "-")
+                        )
                     )
         return formatted_df
 
@@ -171,39 +186,45 @@ def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: 
     # Export to LaTeX
     latex = display_df.to_latex(
         index=False,
-        caption=f"Best performing models by type for the {dataset} dataset." if not dump else f"All model configurations for the {dataset} dataset.",
+        caption=f"Best performing models by type for the {dataset} dataset."
+        if not dump
+        else f"All model configurations for the {dataset} dataset.",
         label=f"tab:best_models_{dataset}" if not dump else f"tab:all_models_{dataset}",
         escape=False,
         column_format="l" + "r" * len(metric_cols),
-        position="h!"
+        position="h!",
     )
 
     # Custom post-processing for indentation and wrapping
     lines = latex.splitlines()
     processed_lines = []
     in_tabular = False
-    
+
     for line in lines:
         stripped = line.strip()
-        
+
         # 1. Handle table environment wrapping and centering
         if stripped.startswith("\\begin{table}"):
             processed_lines.append("\\begin{table}")
             processed_lines.append("\\centering")
             continue
-        
-        if stripped.startswith("\\centering") or stripped.startswith("\\caption") or stripped.startswith("\\label"):
+
+        if (
+            stripped.startswith("\\centering")
+            or stripped.startswith("\\caption")
+            or stripped.startswith("\\label")
+        ):
             # Re-add these without indentation at the root level of the table environment
             processed_lines.append(stripped)
             continue
-            
+
         # 2. Handle resizebox and tabular indentation
         if stripped.startswith("\\begin{tabular}"):
             processed_lines.append("\\resizebox{\\columnwidth}{!}{%")
             processed_lines.append("    \\begin{tabular}" + stripped[15:])
             in_tabular = True
             continue
-            
+
         if stripped.startswith("\\end{tabular}"):
             processed_lines.append("    \\end{tabular}%")
             processed_lines.append("}")
@@ -222,4 +243,3 @@ def generate_best_models_latex_table(results: dict[str, pl.DataFrame], dataset: 
                 processed_lines.append(stripped)
 
     return "\n".join(processed_lines)
-

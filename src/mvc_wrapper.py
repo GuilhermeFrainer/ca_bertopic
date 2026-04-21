@@ -1,29 +1,29 @@
-from sklearn.base import ClusterMixin, BaseEstimator
 from typing import Optional
+
 import numpy as np
+from sklearn.base import BaseEstimator, ClusterMixin
 
 
 class MVCWrapper(BaseEstimator, ClusterMixin):
     metadata: np.ndarray
     labels_: Optional[np.ndarray]
 
-
     def __init__(self, model, metadata: np.ndarray):
         self.model = model
         self.metadata = metadata
         self.labels_ = None
 
-
     def fit(self, X, y=None):
         if not len(X) == len(self.metadata):
-             raise ValueError(f"Shape mismatch between text data and metadata: {len(X)} vs {len(self.metadata)}")
+            raise ValueError(
+                f"Shape mismatch between text data and metadata: {len(X)} vs {len(self.metadata)}"
+            )
 
         Xs = [X, self.metadata]
         self.model.fit(Xs)
 
         self.labels_ = self.model.labels_
         return self
-
 
     def predict(self, X):
         if not len(X) == len(self.metadata):
@@ -32,7 +32,7 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
             )
         Xs = [X, self.metadata]
         return self.model.predict(Xs)
-    
+
 
 class AlignedUMAPWrapper(BaseEstimator):
     relations: dict
@@ -43,7 +43,6 @@ class AlignedUMAPWrapper(BaseEstimator):
         self.model = model
         self.metadata = metadata
         self.training_embeddings = None
-
 
     def fit(self, X, y=None):
         # Relations mapping needed for AlignUMAP
@@ -72,7 +71,6 @@ class AlignedUMAPWrapper(BaseEstimator):
 
         return self
 
-
     def transform(self, X):
         # Return the pre-calculated embeddings
         # BERTopic calls fit(X).transform(X) internally.
@@ -81,4 +79,3 @@ class AlignedUMAPWrapper(BaseEstimator):
             return self.training_embeddings
         else:
             raise ValueError("Model has not been fitted yet.")
-

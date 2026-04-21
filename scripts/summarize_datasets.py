@@ -43,35 +43,32 @@ def compute_dataset_summary(file_path: str) -> Dict[str, Any]:
     # Use count_matches for memory-efficient counting instead of split().list.len()
     # Tokens: sequences of non-whitespace characters
     # Sentences: occurrences of . ! ?
-    summary_lf = (
-        lf.select(
-            [
-                pl.lit(path.name).alias("Dataset"),
-                pl.len().alias("Total Documents"),
-                # Preprocessing Metrics: Count empty or null clean_text documents
-                (
-                    pl.col(CLEAN_TEXT_COL).is_null().sum()
-                    + (pl.col(CLEAN_TEXT_COL) == "").sum()
-                ).alias("Empty Clean Docs"),
-                # Token/Sentence Counts per document
-                # Approximation: count spaces + 1 for tokens, punct for sentences
-                # Using regex for tokens: \S+ matches non-whitespace sequences
-                pl.col(TEXT_COL).str.count_matches(r"\S+").alias("token_counts"),
-                pl.col(TEXT_COL).str.count_matches(r"[\.\!\?]").alias("sentence_counts"),
-            ]
-        )
-        .select(
-            [
-                pl.col("Dataset"),
-                pl.col("Total Documents"),
-                pl.col("Empty Clean Docs"),
-                pl.col("token_counts").sum().alias("Total Tokens"),
-                pl.col("sentence_counts").sum().alias("Total Sentences"),
-                pl.col("token_counts").mean().alias("Avg Tokens/Doc"),
-                pl.col("token_counts").median().alias("Median Tokens/Doc"),
-                pl.col("token_counts").std().alias("Std Tokens/Doc"),
-            ]
-        )
+    summary_lf = lf.select(
+        [
+            pl.lit(path.name).alias("Dataset"),
+            pl.len().alias("Total Documents"),
+            # Preprocessing Metrics: Count empty or null clean_text documents
+            (
+                pl.col(CLEAN_TEXT_COL).is_null().sum()
+                + (pl.col(CLEAN_TEXT_COL) == "").sum()
+            ).alias("Empty Clean Docs"),
+            # Token/Sentence Counts per document
+            # Approximation: count spaces + 1 for tokens, punct for sentences
+            # Using regex for tokens: \S+ matches non-whitespace sequences
+            pl.col(TEXT_COL).str.count_matches(r"\S+").alias("token_counts"),
+            pl.col(TEXT_COL).str.count_matches(r"[\.\!\?]").alias("sentence_counts"),
+        ]
+    ).select(
+        [
+            pl.col("Dataset"),
+            pl.col("Total Documents"),
+            pl.col("Empty Clean Docs"),
+            pl.col("token_counts").sum().alias("Total Tokens"),
+            pl.col("sentence_counts").sum().alias("Total Sentences"),
+            pl.col("token_counts").mean().alias("Avg Tokens/Doc"),
+            pl.col("token_counts").median().alias("Median Tokens/Doc"),
+            pl.col("token_counts").std().alias("Std Tokens/Doc"),
+        ]
     )
 
     # Single collect call to execute the optimized physical plan
@@ -134,14 +131,14 @@ def main() -> None:
 
     # Ensure output directory exists
     OUTPUT_DIR.mkdir(exist_ok=True)
-    
+
     # Export to LaTeX
     latex_output_path = OUTPUT_DIR / "dataset_summary.tex"
     latex_code = gt_table.as_latex()
-    
+
     with open(latex_output_path, "w", encoding="utf-8") as f:
         f.write(latex_code)
-        
+
     logger.info(f"\nLaTeX table saved to: {latex_output_path}")
 
 

@@ -6,18 +6,18 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import polars as pl
-import datetime
 import argparse
+import datetime
 import traceback
-import numpy as np
 
-import src.utils as utils
+import numpy as np
+import polars as pl
+
 import src.data as data
 import src.logger_config as logger_config
 import src.make_table as make_table
+import src.utils as utils
 from src.optimizer import Optimizer
-
 
 EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
 RESULTS_DIR = PROJECT_ROOT / "results"
@@ -28,25 +28,23 @@ TABLES_DIR = PROJECT_ROOT / "tables"
 def main():
     parser = argparse.ArgumentParser(description="Run a hyperparameter optimization.")
     parser.add_argument(
-        "--exp", 
-        type=str, 
-        required=True, 
-        help="Name of the optimization yaml file (e.g., yelp_opt_spectral)"
+        "--exp",
+        type=str,
+        required=True,
+        help="Name of the optimization yaml file (e.g., yelp_opt_spectral)",
     )
     parser.add_argument(
         "--sample",
         type=int,
-        help="Override the sample size specified in the config file."
+        help="Override the sample size specified in the config file.",
     )
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="Resume an interrupted optimization run if existing results are found."
+        help="Resume an interrupted optimization run if existing results are found.",
     )
     parser.add_argument(
-        "--model",
-        type=int,
-        help="Run only the n-th model configuration (1-indexed)."
+        "--model", type=int, help="Run only the n-th model configuration (1-indexed)."
     )
     args = parser.parse_args()
 
@@ -64,24 +62,29 @@ def main():
         random_state = utils.get_random_state(config["experiment"]["random_state"])
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
-        
+
         # Data loading
         logger.info("Loading and preparing data...")
         text, embeddings, scaled_metadata = data.load_and_prep_data(
-            config, random_state=random_state)
+            config, random_state=random_state
+        )
 
         # Check for NaNs and warn if found
         if np.isnan(scaled_metadata).any():
             # Identifying columns with NaNs in the final metadata matrix
             nan_indices = np.where(np.isnan(scaled_metadata).any(axis=0))[0]
-            logger.warning(f"Metadata contains NaN values in {len(nan_indices)} feature columns.")
+            logger.warning(
+                f"Metadata contains NaN values in {len(nan_indices)} feature columns."
+            )
             logger.warning(f"NaN indices: {nan_indices.tolist()}")
 
         # Model configuration
         logger.info("Loading model configuration for optimization...")
         model_config = config.get("model")
         if not model_config:
-            raise ValueError("Configuration file must contain a 'model' section for optimization.")
+            raise ValueError(
+                "Configuration file must contain a 'model' section for optimization."
+            )
 
         # Get optional rounding parameter
         decimal_digits = config.get("experiment", {}).get("decimal_digits")
@@ -89,7 +92,7 @@ def main():
         # Check for existing results to resume if --resume is passed
         start_index = 0
         results_path = None
-        
+
         if args.resume:
             pattern = f"{exp_name}-*-{random_state}.csv"
             matching_files = sorted(RESULTS_DIR.glob(pattern))
@@ -100,11 +103,17 @@ def main():
                     existing_df = pl.read_csv(latest_file, infer_schema_length=None)
                     start_index = len(existing_df)
                     results_path = latest_file
-                    logger.info(f"Found existing results file: {latest_file}. Resuming from index {start_index}.")
+                    logger.info(
+                        f"Found existing results file: {latest_file}. Resuming from index {start_index}."
+                    )
                 except Exception as e:
-                    logger.warning(f"Could not read existing results file {latest_file}: {e}. Starting from scratch.")
+                    logger.warning(
+                        f"Could not read existing results file {latest_file}: {e}. Starting from scratch."
+                    )
             else:
-                logger.info("No existing results file found for resumption. Starting from scratch.")
+                logger.info(
+                    "No existing results file found for resumption. Starting from scratch."
+                )
 
         if results_path is None:
             file_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -129,16 +138,18 @@ def main():
             experiment_config=config,
             experiment_id=exp_name,
             random_state=random_state,
-            file_timestamp=file_timestamp
+            file_timestamp=file_timestamp,
         )
-        
+
         target_index = args.model - 1 if args.model is not None else None
         optimizer.run(start_index=start_index, target_index=target_index)
 
         # Save Results
         optimizer.save_results(results_path, decimal_digits=decimal_digits)
-        
-        logger.info(f"Optimization session finished. Results saved/updated at {results_path}")
+
+        logger.info(
+            f"Optimization session finished. Results saved/updated at {results_path}"
+        )
 
         # Generate and save LaTeX table if there are any results in the final file
         if results_path.exists():

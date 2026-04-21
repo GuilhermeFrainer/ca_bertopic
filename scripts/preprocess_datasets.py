@@ -35,18 +35,27 @@ INTERIM_DATA_PATHS = {
 
 def main():
     """Main entry point for the script."""
-    parser = argparse.ArgumentParser(description="Preprocess datasets for topic modeling.")
-    parser.add_argument("--dataset", type=str, required=True, choices=["trump", "yelp", "fed", "anes", "gadarian"])
-    parser.add_argument("--max-tokens", type=int, help="Maximum number of tokens per chunk.")
+    parser = argparse.ArgumentParser(
+        description="Preprocess datasets for topic modeling."
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        required=True,
+        choices=["trump", "yelp", "fed", "anes", "gadarian"],
+    )
+    parser.add_argument(
+        "--max-tokens", type=int, help="Maximum number of tokens per chunk."
+    )
     parser.add_argument(
         "--include-metadata",
         action="store_true",
-        help="Whether to include YAML frontmatter with metadata in the text columns."
+        help="Whether to include YAML frontmatter with metadata in the text columns.",
     )
     parser.add_argument(
         "--deduplicate",
         action="store_true",
-        help="Whether to deduplicate the dataset based on cleaned text."
+        help="Whether to deduplicate the dataset based on cleaned text.",
     )
     args = parser.parse_args()
 

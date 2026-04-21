@@ -6,23 +6,22 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import argparse
+import datetime
+import json
+import logging
+import traceback
+
+import numpy as np
 import polars as pl
 from tqdm import tqdm
 
-import datetime
-import argparse
-import logging
-import traceback
-import json
-import numpy as np
-
-import src.utils as utils
 import src.data as data
-import src.training as training
+import src.logger_config as logger_config
 import src.make_table as make_table
 import src.models as models
-import src.logger_config as logger_config
-
+import src.training as training
+import src.utils as utils
 
 EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
 RESULTS_DIR = PROJECT_ROOT / "results"
@@ -34,22 +33,22 @@ OUTPUT_DIR = PROJECT_ROOT / "output"
 def main():
     parser = argparse.ArgumentParser(description="Run a specific ML experiment.")
     parser.add_argument(
-        "--exp", 
-        type=str, 
-        required=True, 
-        help="Name of the experiment yaml file (e.g., experiment_2)"
+        "--exp",
+        type=str,
+        required=True,
+        help="Name of the experiment yaml file (e.g., experiment_2)",
     )
     parser.add_argument(
         "--sample",
         type=int,
-        help="Override the sample size specified in the config file."
+        help="Override the sample size specified in the config file.",
     )
     args = parser.parse_args()
 
     try:
         # Setup
         config = utils.load_config(args.exp, EXPERIMENTS_DIR)
-        
+
         # Override sample size if requested
         if args.sample is not None:
             config["experiment"]["sample_size"] = args.sample
@@ -59,62 +58,66 @@ def main():
         random_state = utils.get_random_state(config["experiment"]["random_state"])
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
-        
+
         # Data loading
         # (We MUST do this first because models depend on scaled_metadata for init)
         logger.info("Loading and preparing data...")
         text, embeddings, scaled_metadata = data.load_and_prep_data(
-            config, random_state=random_state)
-        
+            config, random_state=random_state
+        )
+
         # Check for NaNs and warn if found
         if np.isnan(scaled_metadata).any():
             # Identifying columns with NaNs in the final metadata matrix
             nan_indices = np.where(np.isnan(scaled_metadata).any(axis=0))[0]
-            logger.warning(f"Metadata contains NaN values in {len(nan_indices)} feature columns.")
+            logger.warning(
+                f"Metadata contains NaN values in {len(nan_indices)} feature columns."
+            )
             logger.warning(f"NaN indices: {nan_indices.tolist()}")
-        
+
         # New Metadata Capture
         start_timestamp = datetime.datetime.now().isoformat()
         file_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        dataset_name = Path(config["experiment"]["dataset_path"]).stem.replace("_embeddings", "")
+        dataset_name = Path(config["experiment"]["dataset_path"]).stem.replace(
+            "_embeddings", ""
+        )
         n_observations = len(text)
 
         # Model validation
         logger.info("Validating model configurations...")
         models_config: list[dict] = config["models"]
-        
+
         for m_conf in models_config:
             m_id = m_conf.get("id", "Unknown")
             try:
-                # Dry-run instantiation. 
+                # Dry-run instantiation.
                 # We pass n_clusters=None just to ensure the parameters (strings/args) are valid.
-                _ = models.create_bertopic_instance(m_conf, scaled_metadata, random_state)
+                _ = models.create_bertopic_instance(
+                    m_conf, scaled_metadata, random_state
+                )
             except Exception as e:
                 logger.error(f"CRITICAL: Configuration error in model '{m_id}'")
                 logger.error(f"Error details: {e}")
                 # Crash immediately
-                raise e 
-        
+                raise e
+
         logger.info("All model configurations are valid. Starting training...")
 
         # We look for a model marked as baseline
-        baseline_config = next(
-            (m for m in models_config if m.get("is_baseline")), 
-            None
-        )
-        
+        baseline_config = next((m for m in models_config if m.get("is_baseline")), None)
+
         # Filter out the baseline from the main list so we don't run it twice
         other_models = [m for m in models_config if m != baseline_config]
-        
+
         results = []
         qualitative_dfs = []
         baseline_n_topics = None
 
         # Run Baseline
         if baseline_config:
-            b_id: str = baseline_config.get('id', "")
+            b_id: str = baseline_config.get("id", "")
             logger.info(f"Running Baseline Model: {b_id}")
-            
+
             baseline_model = models.create_bertopic_instance(
                 baseline_config, scaled_metadata, random_state
             )
@@ -122,9 +125,9 @@ def main():
             metrics, trained_model = training.train_and_evaluate(
                 topic_model=baseline_model,
                 model_id=b_id,
-                text=text, 
-                embeddings=embeddings, 
-                config=config
+                text=text,
+                embeddings=embeddings,
+                config=config,
             )
 
             # Add Metadata
@@ -140,7 +143,7 @@ def main():
             }
             metrics.update(run_metadata)
             results.append(metrics)
-            
+
             # Extract Qualitative Data
             qual_df = utils.extract_qualitative_data(trained_model, b_id, run_metadata)
             qualitative_dfs.append(qual_df)
@@ -150,21 +153,21 @@ def main():
 
         # Run Remaining Models
         for model_config in tqdm(other_models, desc="Training models"):
-            m_id = model_config.get('id', "")
+            m_id = model_config.get("id", "")
             try:
                 model_instance = models.create_bertopic_instance(
-                    model_config, 
-                    scaled_metadata, 
+                    model_config,
+                    scaled_metadata,
                     random_state,
-                    n_clusters=baseline_n_topics
+                    n_clusters=baseline_n_topics,
                 )
 
                 metrics, trained_model = training.train_and_evaluate(
                     topic_model=model_instance,
                     model_id=m_id,
-                    text=text, 
-                    embeddings=embeddings, 
-                    config=config
+                    text=text,
+                    embeddings=embeddings,
+                    config=config,
                 )
                 # Add Metadata
                 run_metadata = {
@@ -181,10 +184,12 @@ def main():
                 results.append(metrics)
 
                 # Extract Qualitative Data
-                qual_df = utils.extract_qualitative_data(trained_model, m_id, run_metadata)
+                qual_df = utils.extract_qualitative_data(
+                    trained_model, m_id, run_metadata
+                )
                 qualitative_dfs.append(qual_df)
 
-            except Exception as e:
+            except Exception:
                 tb_str = traceback.format_exc()
                 err_msg = f"Failed during runtime of {m_id}."
                 # Check for the specific numerical error from the log
@@ -194,24 +199,23 @@ def main():
                     #
                     # We log this information more explicitly to make debugging easier
                     err_msg += f" This is likely a numerical issue, possibly caused by forcing n_clusters={baseline_n_topics} on a model that cannot support it with the given data."
-                
+
                 logger.error(f"{err_msg}\n{tb_str}")
                 continue
-
 
         # Save Results
         results_df = pl.DataFrame(results)
         results_filename = f"{exp_name}-{file_timestamp}-{random_state}"
         results_path = RESULTS_DIR / f"{results_filename}.csv"
         results_df.write_csv(results_path)
-        
+
         logger.info(f"Experiment finished. Results at {results_path}")
 
         # Save Qualitative Data
         if qualitative_dfs:
             consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
             output_path = OUTPUT_DIR / f"{results_filename}.json"
-            
+
             # Serialize to JSON string and then pretty-print using the standard json library
             json_str = consolidated_qual_df.write_json()
             parsed_json = json.loads(json_str)
@@ -234,5 +238,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

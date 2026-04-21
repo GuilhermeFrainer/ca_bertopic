@@ -1,17 +1,20 @@
-import polars as pl
-from typing import Any, Dict, List, Tuple
-import logging
-import itertools
-import pathlib
-import json
 import copy
+import itertools
+import json
+import logging
+import pathlib
+from typing import Any, Dict, List, Tuple
+
 import numpy as np
+import polars as pl
 
 import src.models as models
 import src.training as training
 
 
-def collect_hyperparameters(model_config: Dict[str, Any]) -> Tuple[List[List[str]], List[List[Any]]]:
+def collect_hyperparameters(
+    model_config: Dict[str, Any],
+) -> Tuple[List[List[str]], List[List[Any]]]:
     """
     Collects hyperparameter search spaces from the model configuration.
 
@@ -63,7 +66,9 @@ def collect_hyperparameters(model_config: Dict[str, Any]) -> Tuple[List[List[str
     return param_paths, param_values
 
 
-def generate_hyperparameter_combinations(model_config: Dict[str, Any]) -> List[Tuple[Dict[str, Any], Dict[str, Any]]]:
+def generate_hyperparameter_combinations(
+    model_config: Dict[str, Any],
+) -> List[Tuple[Dict[str, Any], Dict[str, Any]]]:
     """
     Generates all possible hyperparameter combinations for the search.
     """
@@ -84,7 +89,7 @@ def generate_hyperparameter_combinations(model_config: Dict[str, Any]) -> List[T
             # Keep track of the parameters that were varied for this run
             varied_params[".".join(path)] = value
         combinations.append((new_config, varied_params))
-    
+
     return combinations
 
 
@@ -93,7 +98,9 @@ def clean_varied_params(varied_params: Dict[str, Any]) -> Dict[str, Any]:
     Cleans up parameter names for reporting and results.
     """
     return {
-        key.replace("clustering.params.", "").replace("dimensionality_reduction.params.", ""): value
+        key.replace("clustering.params.", "").replace(
+            "dimensionality_reduction.params.", ""
+        ): value
         for key, value in varied_params.items()
     }
 
@@ -114,7 +121,7 @@ class Optimizer:
         experiment_config: Dict[str, Any],
         experiment_id: str,
         random_state: int,
-        file_timestamp: str
+        file_timestamp: str,
     ):
         """
         Initializes the Optimizer.
@@ -122,8 +129,8 @@ class Optimizer:
             texts: A list of strings with the texts to be analyzed
             embeddings: A np.ndarray with the document embeddings
             scaled_metadata: A np.ndarray with the document metadata
-            model_config: A dictionary with the model architecture and 
-                hyperparameters. Hyperparameters with multiple values 
+            model_config: A dictionary with the model architecture and
+                hyperparameters. Hyperparameters with multiple values
                 should be in a list.
             experiment_config: The global experiment configuration.
             experiment_id: The identifier for the experiment.
@@ -154,49 +161,66 @@ class Optimizer:
                           will be executed.
         """
         import datetime
+
         import src.utils as utils
 
-        hyperparameter_combinations = generate_hyperparameter_combinations(self.model_config)
+        hyperparameter_combinations = generate_hyperparameter_combinations(
+            self.model_config
+        )
         num_combinations = len(hyperparameter_combinations)
 
         if target_index is not None:
             if target_index < 0 or target_index >= num_combinations:
-                self.logger.error(f"Target index {target_index+1} is out of range (1-{num_combinations}).")
+                self.logger.error(
+                    f"Target index {target_index + 1} is out of range (1-{num_combinations})."
+                )
                 return
             run_indices = [target_index]
-            self.logger.info(f"Running specific model configuration index {target_index+1} of {num_combinations}.")
+            self.logger.info(
+                f"Running specific model configuration index {target_index + 1} of {num_combinations}."
+            )
         else:
             if start_index >= num_combinations:
-                self.logger.info(f"Start index {start_index} is beyond total combinations {num_combinations}. Nothing to do.")
+                self.logger.info(
+                    f"Start index {start_index} is beyond total combinations {num_combinations}. Nothing to do."
+                )
                 return
 
             run_indices = range(start_index, num_combinations)
             if start_index == 0:
-                self.logger.info(f"Starting hyperparameter optimization for {num_combinations} models.")
+                self.logger.info(
+                    f"Starting hyperparameter optimization for {num_combinations} models."
+                )
             else:
-                self.logger.info(f"Resuming hyperparameter optimization for {num_combinations} models (starting at index {start_index+1}).")
+                self.logger.info(
+                    f"Resuming hyperparameter optimization for {num_combinations} models (starting at index {start_index + 1})."
+                )
 
         # New Metadata Capture
         start_timestamp = datetime.datetime.now().isoformat()
-        dataset_name = pathlib.Path(self.experiment_config["experiment"]["dataset_path"]).stem.replace("_embeddings", "")
+        dataset_name = pathlib.Path(
+            self.experiment_config["experiment"]["dataset_path"]
+        ).stem.replace("_embeddings", "")
         n_observations = len(self.texts)
 
         try:
             for i in run_indices:
                 model_config, varied_params = hyperparameter_combinations[i]
                 model_id = self.model_config.get("id", "model")
-                run_id = f"{model_id}_{i+1}"
+                run_id = f"{model_id}_{i + 1}"
 
                 # Clean up param names for reporting
                 cleaned_varied_params = clean_varied_params(varied_params)
-                self.logger.info(f"--- Training model [{run_id}] ({i+1}/{num_combinations}) ---")
+                self.logger.info(
+                    f"--- Training model [{run_id}] ({i + 1}/{num_combinations}) ---"
+                )
                 self.logger.info(f"Varied Parameters: {cleaned_varied_params}")
 
                 # 1. Create Model Instance
                 topic_model = models.create_bertopic_instance(
                     model_config=model_config,
                     scaled_metadata=self.scaled_metadata,
-                    random_state=self.experiment_config["experiment"]["random_state"]
+                    random_state=self.experiment_config["experiment"]["random_state"],
                 )
 
                 # 2. Train and Evaluate
@@ -206,7 +230,7 @@ class Optimizer:
                         model_id=run_id,
                         text=self.texts,
                         embeddings=self.embeddings,
-                        config=self.experiment_config
+                        config=self.experiment_config,
                     )
 
                     # 3. Store results, including the varied hyperparameters and metadata
@@ -214,7 +238,9 @@ class Optimizer:
                         "experiment_id": self.experiment_id,
                         "random_state": self.random_state,
                         "clustering_algo": model_config["clustering"]["type"],
-                        "dim_red_algo": model_config["dimensionality_reduction"]["type"],
+                        "dim_red_algo": model_config["dimensionality_reduction"][
+                            "type"
+                        ],
                         "n_observations": n_observations,
                         "timestamp": start_timestamp,
                         "file_timestamp": self.file_timestamp,
@@ -227,18 +253,26 @@ class Optimizer:
                     # 4. Extract Qualitative Data
                     qual_metadata = run_metadata.copy()
                     qual_metadata.update(cleaned_varied_params)
-                    qual_df = utils.extract_qualitative_data(trained_model, run_id, qual_metadata)
+                    qual_df = utils.extract_qualitative_data(
+                        trained_model, run_id, qual_metadata
+                    )
                     self.qualitative_results.append(qual_df)
 
                 except Exception as e:
-                    self.logger.error(f"Failed to train model [{run_id}] with params {cleaned_varied_params}: {e}")
+                    self.logger.error(
+                        f"Failed to train model [{run_id}] with params {cleaned_varied_params}: {e}"
+                    )
                     continue
         except KeyboardInterrupt:
-            self.logger.warning("Optimization interrupted by user. Cleaning up and saving results...")
+            self.logger.warning(
+                "Optimization interrupted by user. Cleaning up and saving results..."
+            )
 
         self.logger.info("Finished hyperparameter optimization phase.")
 
-    def save_results(self, filepath: str | pathlib.Path, decimal_digits: int | None = None) -> None:
+    def save_results(
+        self, filepath: str | pathlib.Path, decimal_digits: int | None = None
+    ) -> None:
         """
         Saves the collected evaluation metrics to a CSV file.
         Args:
@@ -255,27 +289,42 @@ class Optimizer:
         all_cols = df.columns
 
         core_stats_cols = [
-            "experiment_id", "random_state", "file_timestamp", "model_name", "dataset_name", 
-            "timestamp", "n_observations", "clustering_algo", "dim_red_algo", "duration_seconds", 
-            "n_topics", "outliers"
+            "experiment_id",
+            "random_state",
+            "file_timestamp",
+            "model_name",
+            "dataset_name",
+            "timestamp",
+            "n_observations",
+            "clustering_algo",
+            "dim_red_algo",
+            "duration_seconds",
+            "n_topics",
+            "outliers",
         ]
 
         # Calculated metrics from the experiment config
         exp_metrics = []
         if "experiment" in self.experiment_config:
-            exp_metrics.extend(self.experiment_config["experiment"].get("coherence_metrics", []))
-            exp_metrics.extend(self.experiment_config["experiment"].get("diversity_metrics", []))
+            exp_metrics.extend(
+                self.experiment_config["experiment"].get("coherence_metrics", [])
+            )
+            exp_metrics.extend(
+                self.experiment_config["experiment"].get("diversity_metrics", [])
+            )
 
         # Varied parameter columns are what's left over
         param_cols = [
-            col for col in all_cols if col not in core_stats_cols and col not in exp_metrics
+            col
+            for col in all_cols
+            if col not in core_stats_cols and col not in exp_metrics
         ]
 
         # New order: core stats, then params, then calculated metrics
         final_order = (
-            [c for c in core_stats_cols if c in all_cols] +
-            [p for p in param_cols if p in all_cols] +
-            [m for m in exp_metrics if m in all_cols]
+            [c for c in core_stats_cols if c in all_cols]
+            + [p for p in param_cols if p in all_cols]
+            + [m for m in exp_metrics if m in all_cols]
         )
         df = df.select(final_order)
 
@@ -285,10 +334,16 @@ class Optimizer:
             try:
                 existing_df = pl.read_csv(save_path, infer_schema_length=None)
                 # Ensure we cast new results to match the existing schema for safe vertical concatenation
-                df = pl.concat([existing_df, df.cast(existing_df.schema)], how="vertical")
+                df = pl.concat(
+                    [existing_df, df.cast(existing_df.schema)], how="vertical"
+                )
             except Exception as e:
-                self.logger.error(f"Failed to merge with existing results file: {e}. Saving to a new file with suffix.")
-                save_path = save_path.with_name(f"{save_path.stem}_v2{save_path.suffix}")
+                self.logger.error(
+                    f"Failed to merge with existing results file: {e}. Saving to a new file with suffix."
+                )
+                save_path = save_path.with_name(
+                    f"{save_path.stem}_v2{save_path.suffix}"
+                )
 
         df.write_csv(save_path, float_precision=decimal_digits)
         self.logger.info(f"Results saved to {save_path}")
@@ -299,15 +354,25 @@ class Optimizer:
             output_dir = save_path.parent.parent / "output"
             output_dir.mkdir(parents=True, exist_ok=True)
             output_path = output_dir / f"{save_path.stem}.json"
-            
+
             # Handle merging if the qualitative file already exists
             if output_path.exists():
                 try:
-                    existing_qual_df = pl.read_json(output_path, infer_schema_length=None)
-                    consolidated_qual_df = pl.concat([existing_qual_df, consolidated_qual_df.cast(existing_qual_df.schema)], how="vertical")
+                    existing_qual_df = pl.read_json(
+                        output_path, infer_schema_length=None
+                    )
+                    consolidated_qual_df = pl.concat(
+                        [
+                            existing_qual_df,
+                            consolidated_qual_df.cast(existing_qual_df.schema),
+                        ],
+                        how="vertical",
+                    )
                 except Exception as e:
-                    self.logger.error(f"Failed to merge with existing qualitative results file: {e}")
-            
+                    self.logger.error(
+                        f"Failed to merge with existing qualitative results file: {e}"
+                    )
+
             # Serialize to JSON string and then pretty-print using the standard json library
             json_str = consolidated_qual_df.write_json()
             parsed_json = json.loads(json_str)

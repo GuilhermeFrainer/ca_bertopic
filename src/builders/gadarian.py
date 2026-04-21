@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """Gadarian dataset builder."""
 
-import polars as pl
-import numpy as np
-from pathlib import Path
 import logging
+from pathlib import Path
+
+import polars as pl
 
 logger = logging.getLogger("builder.gadarian")
+
 
 def build(raw_dir: Path, interim_dir: Path):
     """Builds the Gadarian dataset by loading the raw CSV and applying transformations."""
@@ -21,7 +22,7 @@ def build(raw_dir: Path, interim_dir: Path):
     df = pl.read_csv(raw_path)
 
     logger.info("Transforming Gadarian dataset...")
-    
+
     # Define the mapping for partisanship based on the 0-1 scale (0=Strong Rep, 1=Strong Dem)
     def map_partisanship(val):
         if val is None:
@@ -35,20 +36,19 @@ def build(raw_dir: Path, interim_dir: Path):
             3: "Independent",
             4: "Weak Democrat",
             5: "Democrat",
-            6: "Strong Democrat"
+            6: "Strong Democrat",
         }
         return mapping.get(int_val, "Unknown")
 
     df = (
         df.drop("MetaID")
-        .rename({
-            "pid_rep": "partisanship",
-            "open.ended.response": "text"
-        })
+        .rename({"pid_rep": "partisanship", "open.ended.response": "text"})
         .with_row_index(name="id")
         .with_columns(
             pl.col("treatment").cast(pl.Boolean),
-            pl.col("partisanship").map_elements(map_partisanship, return_dtype=pl.Utf8).cast(pl.Categorical)
+            pl.col("partisanship")
+            .map_elements(map_partisanship, return_dtype=pl.Utf8)
+            .cast(pl.Categorical),
         )
     )
 

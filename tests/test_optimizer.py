@@ -1,27 +1,23 @@
 import pytest
-from src.optimizer import Optimizer, generate_hyperparameter_combinations
+
+from src.optimizer import generate_hyperparameter_combinations
 
 # A minimal experiment config for testing
 MOCK_EXPERIMENT_CONFIG = {"experiment": {}}
+
 
 def test_config_with_no_search_space():
     """
     Tests that a single config is returned when teh config doesn't define a hyperparameter
     search space (i.e., no lists of values).
     """
-    model_config = {
-        "id": "test",
-        "clustering": {
-            "params": {
-                "n_clusters": 50
-            }
-        }
-    }
+    model_config = {"id": "test", "clustering": {"params": {"n_clusters": 50}}}
     combinations = generate_hyperparameter_combinations(model_config)
-    
+
     assert len(combinations) == 1
     assert combinations[0][0] == model_config
     assert combinations[0][1] == {}
+
 
 def test_single_hyperparameter():
     """
@@ -29,25 +25,22 @@ def test_single_hyperparameter():
     """
     model_config = {
         "id": "test",
-        "clustering": {
-            "params": {
-                "n_clusters": [10, 20, 30]
-            }
-        }
+        "clustering": {"params": {"n_clusters": [10, 20, 30]}},
     }
     combinations = generate_hyperparameter_combinations(model_config)
-    
+
     assert len(combinations) == 3
-    
+
     # Check generated configs
     assert combinations[0][0]["clustering"]["params"]["n_clusters"] == 10
     assert combinations[1][0]["clustering"]["params"]["n_clusters"] == 20
     assert combinations[2][0]["clustering"]["params"]["n_clusters"] == 30
-    
+
     # Check varied params dict
     assert combinations[0][1] == {"clustering.params.n_clusters": 10}
     assert combinations[1][1] == {"clustering.params.n_clusters": 20}
     assert combinations[2][1] == {"clustering.params.n_clusters": 30}
+
 
 def test_multiple_hyperparameters():
     """
@@ -55,36 +48,30 @@ def test_multiple_hyperparameters():
     """
     model_config = {
         "id": "test",
-        "dimensionality_reduction": {
-            "params": {
-                "n_components": [5, 10]
-            }
-        },
-        "clustering": {
-            "params": {
-                "n_clusters": [100, 200]
-            }
-        }
+        "dimensionality_reduction": {"params": {"n_components": [5, 10]}},
+        "clustering": {"params": {"n_clusters": [100, 200]}},
     }
     combinations = generate_hyperparameter_combinations(model_config)
-    
-    assert len(combinations) == 4 # 2 * 2
-    
+
+    assert len(combinations) == 4  # 2 * 2
+
     # Check that all combinations are present
-    expected_configs = [
-        (5, 100),
-        (5, 200),
-        (10, 100),
-        (10, 200)
-    ]
+    expected_configs = [(5, 100), (5, 200), (10, 100), (10, 200)]
     generated_configs = [
-        (c[0]["dimensionality_reduction"]["params"]["n_components"], c[0]["clustering"]["params"]["n_clusters"])
+        (
+            c[0]["dimensionality_reduction"]["params"]["n_components"],
+            c[0]["clustering"]["params"]["n_clusters"],
+        )
         for c in combinations
     ]
     assert sorted(generated_configs) == sorted(expected_configs)
 
     # Check one of the varied_params dicts
-    assert {"dimensionality_reduction.params.n_components": 5, "clustering.params.n_clusters": 200} in [c[1] for c in combinations]
+    assert {
+        "dimensionality_reduction.params.n_components": 5,
+        "clustering.params.n_clusters": 200,
+    } in [c[1] for c in combinations]
+
 
 def test_string_list_is_ignored():
     """
@@ -98,22 +85,25 @@ def test_string_list_is_ignored():
             "params": {
                 # This is a valid parameter value, not a list to iterate over
                 "stop_words": ["english", "custom"]
-            }
+            },
         },
-        "clustering": {
-            "params": {
-                "n_clusters": [10, 20]
-            }
-        }
+        "clustering": {"params": {"n_clusters": [10, 20]}},
     }
     combinations = generate_hyperparameter_combinations(model_config)
 
     # Should only generate combinations for n_clusters
     assert len(combinations) == 2
-    assert combinations[0][0]["representation_model"]["params"]["stop_words"] == ["english", "custom"]
-    assert combinations[1][0]["representation_model"]["params"]["stop_words"] == ["english", "custom"]
+    assert combinations[0][0]["representation_model"]["params"]["stop_words"] == [
+        "english",
+        "custom",
+    ]
+    assert combinations[1][0]["representation_model"]["params"]["stop_words"] == [
+        "english",
+        "custom",
+    ]
     assert combinations[0][0]["clustering"]["params"]["n_clusters"] == 10
     assert combinations[1][0]["clustering"]["params"]["n_clusters"] == 20
+
 
 def test_range_hyperparameter():
     """
@@ -121,29 +111,22 @@ def test_range_hyperparameter():
     """
     model_config = {
         "id": "test",
-        "clustering": {
-            "params": {
-                "n_clusters": {
-                    "start": 10,
-                    "stop": 31,
-                    "step": 10
-                }
-            }
-        }
+        "clustering": {"params": {"n_clusters": {"start": 10, "stop": 31, "step": 10}}},
     }
     combinations = generate_hyperparameter_combinations(model_config)
-    
+
     assert len(combinations) == 3
-    
+
     # Check generated configs
     assert combinations[0][0]["clustering"]["params"]["n_clusters"] == 10
     assert combinations[1][0]["clustering"]["params"]["n_clusters"] == 20
     assert combinations[2][0]["clustering"]["params"]["n_clusters"] == 30
-    
+
     # Check varied params dict
     assert combinations[0][1] == {"clustering.params.n_clusters": 10}
     assert combinations[1][1] == {"clustering.params.n_clusters": 20}
     assert combinations[2][1] == {"clustering.params.n_clusters": 30}
+
 
 def test_float_range_hyperparameter():
     """
@@ -152,22 +135,18 @@ def test_float_range_hyperparameter():
     model_config = {
         "id": "test",
         "dimensionality_reduction": {
-            "params": {
-                "some_float": {
-                    "start": 0.1,
-                    "stop": 0.31,
-                    "step": 0.1
-                }
-            }
-        }
+            "params": {"some_float": {"start": 0.1, "stop": 0.31, "step": 0.1}}
+        },
     }
     combinations = generate_hyperparameter_combinations(model_config)
-    
-    assert len(combinations) == 3 # 0.1, 0.2, 0.3
-    
+
+    assert len(combinations) == 3  # 0.1, 0.2, 0.3
+
     # Check generated configs and varied params dict
     # Note: due to float precision, it's better to check if they are close
-    generated_values = [c[0]["dimensionality_reduction"]["params"]["some_float"] for c in combinations]
+    generated_values = [
+        c[0]["dimensionality_reduction"]["params"]["some_float"] for c in combinations
+    ]
     expected_values = [0.1, 0.2, 0.3]
     assert all(pytest.approx(g) == e for g, e in zip(generated_values, expected_values))
 
@@ -177,7 +156,11 @@ def test_float_range_hyperparameter():
         {"dimensionality_reduction.params.some_float": 0.2},
         {"dimensionality_reduction.params.some_float": 0.3},
     ]
-    assert all(pytest.approx(v["dimensionality_reduction.params.some_float"]) == e["dimensionality_reduction.params.some_float"] for v, e in zip(varied_params, expected_varied))
+    assert all(
+        pytest.approx(v["dimensionality_reduction.params.some_float"])
+        == e["dimensionality_reduction.params.some_float"]
+        for v, e in zip(varied_params, expected_varied)
+    )
 
 
 def test_mixed_hyperparameters():
@@ -186,33 +169,21 @@ def test_mixed_hyperparameters():
     """
     model_config = {
         "id": "test",
-        "dimensionality_reduction": {
-            "params": {
-                "n_components": [5, 10]
-            }
-        },
+        "dimensionality_reduction": {"params": {"n_components": [5, 10]}},
         "clustering": {
-            "params": {
-                "n_clusters": {
-                    "start": 100,
-                    "stop": 201,
-                    "step": 100
-                }
-            }
-        }
+            "params": {"n_clusters": {"start": 100, "stop": 201, "step": 100}}
+        },
     }
     combinations = generate_hyperparameter_combinations(model_config)
-    
-    assert len(combinations) == 4 # 2 * 2
-    
-    expected_configs = [
-        (5, 100),
-        (5, 200),
-        (10, 100),
-        (10, 200)
-    ]
+
+    assert len(combinations) == 4  # 2 * 2
+
+    expected_configs = [(5, 100), (5, 200), (10, 100), (10, 200)]
     generated_configs = [
-        (c[0]["dimensionality_reduction"]["params"]["n_components"], c[0]["clustering"]["params"]["n_clusters"])
+        (
+            c[0]["dimensionality_reduction"]["params"]["n_components"],
+            c[0]["clustering"]["params"]["n_clusters"],
+        )
         for c in combinations
     ]
     assert sorted(generated_configs) == sorted(expected_configs)
@@ -226,38 +197,23 @@ def test_determinism_via_sorting():
     # Create two configs with the same keys but different insertion order
     config_a = {
         "dimensionality_reduction": {
-            "params": {
-                "n_components": [5, 10],
-                "some_param": [1, 2]
-            }
+            "params": {"n_components": [5, 10], "some_param": [1, 2]}
         },
-        "clustering": {
-            "params": {
-                "n_clusters": [100, 200]
-            }
-        }
+        "clustering": {"params": {"n_clusters": [100, 200]}},
     }
-    
+
     config_b = {
         "dimensionality_reduction": {
-            "params": {
-                "some_param": [1, 2],
-                "n_components": [5, 10]
-            }
+            "params": {"some_param": [1, 2], "n_components": [5, 10]}
         },
-        "clustering": {
-            "params": {
-                "n_clusters": [100, 200]
-            }
-        }
+        "clustering": {"params": {"n_clusters": [100, 200]}},
     }
-    
+
     comb_a = generate_hyperparameter_combinations(config_a)
     comb_b = generate_hyperparameter_combinations(config_b)
-    
+
     # Compare only the varied_params part for simplicity
     params_a = [c[1] for c in comb_a]
     params_b = [c[1] for c in comb_b]
-    
-    assert params_a == params_b
 
+    assert params_a == params_b
