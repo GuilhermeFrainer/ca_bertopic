@@ -214,7 +214,8 @@ def generate_best_models_latex_table(
             or stripped.startswith("\\caption")
             or stripped.startswith("\\label")
         ):
-            # Re-add these without indentation at the root level of the table environment
+            # Re-add these without indentation at the root level of the
+            # table environment
             processed_lines.append(stripped)
             continue
 

@@ -6,7 +6,10 @@ METRICS = ["u_mass", "c_v", "c_npmi", "irbo", "topic_diversity"]
 
 
 def extract_model_type(model_name: str) -> str:
-    """Extracts the base model type from a model name (e.g., 'baseline_1' -> 'baseline')."""
+    """Extracts the base model type from a model name.
+
+    Example: 'baseline_1' -> 'baseline'.
+    """
     if not isinstance(model_name, str):
         return str(model_name)
 
@@ -26,17 +29,21 @@ def find_best_models(
     dump: bool = False,
 ) -> Dict[str, pl.DataFrame]:
     """
-    Finds the best performing model of each model type for each metric in the given dataset.
+    Finds the best performing model of each model type for each metric
+    in the given dataset.
 
     Args:
         df: Polars DataFrame containing experiment results.
         dataset: The name of the dataset to filter by.
         exclude_clustering: Optional list of clustering algorithms to exclude.
-        exclude_dim_red: Optional list of dimensionality reduction algorithms to exclude.
-        dump: If True, returns all model configurations instead of just the best per type.
+        exclude_dim_red: Optional list of dimensionality reduction
+            algorithms to exclude.
+        dump: If True, returns all model configurations instead of
+            just the best per type.
 
     Returns:
-        A dictionary where keys are metric names and values are DataFrames with models and their scores.
+        A dictionary where keys are metric names and values are DataFrames
+        with models and their scores.
     """
     # Filter by dataset
     if "dataset_name" in df.columns:

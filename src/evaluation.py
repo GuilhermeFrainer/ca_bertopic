@@ -44,7 +44,8 @@ def compute_coherence(
     filtered_topics = [t for t in model_output["topics"] if len(t) > 0]
     if len(filtered_topics) < len(model_output["topics"]):
         logger.warning(
-            f"Removed {len(model_output['topics']) - len(filtered_topics)} empty topics."
+            f"Removed {len(model_output['topics']) - len(filtered_topics)} "
+            "empty topics."
         )
 
     if not filtered_topics:
@@ -60,12 +61,14 @@ def compute_coherence(
         return coherence_model.score(model_output)
     except IndexError as e:
         logger.error(
-            f"Error when computing coherence ({measure}). Model output topics:\n{model_output['topics']}"
+            f"Error when computing coherence ({measure}). "
+            f"Model output topics:\n{model_output['topics']}"
         )
         raise e
     except ValueError as e:
         logger.error(
-            f"Error when computing coherence ({measure}). Model output topics:\n{model_output['topics']}"
+            f"Error when computing coherence ({measure}). "
+            f"Model output topics:\n{model_output['topics']}"
         )
         # Log a few examples of texts to help debugging without flooding the log
         if texts:

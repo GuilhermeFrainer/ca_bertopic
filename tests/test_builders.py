@@ -17,7 +17,9 @@ def temp_raw_dir(tmp_path):
 
 
 def test_fed_load_macro_data(temp_raw_dir):
-    """Tests the macro data loading and transformation logic (interpolation and lagging)."""
+    """Tests the macro data loading and transformation logic
+    (interpolation and lagging).
+    """
     # Create dummy macro data with a null and a gap
     # Row 2 has a null that should be filled by rolling mean
     csv_path = temp_raw_dir / "test_macro.csv"

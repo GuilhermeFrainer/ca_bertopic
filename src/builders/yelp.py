@@ -27,7 +27,8 @@ def write_parquet_files(
     files: list[str] = ["business", "review", "user"],
 ):
     """
-    Converts the original JSON files into parquet files for faster reading and processing.
+    Converts the original JSON files into parquet files for faster reading
+    and processing.
     Datetime columns are parsed as such.
     No other changes are made to the files.
     """

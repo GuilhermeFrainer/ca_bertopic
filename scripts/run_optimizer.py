@@ -104,15 +104,18 @@ def main():
                     start_index = len(existing_df)
                     results_path = latest_file
                     logger.info(
-                        f"Found existing results file: {latest_file}. Resuming from index {start_index}."
+                        f"Found existing results file: {latest_file}. "
+                        f"Resuming from index {start_index}."
                     )
                 except Exception as e:
                     logger.warning(
-                        f"Could not read existing results file {latest_file}: {e}. Starting from scratch."
+                        f"Could not read existing results file {latest_file}: "
+                        f"{e}. Starting from scratch."
                     )
             else:
                 logger.info(
-                    "No existing results file found for resumption. Starting from scratch."
+                    "No existing results file found for resumption. "
+                    "Starting from scratch."
                 )
 
         if results_path is None:
@@ -120,11 +123,13 @@ def main():
             results_filename = f"{exp_name}-{file_timestamp}-{random_state}"
             results_path = RESULTS_DIR / f"{results_filename}.csv"
         else:
-            # Extract timestamp from existing filename (format: exp_name-timestamp-random_state.csv)
+            # Extract timestamp from existing filename
+            # (format: exp_name-timestamp-random_state.csv)
             # timestamp has a dash in it (e.g., 20260408-123456)
             parts = results_path.stem.split("-")
             if len(parts) >= 3:
-                # The last part is random_state, the two parts before it are the timestamp
+                # The last part is random_state, the two parts before it are
+                # the timestamp
                 file_timestamp = f"{parts[-3]}-{parts[-2]}"
             else:
                 file_timestamp = "unknown"

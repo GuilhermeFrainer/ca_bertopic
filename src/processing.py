@@ -36,7 +36,8 @@ ARTIFACTS_TO_REMOVE = {
 NUMERICAL_COLS = {
     "trump": ["retweets", "favorites"],
     "yelp": ["user_review_count", "business_review_count"],
-    "fed": [],  # Macro indicators are already rates or can be negative; skipping log transform
+    "fed": [],  # Macro indicators are already rates or can be negative;
+    # skipping log transform
     "anes": [],
     "gadarian": [],
 }
@@ -114,7 +115,8 @@ def apply_trump_schema_and_types(df: Frame) -> Frame:
 
 def remove_urls(text_expr: pl.Expr) -> pl.Expr:
     """Removes URLs and common URL residues from a Polars expression."""
-    # Matches http/https, common domain residues like t.co, and cases where punct was removed (httpstco)
+    # Matches http/https, common domain residues like t.co, and cases where
+    # punct was removed (httpstco)
     return text_expr.str.replace_all(r"https?://\S+|www\.\S+|httpstco\S+|t\.co/\S+", "")
 
 
@@ -277,13 +279,15 @@ def process_dataset(
     dropped_empty = initial_row_count - after_empty_filter_count
     if dropped_empty > 0:
         logging.info(
-            f"Dropped {dropped_empty} rows because clean_text was empty or whitespace-only."
+            f"Dropped {dropped_empty} rows because clean_text was empty "
+            "or whitespace-only."
         )
 
     if deduplicate:
         logging.info("Deduplicating based on 'clean_text'...")
-        # We need to collect partially to count and deduplicate efficiently if it's not a huge dataset,
-        # or we can do it lazily. Polars 'unique' on LazyFrame works but we'll collect once to log.
+        # We need to collect partially to count and deduplicate efficiently
+        # if it's not a huge dataset, or we can do it lazily. Polars
+        # 'unique' on LazyFrame works but we'll collect once to log.
         initial_count = lf.select(pl.len()).collect().item()
 
         # Sort by date if it exists to keep the first occurrence chronologically

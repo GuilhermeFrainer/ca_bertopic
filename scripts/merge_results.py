@@ -85,7 +85,8 @@ def group_files(
     for dataset_name, files in base_files.items():
         if dataset_name not in grouped:
             grouped[dataset_name] = []
-        # Add base files, but avoid duplicates if they were somehow already in latest_runs
+        # Add base files, but avoid duplicates if they were somehow already in
+        # latest_runs
         for bf in files:
             if bf not in grouped[dataset_name]:
                 grouped[dataset_name].append(bf)

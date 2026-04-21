@@ -91,7 +91,8 @@ class AppendUMAP(UMAP):
 
         if len(df.columns) != len(df_clean.columns):
             print(
-                f"Warning: Dropped {len(df.columns) - len(df_clean.columns)} non-numeric columns."
+                f"Warning: Dropped {len(df.columns) - len(df_clean.columns)} "
+                "non-numeric columns."
             )
 
         # Casts DateTimes to Float64

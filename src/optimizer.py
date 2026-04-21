@@ -172,28 +172,34 @@ class Optimizer:
         if target_index is not None:
             if target_index < 0 or target_index >= num_combinations:
                 self.logger.error(
-                    f"Target index {target_index + 1} is out of range (1-{num_combinations})."
+                    f"Target index {target_index + 1} is out of range "
+                    f"(1-{num_combinations})."
                 )
                 return
             run_indices = [target_index]
             self.logger.info(
-                f"Running specific model configuration index {target_index + 1} of {num_combinations}."
+                f"Running specific model configuration index {target_index + 1} "
+                f"of {num_combinations}."
             )
         else:
             if start_index >= num_combinations:
                 self.logger.info(
-                    f"Start index {start_index} is beyond total combinations {num_combinations}. Nothing to do."
+                    f"Start index {start_index} is beyond total combinations "
+                    f"{num_combinations}. Nothing to do."
                 )
                 return
 
             run_indices = range(start_index, num_combinations)
             if start_index == 0:
                 self.logger.info(
-                    f"Starting hyperparameter optimization for {num_combinations} models."
+                    f"Starting hyperparameter optimization for "
+                    f"{num_combinations} models."
                 )
             else:
                 self.logger.info(
-                    f"Resuming hyperparameter optimization for {num_combinations} models (starting at index {start_index + 1})."
+                    "Resuming hyperparameter optimization for "
+                    f"{num_combinations} models "
+                    f"(starting at index {start_index + 1})."
                 )
 
         # New Metadata Capture
@@ -233,7 +239,8 @@ class Optimizer:
                         config=self.experiment_config,
                     )
 
-                    # 3. Store results, including the varied hyperparameters and metadata
+                    # 3. Store results, including the varied hyperparameters
+                    # and metadata
                     run_metadata = {
                         "experiment_id": self.experiment_id,
                         "random_state": self.random_state,
@@ -260,7 +267,8 @@ class Optimizer:
 
                 except Exception as e:
                     self.logger.error(
-                        f"Failed to train model [{run_id}] with params {cleaned_varied_params}: {e}"
+                        f"Failed to train model [{run_id}] with params "
+                        f"{cleaned_varied_params}: {e}"
                     )
                     continue
         except KeyboardInterrupt:
@@ -333,13 +341,15 @@ class Optimizer:
         if save_path.exists():
             try:
                 existing_df = pl.read_csv(save_path, infer_schema_length=None)
-                # Ensure we cast new results to match the existing schema for safe vertical concatenation
+                # Ensure we cast new results to match the existing schema
+                # for safe vertical concatenation
                 df = pl.concat(
                     [existing_df, df.cast(existing_df.schema)], how="vertical"
                 )
             except Exception as e:
                 self.logger.error(
-                    f"Failed to merge with existing results file: {e}. Saving to a new file with suffix."
+                    f"Failed to merge with existing results file: {e}. "
+                    "Saving to a new file with suffix."
                 )
                 save_path = save_path.with_name(
                     f"{save_path.stem}_v2{save_path.suffix}"
@@ -373,7 +383,8 @@ class Optimizer:
                         f"Failed to merge with existing qualitative results file: {e}"
                     )
 
-            # Serialize to JSON string and then pretty-print using the standard json library
+            # Serialize to JSON string and then pretty-print using the
+            # standard json library
             json_str = consolidated_qual_df.write_json()
             parsed_json = json.loads(json_str)
             with open(output_path, "w", encoding="utf-8") as f:

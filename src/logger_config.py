@@ -49,7 +49,8 @@ def setup_logging(experiment_name: str, log_dir: Path) -> logging.Logger:
     if logger.hasHandlers():
         logger.handlers.clear()
 
-    # prevent the logs from propagating to the root logger (which causes double printing)
+    # prevent the logs from propagating to the root logger
+    # (which causes double printing)
     logger.propagate = False
 
     # -- Handler 1: File (Clean Text) --

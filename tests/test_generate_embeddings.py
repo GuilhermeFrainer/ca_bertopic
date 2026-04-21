@@ -21,7 +21,8 @@ def test_get_next_batch_index_empty_directory():
 
 def test_get_next_batch_index_with_files():
     """
-    Tests that get_next_batch_index correctly finds the next index from existing batch files.
+    Tests that get_next_batch_index correctly finds the next index from
+    existing batch files.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         batch_dir = Path(tmpdir)
@@ -35,7 +36,8 @@ def test_get_next_batch_index_with_files():
 
 def test_get_next_batch_index_with_unordered_files():
     """
-    Tests that get_next_batch_index finds the highest index even if files are not ordered.
+    Tests that get_next_batch_index finds the highest index even if
+    files are not ordered.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         batch_dir = Path(tmpdir)

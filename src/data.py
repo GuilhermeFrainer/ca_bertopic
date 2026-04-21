@@ -173,7 +173,8 @@ def sample_from_lf(
 
     if n > lf_len and not replace:
         raise ValueError(
-            f"Cannot sample {n} rows without replacement from a dataset of {lf_len} rows."
+            f"Cannot sample {n} rows without replacement from a dataset of "
+            f"{lf_len} rows."
         )
 
     # Generate sample indices based on the fresh contiguous row index

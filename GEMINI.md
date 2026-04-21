@@ -140,6 +140,7 @@ uv run -m pytest
 
 - **Test-Driven Development:** Always run the test suite (`uv run -m pytest`) after implementing new features, fixing bugs, or refactoring code, even if not explicitly asked.
 - **Verification:** Ensure all tests pass before considering a task complete. If tests fail, diagnose and fix the issues immediately.
+- **Linting and Formatting:** Always run Ruff (`uvx ruff check . --fix` and `uvx ruff format .`) after making any code changes to ensure consistent style and catch potential issues.
 
 ## Coding Style
 

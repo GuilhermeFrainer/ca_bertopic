@@ -75,7 +75,8 @@ def build(raw_dir: Path, interim_dir: Path):
         .rename(
             {
                 "caseID": "id",
-                "Q3b1. CSES_ISSPOLITICAL1 (CSES Module: Most Important Political Issue)": "text",
+                "Q3b1. CSES_ISSPOLITICAL1 (CSES Module: Most Important "
+                "Political Issue)": "text",
             }
         )
         .drop("post-election IW")

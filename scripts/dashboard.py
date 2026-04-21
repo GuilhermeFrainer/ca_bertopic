@@ -184,7 +184,10 @@ def main():
             st.session_state[key] = []
 
     def get_filtered_df(exclude_key: Optional[str] = None) -> pl.DataFrame:
-        """Returns the dataframe filtered by all active filters except the one specified."""
+        """
+        Returns the dataframe filtered by all active filters except the
+        one specified.
+        """
         f_df = df
         for k in filter_config:
             if k != exclude_key and st.session_state[k]:
@@ -278,7 +281,10 @@ def main():
         specific_dates = st.sidebar.multiselect(
             "Filter to specific dates:",
             options=all_available_dates,
-            help="If selected, only these specific dates will be shown regardless of the range above.",
+            help=(
+                "If selected, only these specific dates will be shown "
+                "regardless of the range above."
+            ),
         )
     else:
         start_date = end_date = None
@@ -397,7 +403,8 @@ def main():
                 ]
             return [""] * len(s)
 
-        # Filter pdf to selected columns for display, while keeping original pdf for backend/plotting
+        # Filter pdf to selected columns for display, while keeping original
+        # pdf for backend/plotting
         pdf_display = pdf[selected_columns] if selected_columns else pdf
         st.dataframe(pdf_display.style.apply(highlight_best), width="stretch")
 
@@ -437,8 +444,10 @@ def main():
             is_numeric_color = color_by in numeric_cols
             color_shorthand = f"{color_by}:Q" if is_numeric_color else f"{color_by}:N"
 
-            # In Altair, we convert date objects to ISO strings or handle them as temporal
-            # but for simple categorical coloring, :N works fine even with date objects
+            # In Altair, we convert date objects to ISO strings or handle them
+            # as temporal
+            # but for simple categorical coloring, :N works fine even with
+            # date objects
 
             chart = (
                 alt.Chart(pdf)
@@ -487,7 +496,8 @@ def main():
                     pl.col("timestamp").is_in(active_timestamps)
                 )
                 # Only use timestamp filter if it doesn't result in an empty set
-                # (helps handle cases with slightly mismatched timestamps or missing data)
+                # (helps handle cases with slightly mismatched timestamps or
+                # missing data)
                 if not ts_filtered.is_empty():
                     filtered_qual_df = ts_filtered
 
@@ -497,7 +507,8 @@ def main():
                 # 1. Keyword Search
                 st.subheader("🔦 Keyword Search")
                 search_query = st.text_input(
-                    "Search for keywords in topic representations or representative docs:",
+                    "Search for keywords in topic representations or "
+                    "representative docs:",
                     placeholder="e.g., 'covid' or 'fake news'",
                 )
 
@@ -518,7 +529,8 @@ def main():
                 # 2. Side-by-Side Comparison
                 st.subheader("⚖️ Side-by-Side Model Comparison")
 
-                # Create a selection of unique model identifiers from the filtered results
+                # Create a selection of unique model identifiers from the
+                # filtered results
                 # We'll use a combination of source_file and model_id to be unique
                 filtered_qual_df = filtered_qual_df.with_columns(
                     pl.concat_str(
@@ -587,7 +599,8 @@ def main():
                     st.metric("Topic ID", topic_data["topic_id"])
                     st.metric("Document Count", topic_data["count"])
                     st.write("**Representation (c-TF-IDF words):**")
-                    # Try to parse as JSON list if it looks like one, otherwise just show
+                    # Try to parse as JSON list if it looks like one, otherwise
+                    # just show
                     try:
                         repr_words = json.loads(topic_data["representation"])
                         st.write(", ".join(repr_words))

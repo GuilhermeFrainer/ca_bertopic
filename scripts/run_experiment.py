@@ -91,7 +91,8 @@ def main():
             m_id = m_conf.get("id", "Unknown")
             try:
                 # Dry-run instantiation.
-                # We pass n_clusters=None just to ensure the parameters (strings/args) are valid.
+                # We pass n_clusters=None just to ensure the parameters
+                # (strings/args) are valid.
                 _ = models.create_bertopic_instance(
                     m_conf, scaled_metadata, random_state
                 )
@@ -197,8 +198,13 @@ def main():
                     # Arpack error seems to be caused by making the model pick too many
                     # topics/clusters when there's not enough data to support it
                     #
-                    # We log this information more explicitly to make debugging easier
-                    err_msg += f" This is likely a numerical issue, possibly caused by forcing n_clusters={baseline_n_topics} on a model that cannot support it with the given data."
+                    # We log this information more explicitly to make
+                    # debugging easier
+                    err_msg += (
+                        " This is likely a numerical issue, possibly caused by "
+                        f"forcing n_clusters={baseline_n_topics} on a model "
+                        "that cannot support it with the given data."
+                    )
 
                 logger.error(f"{err_msg}\n{tb_str}")
                 continue
@@ -216,7 +222,8 @@ def main():
             consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
             output_path = OUTPUT_DIR / f"{results_filename}.json"
 
-            # Serialize to JSON string and then pretty-print using the standard json library
+            # Serialize to JSON string and then pretty-print using the
+            # standard json library
             json_str = consolidated_qual_df.write_json()
             parsed_json = json.loads(json_str)
             with open(output_path, "w", encoding="utf-8") as f:

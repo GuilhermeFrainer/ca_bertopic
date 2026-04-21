@@ -10,7 +10,9 @@ logger = logging.getLogger("builder.gadarian")
 
 
 def build(raw_dir: Path, interim_dir: Path):
-    """Builds the Gadarian dataset by loading the raw CSV and applying transformations."""
+    """Builds the Gadarian dataset by loading the raw CSV and applying
+    transformations.
+    """
     interim_dir.mkdir(parents=True, exist_ok=True)
 
     raw_path = raw_dir / "gadarian.csv"
@@ -23,7 +25,8 @@ def build(raw_dir: Path, interim_dir: Path):
 
     logger.info("Transforming Gadarian dataset...")
 
-    # Define the mapping for partisanship based on the 0-1 scale (0=Strong Rep, 1=Strong Dem)
+    # Define the mapping for partisanship based on the 0-1 scale
+    # (0=Strong Rep, 1=Strong Dem)
     def map_partisanship(val):
         if val is None:
             return "Unknown"

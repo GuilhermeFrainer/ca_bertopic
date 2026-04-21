@@ -1,8 +1,11 @@
-"""Script to summarize NLP datasets using Polars LazyFrames and export to LaTeX.
+"""
+Script to summarize NLP datasets using Polars LazyFrames and export to LaTeX.
 
-This script computes core statistics for the datasets used in the CA-BERTopic project,
-including basic counts, preprocessing metrics, and descriptive statistics for token counts.
-It is optimized for memory efficiency using Polars LazyFrames and avoids expensive operations like explode().
+This script computes core statistics for the datasets used in the
+CA-BERTopic project, including basic counts, preprocessing metrics,
+and descriptive statistics for token counts. It is optimized for memory
+efficiency using Polars LazyFrames and avoids expensive operations
+like explode().
 """
 
 import logging

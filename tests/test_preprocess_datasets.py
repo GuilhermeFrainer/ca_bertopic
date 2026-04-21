@@ -23,7 +23,8 @@ def sample_trump_df() -> pl.DataFrame:
     return pl.DataFrame(
         {
             "text": [
-                "A great day at the office! http://example.com #Trump. What a great day!",
+                "A great day at the office! http://example.com #Trump. "
+                "What a great day!",
                 "Some valid text here",
                 "Making America Great Again! And again.",
             ],
@@ -48,7 +49,9 @@ def sample_yelp_df() -> pl.DataFrame:
     return pl.DataFrame(
         {
             "text": [
-                "This place is absolutely amazing and I love it. The food is great, the service is even better. I will come back for sure next week.",
+                "This place is absolutely amazing and I love it. The food "
+                "is great, the service is even better. I will come back "
+                "for sure next week.",
                 "I would not recommend this restaurant. The service was slow.",
             ],
             "user_review_count": [50, 5],
@@ -107,7 +110,9 @@ def test_format_as_yaml():
 
 def test_chunk_text_with_overlap(tmp_path):
     """Tests the chunk_text_with_overlap function."""
-    long_text = ". ".join([f"This is sentence number {i}" for i in range(20)])
+    long_text = ". ".join(
+        [f"This is sentence number {i}" for i in range(20)]
+    )
 
     df = pl.DataFrame({"id": [1], "text": [long_text], "metadata": ["some_value"]})
 
@@ -150,6 +155,7 @@ def test_process_dataset_trump(sample_trump_df, tmp_path):
         max_tokens=20,
         include_metadata=True,
     )
+
 
     assert "id" in processed_df.columns
     assert "log_retweets" in processed_df.columns
@@ -215,7 +221,8 @@ def test_process_dataset_deduplication(tmp_path):
 
     # Process with deduplication
     processed_df = process_dataset(
-        dataset_name="test_dataset",  # Using neutral name to avoid trump-specific schema handling
+        dataset_name="test_dataset",  # Using neutral name to avoid trump-specific
+        # schema handling
         input_path=str(input_path),
         output_path=str(output_path),
         deduplicate=True,

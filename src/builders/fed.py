@@ -12,15 +12,19 @@ logger = logging.getLogger("builder.fed")
 def load_macro_data(
     raw_dir: Path, file_name: str, value_col: str, new_name: str
 ) -> pl.DataFrame:
-    """Loads a macro indicator CSV, parses dates, and includes both unlagged and 1-observation lagged values."""
+    """Loads a macro indicator CSV, parses dates, and includes lags.
+
+    Includes both unlagged and 1-observation lagged values.
+    """
     path = raw_dir / file_name
     df = pl.read_csv(path)
     # Ensure date is parsed and sorted for join_asof
     df = df.with_columns(pl.col("observation_date").str.to_date())
     df = df.sort("observation_date")
 
-    # Fill missing values using a local window average (rolling mean of 5: 2 before, 2 after)
-    # This addresses gaps like those from government shutdowns using nearby values.
+    # Fill missing values using a local window average (rolling mean of 5:
+    # 2 before, 2 after). This addresses gaps like those from government
+    # shutdowns using nearby values.
     df = df.with_columns(
         pl.col(value_col)
         .fill_null(
@@ -45,7 +49,7 @@ def load_macro_data(
 
 
 def build(raw_dir: Path, interim_dir: Path):
-    """Builds the FED dataset by joining communications with macro indicators and political metadata."""
+    """Builds the FED dataset by joining communications with indicators."""
     interim_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Load Communications (The base)
@@ -55,7 +59,8 @@ def build(raw_dir: Path, interim_dir: Path):
             pl.col("Type").alias("type"),
             pl.col("Date").str.to_date().alias("date"),
             pl.col("Release Date").str.to_date().alias("release_date"),
-            # Collapse all whitespace (tabs, newlines, multiple spaces) into single spaces
+            # Collapse all whitespace (tabs, newlines, multiple spaces)
+            # into single spaces
             pl.col("Text").str.replace_all(r"\s+", " ").str.strip_chars().alias("text"),
         )
         .drop(["Date", "Release Date", "Text", "Type"])

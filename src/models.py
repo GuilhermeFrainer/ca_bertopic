@@ -17,10 +17,12 @@ def create_bertopic_instance(
     Factory function that builds a BERTopic instance from a configuration dictionary.
 
     Args:
-        model_config: Dictionary containing model hyperparameters (clustering, dim reduction).
+        model_config: Dictionary containing model hyperparameters
+            (clustering, dim reduction).
         scaled_metadata: Metadata array required by the custom algorithms.
         random_state: Seed for reproducibility.
-        n_clusters: Optional integer to force a specific number of topics (used for non-baseline models).
+        n_clusters: Optional integer to force a specific number of topics
+            (used for non-baseline models).
 
     Returns:
         An unfitted BERTopic instance.

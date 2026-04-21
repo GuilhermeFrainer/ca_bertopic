@@ -8,8 +8,8 @@ MOCK_EXPERIMENT_CONFIG = {"experiment": {}}
 
 def test_config_with_no_search_space():
     """
-    Tests that a single config is returned when teh config doesn't define a hyperparameter
-    search space (i.e., no lists of values).
+    Tests that a single config is returned when the config doesn't
+    define a hyperparameter search space (i.e., no lists of values).
     """
     model_config = {"id": "test", "clustering": {"params": {"n_clusters": 50}}}
     combinations = generate_hyperparameter_combinations(model_config)

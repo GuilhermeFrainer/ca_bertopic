@@ -30,7 +30,8 @@ def main():
         model_config = config.get("model")
         if not model_config:
             print(
-                f"Error: Configuration file '{args.exp}' must contain a 'model' section for optimization."
+                f"Error: Configuration file '{args.exp}' must contain a "
+                "'model' section for optimization."
             )
             return
 

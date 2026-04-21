@@ -16,7 +16,8 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
     def fit(self, X, y=None):
         if not len(X) == len(self.metadata):
             raise ValueError(
-                f"Shape mismatch between text data and metadata: {len(X)} vs {len(self.metadata)}"
+                f"Shape mismatch between text data and metadata: "
+                f"{len(X)} vs {len(self.metadata)}"
             )
 
         Xs = [X, self.metadata]
@@ -28,7 +29,8 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
     def predict(self, X):
         if not len(X) == len(self.metadata):
             raise ValueError(
-                f"Metadata and textual embeddings must have the same length. Found {len(X)} and {len(self.metadata)}"
+                "Metadata and textual embeddings must have the same length. "
+                f"Found {len(X)} and {len(self.metadata)}"
             )
         Xs = [X, self.metadata]
         return self.model.predict(Xs)
