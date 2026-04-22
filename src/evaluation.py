@@ -1,4 +1,5 @@
 import logging
+import random
 
 from bertopic import BERTopic
 from octis.evaluation_metrics.coherence_metrics import Coherence
@@ -19,11 +20,25 @@ def bertopic_output_to_octis(m: BERTopic, topk: int = 10) -> dict[str, list[list
     for t_id in topic_ids:
         topic_info = m.get_topic(t_id)  # type: ignore
         if isinstance(topic_info, list):
+            # 1. Filter all available words first
             words = [
                 str(word).strip()
-                for word, _ in topic_info[:topk]
+                for word, _ in topic_info
                 if str(word).strip() != "" and not str(word).strip().isdigit()
             ]
+
+            # 2. Slice to topk
+            words = words[:topk]
+
+            # 3. If we STILL have less than topk, log it and pad by sampling
+            if 0 < len(words) < topk:
+                logger = logging.getLogger("pipeline")
+                logger.warning(
+                    f"Topic {t_id} only has {len(words)} words after filtering "
+                    f"(requested {topk}). Padding by sampling from existing words."
+                )
+                words.extend(random.choices(words, k=topk - len(words)))
+
             topic_words.append(words)
 
     return {"topics": topic_words}
