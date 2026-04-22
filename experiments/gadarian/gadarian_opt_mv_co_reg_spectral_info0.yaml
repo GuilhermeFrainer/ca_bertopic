@@ -1,0 +1,28 @@
+extends: "datasets/gadarian.yaml"
+
+experiment:
+  name: "gadarian_opt_mv_co_reg_spectral_info0"
+  description: "Optimizing the parameters for MV Co-Regularized Spectral Clustering with info_view=0 on Gadarian."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "mv_co_reg_spectral_info0"
+  description: "Multi-View Co-Regularized Spectral Clustering (info_view=0)"
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      n_components: 5
+      metric: "cosine"
+  clustering:
+    type: "co_regularized_multi_view_spectral_clustering"
+    params:
+      info_view: 0
+      n_clusters:
+        - 5
+        - 10
+        - 15
+        - 20
+        - 25
+        - 30

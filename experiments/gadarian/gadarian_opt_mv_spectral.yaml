@@ -1,0 +1,27 @@
+extends: "datasets/gadarian.yaml"
+
+experiment:
+  name: "gadarian_opt_mv_spectral"
+  description: "Optimizing the parameters for MV Spectral Clustering on Gadarian."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "mv_spectral"
+  description: "Multi-View Spectral Clustering"
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      n_components: 5
+      metric: "cosine"
+  clustering:
+    type: "multi_view_spectral_clustering"
+    params:
+      n_clusters:
+        - 5
+        - 10
+        - 15
+        - 20
+        - 25
+        - 30
