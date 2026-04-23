@@ -15,6 +15,61 @@ from src.results_analysis import find_best_models
 RESULTS_DIR = PROJECT_ROOT / "results"
 
 
+def generate_star_plot(results: dict[str, pl.DataFrame], dump: bool, output_path: Path):
+    """Generates a star plot (radar chart) using Plotly with Min-Max normalization."""
+    import pandas as pd
+    import plotly.express as px
+
+    # 1. Gather data into a melted format
+    id_col = "best_model_name" if dump else "model_type"
+    rows = []
+    for metric, metric_df in results.items():
+        for row in metric_df.iter_rows(named=True):
+            rows.append(
+                {
+                    "Model": row[id_col].replace("_", " "),
+                    "Metric": metric,
+                    "Value": row["max_value"],
+                }
+            )
+
+    df = pd.DataFrame(rows)
+
+    # 2. Apply Min-Max Normalization per Metric
+    # This ensures all metrics are on a [0, 1] scale for the radar chart
+    df["NormalizedValue"] = df.groupby("Metric")["Value"].transform(
+        lambda x: (x - x.min()) / (x.max() - x.min()) if x.max() != x.min() else 1.0
+    )
+
+    # 3. Build the star plot using Plotly Express
+    fig = px.line_polar(
+        df,
+        r="NormalizedValue",
+        theta="Metric",
+        color="Model",
+        line_close=True,
+        hover_data={
+            "Value": ":.4f",
+            "NormalizedValue": False,
+            "Model": True,
+            "Metric": True,
+        },
+        title="Model Performance Comparison (Relative Scales)",
+    )
+
+    fig.update_traces(fill="toself", opacity=0.1)
+
+    # 4. Save the plot
+    if not output_path.suffix:
+        output_path = output_path.with_suffix(".pdf")
+
+    # Ensure the directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig.write_image(str(output_path))
+    print(f"Star plot saved to {output_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Find the best performing model of each type for each metric."
@@ -48,6 +103,21 @@ def main():
         "--dump",
         action="store_true",
         help="Dump all results instead of only the best per type.",
+    )
+    parser.add_argument(
+        "--average",
+        action="store_true",
+        help=(
+            "Calculate the average performance per model type "
+            "instead of finding the best."
+        ),
+    )
+    parser.add_argument(
+        "--star-plot",
+        type=str,
+        help=(
+            "Output the results as a star plot. Specify a file path (defaults to .pdf)."
+        ),
     )
     args = parser.parse_args()
 
@@ -83,14 +153,20 @@ def main():
         exclude_clustering=args.exclude_clustering,
         exclude_dim_red=args.exclude_dim_red,
         dump=args.dump,
+        average=args.average,
     )
 
     if not results:
         print(f"No valid metric results found for dataset: {dataset}")
         return
 
+    if args.star_plot:
+        generate_star_plot(results, args.dump, Path(args.star_plot))
+
     if args.latex:
-        latex_table = generate_best_models_latex_table(results, dataset, dump=args.dump)
+        latex_table = generate_best_models_latex_table(
+            results, dataset, dump=args.dump, average=args.average
+        )
         if args.latex == "__STDOUT__":
             print("\n" + latex_table)
         else:
@@ -98,7 +174,11 @@ def main():
             output_path.write_text(latex_table, encoding="utf-8")
             print(f"LaTeX table saved to {output_path}")
     else:
-        title = "All model configurations" if args.dump else "Best models"
+        title = (
+            "All model configurations"
+            if args.dump
+            else ("Average model performance" if args.average else "Best models")
+        )
         print(f"\n{title} for dataset: {dataset}")
         print("=" * (len(title) + 14 + len(dataset)))
 

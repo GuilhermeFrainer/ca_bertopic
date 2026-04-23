@@ -110,9 +110,7 @@ def test_format_as_yaml():
 
 def test_chunk_text_with_overlap(tmp_path):
     """Tests the chunk_text_with_overlap function."""
-    long_text = ". ".join(
-        [f"This is sentence number {i}" for i in range(20)]
-    )
+    long_text = ". ".join([f"This is sentence number {i}" for i in range(20)])
 
     df = pl.DataFrame({"id": [1], "text": [long_text], "metadata": ["some_value"]})
 
@@ -155,7 +153,6 @@ def test_process_dataset_trump(sample_trump_df, tmp_path):
         max_tokens=20,
         include_metadata=True,
     )
-
 
     assert "id" in processed_df.columns
     assert "log_retweets" in processed_df.columns

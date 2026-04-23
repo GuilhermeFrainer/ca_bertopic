@@ -51,9 +51,7 @@ def create_bertopic_instance(
         )
 
     # Return the assembled object
-    return BERTopic(
-        umap_model=umap_model, hdbscan_model=hdbscan_model, top_n_words=50
-    )
+    return BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model, top_n_words=50)
 
 
 def get_algorithm(

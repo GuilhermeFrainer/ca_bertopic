@@ -107,7 +107,10 @@ def generate_latex_table(df: pl.DataFrame) -> str:
 
 
 def generate_best_models_latex_table(
-    results: dict[str, pl.DataFrame], dataset: str, dump: bool = False
+    results: dict[str, pl.DataFrame],
+    dataset: str,
+    dump: bool = False,
+    average: bool = False,
 ) -> str:
     """
     Generates a consolidated LaTeX table from the best models analysis results.
@@ -116,6 +119,7 @@ def generate_best_models_latex_table(
         results: Dictionary mapping metric names to Polars DataFrames of best models.
         dataset: Name of the dataset.
         dump: If True, uses model_name instead of model_type for rows.
+        average: If True, indicates that values are averages of model runs.
 
     Returns:
         A LaTeX table string.
@@ -150,7 +154,7 @@ def generate_best_models_latex_table(
     # 3. Create Pandas DataFrame
     final_df = pd.DataFrame(rows)
 
-    # 4. Identify best values for bolding
+    # 4. Identify metric columns
     metric_cols = [c for c in final_df.columns if c not in ["Model Type", "Model"]]
 
     # 5. Export to LaTeX with specific formatting
@@ -163,32 +167,51 @@ def generate_best_models_latex_table(
     }
     actual_rename = {k: v for k, v in rename_map.items() if k in final_df.columns}
 
-    # We'll use a custom formatter for bolding
-    def format_with_bold(df):
+    # Custom formatter for 3-tier coloring
+    def format_with_highlights(df):
         formatted_df = df.copy()
         for col in metric_cols:
             if col in df.columns:
                 valid_vals = df[col].dropna()
                 if not valid_vals.empty:
-                    max_val = valid_vals.max()
-                    formatted_df[col] = df[col].apply(
-                        lambda x: (
-                            f"\\textbf{{{x:.3f}}}"
-                            if pd.notnull(x) and x == max_val
-                            else (f"{x:.3f}" if pd.notnull(x) else "-")
-                        )
-                    )
+                    # Get top 3 unique values
+                    top_vals = sorted(valid_vals.unique(), reverse=True)[:3]
+
+                    def apply_color(x):
+                        if pd.isnull(x):
+                            return "-"
+                        if x in top_vals:
+                            rank = top_vals.index(x)
+                            if rank == 0:
+                                color = "B2E0B2"  # Strongest
+                            elif rank == 1:
+                                color = "CCE8CC"  # Medium
+                            else:
+                                color = "E5F5E5"  # Pale
+                            return f"\\cellcolor[HTML]{{{color}}}{x:.3f}"
+                        return f"{x:.3f}"
+
+                    formatted_df[col] = df[col].apply(apply_color)
         return formatted_df
 
-    display_df = format_with_bold(final_df)
+    display_df = format_with_highlights(final_df)
     display_df = display_df.rename(columns=actual_rename)
+
+    # 6. Define caption
+    if dump:
+        caption = f"All model configurations for the {dataset} dataset."
+    elif average:
+        caption = (
+            f"Average performance by model type for the {dataset} dataset "
+            "(results are averaged across different model runs)."
+        )
+    else:
+        caption = f"Best performing models by type for the {dataset} dataset."
 
     # Export to LaTeX
     latex = display_df.to_latex(
         index=False,
-        caption=f"Best performing models by type for the {dataset} dataset."
-        if not dump
-        else f"All model configurations for the {dataset} dataset.",
+        caption=caption,
         label=f"tab:best_models_{dataset}" if not dump else f"tab:all_models_{dataset}",
         escape=False,
         column_format="l" + "r" * len(metric_cols),

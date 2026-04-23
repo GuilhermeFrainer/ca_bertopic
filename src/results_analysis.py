@@ -27,10 +27,11 @@ def find_best_models(
     exclude_clustering: List[str] | None = None,
     exclude_dim_red: List[str] | None = None,
     dump: bool = False,
+    average: bool = False,
 ) -> Dict[str, pl.DataFrame]:
     """
-    Finds the best performing model of each model type for each metric
-    in the given dataset.
+    Finds the best performing model (or average performance) of each model type
+    for each metric in the given dataset.
 
     Args:
         df: Polars DataFrame containing experiment results.
@@ -40,6 +41,8 @@ def find_best_models(
             algorithms to exclude.
         dump: If True, returns all model configurations instead of
             just the best per type.
+        average: If True, calculates the average performance per model type
+            instead of finding the best.
 
     Returns:
         A dictionary where keys are metric names and values are DataFrames
@@ -90,6 +93,16 @@ def find_best_models(
                     pl.col(metric).alias("max_value"),
                     pl.col("model_type"),
                 ]
+            )
+        elif average:
+            # For average mode, group by model_type and calculate mean
+            best_per_type = (
+                metric_df.group_by("model_type")
+                .agg(
+                    pl.col(metric).mean().alias("max_value"),
+                    pl.col("model_type").first().alias("best_model_name"),
+                )
+                .sort("max_value", descending=True)
             )
         else:
             # For each metric, group by model_type and find the max
