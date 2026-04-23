@@ -29,15 +29,29 @@ def generate_star_plot(results: dict[str, pl.DataFrame], dump: bool, output_path
         "topic_diversity": "Topic Diversity",
     }
 
+    # Mapping for prettier model names (Plotly version)
+    MODEL_RENAME_MAP = {
+        "append_umap": "Naive",
+        "mv_co_reg_spectral": "CA-BERTopic<sub>co-reg</sub>",
+        "mv_co_reg_spectral_info0": "CA-BERTopic<sub>co-reg-info0</sub>",
+        "baseline": "BERTopic",
+        "umap_spectral": "BERTopic<sub>Spectral</sub>",
+        "mv_spectral": "CA-BERTopic<sub>Spectral</sub>",
+        "mv_spectral_info0": "CA-BERTopic<sub>Spectral-info0</sub>",
+        "aligned_umap": "CA-BERTopic<sub>Aligned</sub>",
+    }
+
     # 1. Gather data into a melted format
     id_col = "best_model_name" if dump else "model_type"
     rows = []
     for metric, metric_df in results.items():
         display_metric = METRIC_DISPLAY_MAP.get(metric, metric)
         for row in metric_df.iter_rows(named=True):
+            model_id = row[id_col]
+            display_model = MODEL_RENAME_MAP.get(model_id, model_id.replace("_", " "))
             rows.append(
                 {
-                    "Model": row[id_col].replace("_", " "),
+                    "Model": display_model,
                     "Metric": display_metric,
                     "Value": row["max_value"],
                 }

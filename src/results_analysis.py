@@ -56,11 +56,16 @@ def find_best_models(
         return {}
 
     # Apply exclusion filters
-    if exclude_clustering:
+    # Default: exclude PCA dim red and any k_means variant if not explicitly provided
+    if exclude_clustering is not None:
         df = df.filter(~pl.col("clustering_algo").is_in(exclude_clustering))
+    else:
+        df = df.filter(~pl.col("clustering_algo").str.contains("k_means"))
 
-    if exclude_dim_red:
+    if exclude_dim_red is not None:
         df = df.filter(~pl.col("dim_red_algo").is_in(exclude_dim_red))
+    else:
+        df = df.filter(pl.col("dim_red_algo") != "pca")
 
     if df.is_empty():
         return {}

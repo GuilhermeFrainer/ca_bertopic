@@ -137,10 +137,22 @@ def generate_best_models_latex_table(
 
     all_ids = sorted(list(all_ids))
 
+    # Model renaming for LaTeX
+    MODEL_RENAME_MAP = {
+        "append_umap": "Naive",
+        "mv_co_reg_spectral": "$\\text{CA-BERTopic}_{\\text{co-reg}}$",
+        "mv_co_reg_spectral_info0": "$\\text{CA-BERTopic}_{\\text{co-reg-info0}}$",
+        "baseline": "BERTopic",
+        "umap_spectral": "$\\text{BERTopic}_{\\text{Spectral}}$",
+        "mv_spectral": "$\\text{CA-BERTopic}_{\\text{Spectral}}$",
+        "mv_spectral_info0": "$\\text{CA-BERTopic}_{\\text{Spectral-info0}}$",
+        "aligned_umap": "$\\text{CA-BERTopic}_{\\text{Aligned}}$",
+    }
+
     # 2. Build a matrix: rows are model types/names, columns are metrics
     rows = []
     for identifier in all_ids:
-        display_name = identifier.replace("_", " ")
+        display_name = MODEL_RENAME_MAP.get(identifier, identifier.replace("_", " "))
         row = {"Model Type" if not dump else "Model": display_name}
         for metric, metric_df in results.items():
             # Find the value for this specific identifier
