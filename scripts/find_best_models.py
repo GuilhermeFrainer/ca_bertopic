@@ -20,15 +20,25 @@ def generate_star_plot(results: dict[str, pl.DataFrame], dump: bool, output_path
     import pandas as pd
     import plotly.express as px
 
+    # Mapping for prettier metric names
+    METRIC_DISPLAY_MAP = {
+        "u_mass": "C<sub>UMass</sub>",
+        "c_v": "C<sub>v</sub>",
+        "c_npmi": "C<sub>npmi</sub>",
+        "irbo": "IRBO",
+        "topic_diversity": "Topic Diversity",
+    }
+
     # 1. Gather data into a melted format
     id_col = "best_model_name" if dump else "model_type"
     rows = []
     for metric, metric_df in results.items():
+        display_metric = METRIC_DISPLAY_MAP.get(metric, metric)
         for row in metric_df.iter_rows(named=True):
             rows.append(
                 {
                     "Model": row[id_col].replace("_", " "),
-                    "Metric": metric,
+                    "Metric": display_metric,
                     "Value": row["max_value"],
                 }
             )
@@ -54,12 +64,42 @@ def generate_star_plot(results: dict[str, pl.DataFrame], dump: bool, output_path
             "Model": True,
             "Metric": True,
         },
-        title="Model Performance Comparison (Relative Scales)",
+        template="plotly_white",
+        color_discrete_sequence=px.colors.qualitative.Bold,
     )
 
-    fig.update_traces(fill="toself", opacity=0.1)
+    # 4. Improve visual styling
+    fig.update_traces(
+        fill="toself",
+        opacity=0.2,
+        line=dict(width=3.0),
+        marker=dict(size=8),
+    )
 
-    # 4. Save the plot
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 1],
+                showticklabels=False,
+                gridcolor="#E5E5E5",
+            ),
+            angularaxis=dict(
+                gridcolor="#E5E5E5",
+                linecolor="#E5E5E5",
+            ),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.2,
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(t=20, b=20, l=40, r=40),
+    )
+
+    # 5. Save the plot
     if not output_path.suffix:
         output_path = output_path.with_suffix(".pdf")
 
