@@ -16,36 +16,53 @@ METRIC_DISPLAY_MAP = {
 # Mapping for prettier model names (Plotly version)
 MODEL_RENAME_MAP = {
     "append_umap": "Naive",
-    "mv_co_reg_spectral": "CA-BERTopic<sub>co-reg</sub>",
-    "mv_co_reg_spectral_info0": "CA-BERTopic<sub>co-reg-info0</sub>",
+    "mv_co_reg_spectral": "{model_name}<sub>co-reg</sub>",
+    "mv_co_reg_spectral_info0": "{model_name}<sub>co-reg-info0</sub>",
     "baseline": "BERTopic",
     "umap_spectral": "BERTopic<sub>Spectral</sub>",
-    "mv_spectral": "CA-BERTopic<sub>Spectral</sub>",
-    "mv_spectral_info0": "CA-BERTopic<sub>Spectral-info0</sub>",
-    "aligned_umap": "CA-BERTopic<sub>Aligned</sub>",
+    "mv_spectral": "{model_name}<sub>Spectral</sub>",
+    "mv_spectral_info0": "{model_name}<sub>Spectral-info0</sub>",
+    "aligned_umap": "{model_name}<sub>Aligned</sub>",
 }
 
 
-def prepare_plot_data(results: dict[str, pl.DataFrame], dump: bool):
+def prepare_plot_data(results: dict[str, pl.DataFrame], dump: bool, model_name: str = "CAST"):
     """Common data preparation for Plotly visualizations."""
     id_col = "best_model_name" if dump else "model_type"
     rows = []
+
+    # Map for formatting model names
+    rename_map = {k: v.format(model_name=model_name) for k, v in MODEL_RENAME_MAP.items()}
+
     for metric, metric_df in results.items():
         display_metric = METRIC_DISPLAY_MAP.get(metric, metric)
         for row in metric_df.iter_rows(named=True):
             model_id = row[id_col]
             model_type = row["model_type"]
-            display_model = MODEL_RENAME_MAP.get(model_id, model_id.replace("_", " "))
-            display_model_type = MODEL_RENAME_MAP.get(
-                model_type, model_type.replace("_", " ")
-            )
+
+            # Legend label should be the "Type" name, not the individual run name
+            legend_label = rename_map.get(model_type, model_type.replace("_", " "))
+
+            # Specific display name for this individual line
+            display_model = rename_map.get(model_id, model_id.replace("_", " "))
+
+            # Categorize as "Ours" vs "Baseline"
+            is_ours = model_id.startswith("mv_") or model_id == "aligned_umap"
+            group = "Ours" if is_ours else "Baseline"
+
+            # Check for info0
+            is_info0 = "_info0" in model_id
+
             rows.append(
                 {
                     "Model": display_model,
-                    "ModelType": display_model_type,
+                    "LegendLabel": legend_label,
+                    "ModelType": model_type,
                     "Metric": display_metric,
                     "Value": row["max_value"],
                     "RawMetric": metric,
+                    "Group": group,
+                    "IsInfo0": is_info0,
                 }
             )
 
@@ -59,16 +76,72 @@ def prepare_plot_data(results: dict[str, pl.DataFrame], dump: bool):
     return df
 
 
-def generate_star_plot(results: dict[str, pl.DataFrame], dump: bool, output_path: Path):
+def get_color_map(df: pd.DataFrame):
+    """Generates a color map with paired reds for 'Ours' and blues for 'Baselines'."""
+    # Find base model types (ignoring info0)
+    def get_base(label):
+        return label.replace("-info0", "").replace("<sub>info0</sub>", "")
+
+    labels = sorted(df["LegendLabel"].unique())
+    color_map = {}
+
+    # Milder Palettes (ColorBrewer-inspired Paired)
+    # CAST (Reds/Oranges)
+    # Pairs: (Dark, Light)
+    ours_pairs = [
+        ("#e31a1c", "#fb9a99"),  # Red, Light Red
+        ("#ff7f00", "#fdbf6f"),  # Orange, Light Orange
+        ("#6a3d9a", "#cab2d6"),  # Purple, Light Purple
+    ]
+    # Baselines (Blues/Greens)
+    baseline_pairs = [
+        ("#1f78b4", "#a6cee3"),  # Blue, Light Blue
+        ("#008080", "#40e0d0"),  # Teal, Turquoise
+        ("#33a02c", "#b2df8a"),  # Green, Light Green
+    ]
+
+    ours_bases = sorted(list(set(get_base(l) for l in labels if "Ours" in df[df["LegendLabel"] == l]["Group"].values)))
+    baseline_bases = sorted(list(set(get_base(l) for l in labels if "Baseline" in df[df["LegendLabel"] == l]["Group"].values)))
+
+    ours_base_map = {base: ours_pairs[i % len(ours_pairs)] for i, base in enumerate(ours_bases)}
+    baseline_base_map = {base: baseline_pairs[i % len(baseline_pairs)] for i, base in enumerate(baseline_bases)}
+
+    for label in labels:
+        base = get_base(label)
+        is_info0 = "info0" in label.lower()
+        if label in df[df["Group"] == "Ours"]["LegendLabel"].values:
+            pair = ours_base_map.get(base, ours_pairs[0])
+            color_map[label] = pair[0] if is_info0 else pair[1]
+        else:
+            pair = baseline_base_map.get(base, baseline_pairs[0])
+            color_map[label] = pair[0] if is_info0 else pair[1]
+
+    return color_map
+
+
+def clean_legend(fig):
+    """Removes 'Ours' and 'Baseline' and group suffixes from legend."""
+    for trace in fig.data:
+        if trace.name:
+            # Remove ", Ours" or ", Baseline" or "Ours, " etc.
+            new_name = trace.name.split(",")[0].strip()
+            trace.name = new_name
+    return fig
+
+
+def generate_star_plot(
+    results: dict[str, pl.DataFrame], dump: bool, output_path: Path, model_name: str = "CAST"
+):
     """Generates a star plot (radar chart) using Plotly with Min-Max normalization."""
-    df = prepare_plot_data(results, dump)
+    df = prepare_plot_data(results, dump, model_name=model_name)
+    color_map = get_color_map(df)
 
     # Build the star plot
     fig = px.line_polar(
         df,
         r="NormalizedValue",
         theta="Metric",
-        color="Model",
+        color="LegendLabel",
         line_close=True,
         hover_data={
             "Value": ":.4f",
@@ -77,7 +150,7 @@ def generate_star_plot(results: dict[str, pl.DataFrame], dump: bool, output_path
             "Metric": True,
         },
         template="plotly_white",
-        color_discrete_sequence=px.colors.qualitative.Bold,
+        color_discrete_map=color_map,
     )
 
     fig.update_traces(
@@ -101,6 +174,7 @@ def generate_star_plot(results: dict[str, pl.DataFrame], dump: bool, output_path
             ),
         ),
         legend=dict(
+            title="Model",
             orientation="h",
             yanchor="bottom",
             y=-0.2,
@@ -110,14 +184,15 @@ def generate_star_plot(results: dict[str, pl.DataFrame], dump: bool, output_path
         margin=dict(t=20, b=20, l=40, r=40),
     )
 
-    save_plotly_figure(fig, output_path, ".pdf")
+    save_plotly_figure(clean_legend(fig), output_path, ".pdf")
 
 
 def generate_parallel_plot(
-    results: dict[str, pl.DataFrame], dump: bool, output_path: Path
+    results: dict[str, pl.DataFrame], dump: bool, output_path: Path, model_name: str = "CAST"
 ):
     """Generates a parallel coordinates plot (lines) using Plotly."""
-    df = prepare_plot_data(results, dump)
+    df = prepare_plot_data(results, dump, model_name=model_name)
+    color_map = get_color_map(df)
 
     # Sort metrics for consistent X axis
     metric_order = [METRIC_DISPLAY_MAP.get(m, m) for m in METRIC_DISPLAY_MAP]
@@ -128,11 +203,11 @@ def generate_parallel_plot(
         df,
         x="Metric",
         y="NormalizedValue",
-        color="ModelType",
+        color="LegendLabel",
         line_group="Model",
         hover_data={"Value": ":.4f", "Model": True, "NormalizedValue": False},
         template="plotly_white",
-        color_discrete_sequence=px.colors.qualitative.Bold,
+        color_discrete_map=color_map,
         markers=True,
     )
 
@@ -142,7 +217,7 @@ def generate_parallel_plot(
         yaxis=dict(title="Relative Performance (Normalized)", range=[0, 1.05]),
         xaxis=dict(title="Metric"),
         legend=dict(
-            title="Model Type",
+            title="Model",
             orientation="h",
             yanchor="bottom",
             y=-0.3,
@@ -152,23 +227,26 @@ def generate_parallel_plot(
         margin=dict(t=20, b=20, l=40, r=40),
     )
 
-    save_plotly_figure(fig, output_path, "_parallel.pdf")
+    save_plotly_figure(clean_legend(fig), output_path, "_parallel.pdf")
 
 
 def generate_cleveland_plot(
-    results: dict[str, pl.DataFrame], dump: bool, output_path: Path
+    results: dict[str, pl.DataFrame], dump: bool, output_path: Path, model_name: str = "CAST"
 ):
     """Generates a Cleveland dot plot using Plotly."""
-    df = prepare_plot_data(results, dump)
+    df = prepare_plot_data(results, dump, model_name=model_name)
+    color_map = get_color_map(df)
 
     fig = px.scatter(
         df,
         x="NormalizedValue",
         y="Metric",
-        color="Model",
+        color="LegendLabel",
+        symbol="Group",
+        symbol_map={"Ours": "circle", "Baseline": "square"},
         hover_data={"Value": ":.4f", "Model": True, "NormalizedValue": False},
         template="plotly_white",
-        color_discrete_sequence=px.colors.qualitative.Bold,
+        color_discrete_map=color_map,
     )
 
     fig.update_traces(marker=dict(size=12, opacity=0.8))
@@ -177,6 +255,7 @@ def generate_cleveland_plot(
         xaxis=dict(title="Relative Performance (Normalized)", range=[-0.05, 1.05]),
         yaxis=dict(title="Metric", automargin=True),
         legend=dict(
+            title="Model",
             orientation="h",
             yanchor="bottom",
             y=-0.3,
@@ -186,7 +265,7 @@ def generate_cleveland_plot(
         margin=dict(t=20, b=20, l=40, r=40),
     )
 
-    save_plotly_figure(fig, output_path, "_cleveland.pdf")
+    save_plotly_figure(clean_legend(fig), output_path, "_cleveland.pdf")
 
 
 def save_plotly_figure(fig, output_path: Path, default_suffix: str):

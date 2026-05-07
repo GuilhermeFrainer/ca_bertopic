@@ -18,6 +18,7 @@ from src.visualization import (
 )
 
 RESULTS_DIR = PROJECT_ROOT / "results"
+MODEL_NAME = "CAST"
 
 
 def main():
@@ -61,6 +62,11 @@ def main():
             "Calculate the average performance per model type "
             "instead of finding the best."
         ),
+    )
+    parser.add_argument(
+        "--merge-info0",
+        action="store_true",
+        help="Merge models with and without info0 into the same model type.",
     )
     parser.add_argument(
         "--star-plot",
@@ -120,6 +126,7 @@ def main():
         exclude_dim_red=args.exclude_dim_red,
         dump=args.dump,
         average=args.average,
+        merge_info0=args.merge_info0,
     )
 
     if not results:
@@ -127,13 +134,13 @@ def main():
         return
 
     if args.star_plot:
-        generate_star_plot(results, args.dump, Path(args.star_plot))
+        generate_star_plot(results, args.dump, Path(args.star_plot), model_name=MODEL_NAME)
 
     if args.parallel:
-        generate_parallel_plot(results, args.dump, Path(args.parallel))
+        generate_parallel_plot(results, args.dump, Path(args.parallel), model_name=MODEL_NAME)
 
     if args.cleveland:
-        generate_cleveland_plot(results, args.dump, Path(args.cleveland))
+        generate_cleveland_plot(results, args.dump, Path(args.cleveland), model_name=MODEL_NAME)
 
     if args.latex:
         latex_table = generate_best_models_latex_table(

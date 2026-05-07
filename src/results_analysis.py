@@ -5,7 +5,7 @@ import polars as pl
 METRICS = ["u_mass", "c_v", "c_npmi", "irbo", "topic_diversity"]
 
 
-def extract_model_type(model_name: str) -> str:
+def extract_model_type(model_name: str, merge_info0: bool = False) -> str:
     """Extracts the base model type from a model name.
 
     Example: 'baseline_1' -> 'baseline'.
@@ -13,12 +13,18 @@ def extract_model_type(model_name: str) -> str:
     if not isinstance(model_name, str):
         return str(model_name)
 
-    if "_" in model_name:
-        parts = model_name.split("_")
-        # If the last part is a number, remove it
+    # First remove any trailing numbers (e.g., baseline_1 -> baseline)
+    res = model_name
+    if "_" in res:
+        parts = res.split("_")
         if parts[-1].isdigit():
-            return "_".join(parts[:-1])
-    return model_name
+            res = "_".join(parts[:-1])
+
+    # Then optionally strip info0
+    if merge_info0 and res.endswith("_info0"):
+        res = res[: -len("_info0")]
+
+    return res
 
 
 def find_best_models(
@@ -28,6 +34,7 @@ def find_best_models(
     exclude_dim_red: List[str] | None = None,
     dump: bool = False,
     average: bool = False,
+    merge_info0: bool = False,
 ) -> Dict[str, pl.DataFrame]:
     """
     Finds the best performing model (or average performance) of each model type
@@ -43,6 +50,7 @@ def find_best_models(
             just the best per type.
         average: If True, calculates the average performance per model type
             instead of finding the best.
+        merge_info0: If True, treats models with and without _info0 as the same type.
 
     Returns:
         A dictionary where keys are metric names and values are DataFrames
@@ -76,7 +84,10 @@ def find_best_models(
     if "model_type" not in df.columns:
         df = df.with_columns(
             pl.col("model_name")
-            .map_elements(extract_model_type, return_dtype=pl.String)
+            .map_elements(
+                lambda x: extract_model_type(x, merge_info0=merge_info0),
+                return_dtype=pl.String,
+            )
             .alias("model_type")
         )
 
