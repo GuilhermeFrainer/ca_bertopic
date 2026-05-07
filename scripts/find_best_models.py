@@ -20,6 +20,58 @@ from src.visualization import (
 RESULTS_DIR = PROJECT_ROOT / "results"
 MODEL_NAME = "CAST"
 
+MODEL_SHORT_NAMES = {
+    "mv_co_reg_spectral": "{model_name}_1",
+    "mv_co_reg_spectral_info0": "{model_name}_1-info0",
+    "mv_spectral": "{model_name}_2",
+    "mv_spectral_info0": "{model_name}_2-info0",
+    "aligned_umap": "{model_name}_3",
+    "baseline": "BERTopic_1",
+    "umap_spectral": "BERTopic_2",
+    "append_umap": "Naive",
+}
+
+LABEL_DESCRIPTIONS = {
+    "{model_name}_1": "{model_name} with co-reg",
+    "{model_name}_1-info0": "{model_name} with co-reg and info0",
+    "{model_name}_2": "{model_name} with spectral",
+    "{model_name}_2-info0": "{model_name} with spectral and info0",
+    "{model_name}_3": "{model_name} with Aligned UMAP",
+    "BERTopic_1": "Regular BERTopic",
+    "BERTopic_2": "BERTopic with Spectral",
+    "Naive": "Naive baseline (Append UMAP)",
+}
+
+
+def generate_label_table():
+    """Generates a LaTeX table for model label descriptions."""
+    lines = [
+        "\\begin{table}[h]",
+        "\\centering",
+        "\\caption{Model Label Descriptions}",
+        "\\label{tab:label_descriptions}",
+        "\\begin{tabular}{ll}",
+        "    \\toprule",
+        "    Label & Description \\\\",
+        "    \\midrule",
+    ]
+    for label, desc in LABEL_DESCRIPTIONS.items():
+        # Use math mode for labels to support subscripts
+        fmt_label = label.format(model_name=MODEL_NAME)
+        if "_" in fmt_label:
+            base, sub = fmt_label.split("_", 1)
+            fmt_label = f"$\\text{{{base}}}_{{{sub}}}$"
+        
+        fmt_desc = desc.format(model_name=MODEL_NAME)
+        lines.append(f"    {fmt_label} & {fmt_desc} \\\\")
+
+    lines.extend([
+        "    \\bottomrule",
+        "\\end{tabular}",
+        "\\end{table}",
+    ])
+    return "\n".join(lines)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -28,7 +80,7 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        required=True,
+        required=False,
         help="Name of the dataset (e.g., fed, yelp, trump)",
     )
     parser.add_argument(
@@ -91,7 +143,19 @@ def main():
             "Specify a file path (defaults to _cleveland.pdf)."
         ),
     )
+    parser.add_argument(
+        "--label-table",
+        action="store_true",
+        help="Output the label description table as a LaTeX table.",
+    )
     args = parser.parse_args()
+
+    if args.label_table:
+        print(generate_label_table())
+        return
+
+    if not args.dataset:
+        parser.error("--dataset is required unless --label-table is provided.")
 
     dataset = args.dataset
     csv_files = list(RESULTS_DIR.glob("*.csv"))

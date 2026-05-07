@@ -16,13 +16,13 @@ METRIC_DISPLAY_MAP = {
 # Mapping for prettier model names (Plotly version)
 MODEL_RENAME_MAP = {
     "append_umap": "Naive",
-    "mv_co_reg_spectral": "{model_name}<sub>co-reg</sub>",
-    "mv_co_reg_spectral_info0": "{model_name}<sub>co-reg-info0</sub>",
-    "baseline": "BERTopic",
-    "umap_spectral": "BERTopic<sub>Spectral</sub>",
-    "mv_spectral": "{model_name}<sub>Spectral</sub>",
-    "mv_spectral_info0": "{model_name}<sub>Spectral-info0</sub>",
-    "aligned_umap": "{model_name}<sub>Aligned</sub>",
+    "mv_co_reg_spectral": "{model_name}<sub>1</sub>",
+    "mv_co_reg_spectral_info0": "{model_name}<sub>1-info0</sub>",
+    "baseline": "BERTopic<sub>1</sub>",
+    "umap_spectral": "BERTopic<sub>2</sub>",
+    "mv_spectral": "{model_name}<sub>2</sub>",
+    "mv_spectral_info0": "{model_name}<sub>2-info0</sub>",
+    "aligned_umap": "{model_name}<sub>3</sub>",
 }
 
 
@@ -76,47 +76,51 @@ def prepare_plot_data(results: dict[str, pl.DataFrame], dump: bool, model_name: 
     return df
 
 
-def get_color_map(df: pd.DataFrame):
-    """Generates a color map with paired reds for 'Ours' and blues for 'Baselines'."""
-    # Find base model types (ignoring info0)
-    def get_base(label):
-        return label.replace("-info0", "").replace("<sub>info0</sub>", "")
-
-    labels = sorted(df["LegendLabel"].unique())
+def get_color_map(df: pd.DataFrame, model_name: str = "CAST"):
+    """Generates a color map with explicit paired colors for numbered labels."""
     color_map = {}
 
-    # Milder Palettes (ColorBrewer-inspired Paired)
-    # CAST (Reds/Oranges)
-    # Pairs: (Dark, Light)
-    ours_pairs = [
-        ("#e31a1c", "#fb9a99"),  # Red, Light Red
-        ("#ff7f00", "#fdbf6f"),  # Orange, Light Orange
-        ("#6a3d9a", "#cab2d6"),  # Purple, Light Purple
-    ]
-    # Baselines (Blues/Greens)
-    baseline_pairs = [
-        ("#1f78b4", "#a6cee3"),  # Blue, Light Blue
-        ("#008080", "#40e0d0"),  # Teal, Turquoise
-        ("#33a02c", "#b2df8a"),  # Green, Light Green
-    ]
+    # Explicit mapping based on numbered labels (with <sub> tags)
+    # Pairs: (Dark, Light) -> (Info0, Regular)
+    mapping = {
+        f"{model_name}<sub>1</sub>": ("#e31a1c", "#fb9a99"),  # Red / Light Red
+        f"{model_name}<sub>2</sub>": ("#ff7f00", "#fdbf6f"),  # Orange / Light Orange
+        f"{model_name}<sub>3</sub>": ("#e7298a", "#df65b0"),  # Pink / Light Pink
+        "BERTopic<sub>1</sub>": ("#1f78b4", "#a6cee3"),      # Blue / Light Blue
+        "BERTopic<sub>2</sub>": ("#008080", "#40e0d0"),      # Teal / Turquoise
+        "Naive": ("#33a02c", "#b2df8a"),                   # Green / Light Green
+    }
 
-    ours_bases = sorted(list(set(get_base(l) for l in labels if "Ours" in df[df["LegendLabel"] == l]["Group"].values)))
-    baseline_bases = sorted(list(set(get_base(l) for l in labels if "Baseline" in df[df["LegendLabel"] == l]["Group"].values)))
-
-    ours_base_map = {base: ours_pairs[i % len(ours_pairs)] for i, base in enumerate(ours_bases)}
-    baseline_base_map = {base: baseline_pairs[i % len(baseline_pairs)] for i, base in enumerate(baseline_bases)}
-
+    labels = sorted(df["LegendLabel"].unique())
     for label in labels:
-        base = get_base(label)
+        # Determine base label and if it's info0
         is_info0 = "info0" in label.lower()
-        if label in df[df["Group"] == "Ours"]["LegendLabel"].values:
-            pair = ours_base_map.get(base, ours_pairs[0])
+        
+        # Strip info0 to find the base pair
+        base = label.replace("-info0", "")
+        
+        if base in mapping:
+            pair = mapping[base]
             color_map[label] = pair[0] if is_info0 else pair[1]
         else:
-            pair = baseline_base_map.get(base, baseline_pairs[0])
-            color_map[label] = pair[0] if is_info0 else pair[1]
+            # Fallback
+            color_map[label] = "#7f7f7f"
 
     return color_map
+
+
+def get_legend_order(model_name: str = "CAST"):
+    """Returns the standardized legend order with <sub> tags."""
+    return [
+        f"{model_name}<sub>1</sub>",
+        f"{model_name}<sub>1-info0</sub>",
+        f"{model_name}<sub>2</sub>",
+        f"{model_name}<sub>2-info0</sub>",
+        f"{model_name}<sub>3</sub>",
+        "BERTopic<sub>1</sub>",
+        "BERTopic<sub>2</sub>",
+        "Naive",
+    ]
 
 
 def clean_legend(fig):
@@ -134,7 +138,8 @@ def generate_star_plot(
 ):
     """Generates a star plot (radar chart) using Plotly with Min-Max normalization."""
     df = prepare_plot_data(results, dump, model_name=model_name)
-    color_map = get_color_map(df)
+    color_map = get_color_map(df, model_name=model_name)
+    legend_order = get_legend_order(model_name=model_name)
 
     # Build the star plot
     fig = px.line_polar(
@@ -151,6 +156,7 @@ def generate_star_plot(
         },
         template="plotly_white",
         color_discrete_map=color_map,
+        category_orders={"LegendLabel": legend_order},
     )
 
     fig.update_traces(
@@ -192,7 +198,8 @@ def generate_parallel_plot(
 ):
     """Generates a parallel coordinates plot (lines) using Plotly."""
     df = prepare_plot_data(results, dump, model_name=model_name)
-    color_map = get_color_map(df)
+    color_map = get_color_map(df, model_name=model_name)
+    legend_order = get_legend_order(model_name=model_name)
 
     # Sort metrics for consistent X axis
     metric_order = [METRIC_DISPLAY_MAP.get(m, m) for m in METRIC_DISPLAY_MAP]
@@ -209,6 +216,7 @@ def generate_parallel_plot(
         template="plotly_white",
         color_discrete_map=color_map,
         markers=True,
+        category_orders={"LegendLabel": legend_order},
     )
 
     fig.update_traces(opacity=0.6, line=dict(width=2))
@@ -235,7 +243,8 @@ def generate_cleveland_plot(
 ):
     """Generates a Cleveland dot plot using Plotly."""
     df = prepare_plot_data(results, dump, model_name=model_name)
-    color_map = get_color_map(df)
+    color_map = get_color_map(df, model_name=model_name)
+    legend_order = get_legend_order(model_name=model_name)
 
     fig = px.scatter(
         df,
@@ -247,6 +256,7 @@ def generate_cleveland_plot(
         hover_data={"Value": ":.4f", "Model": True, "NormalizedValue": False},
         template="plotly_white",
         color_discrete_map=color_map,
+        category_orders={"LegendLabel": legend_order},
     )
 
     fig.update_traces(marker=dict(size=12, opacity=0.8))

@@ -140,16 +140,36 @@ def generate_best_models_latex_table(
     # Model renaming for LaTeX
     MODEL_RENAME_MAP = {
         "append_umap": "Naive",
-        "mv_co_reg_spectral": "$\\systemshort_{\\text{co-reg}}$",
-        "mv_co_reg_spectral_info0": "$\\systemshort_{\\text{co-reg-info0}}$",
-        "baseline": "BERTopic",
-        "umap_spectral": "$\\text{BERTopic}_{\\text{Spectral}}$",
-        "mv_spectral": "$\\systemshort_{\\text{Spectral}}$",
-        "mv_spectral_info0": "$\\systemshort_{\\text{Spectral-info0}}$",
-        "aligned_umap": "$\\systemshort_{\\text{Aligned}}$",
+        "mv_co_reg_spectral": "$\\systemshort_1$",
+        "mv_co_reg_spectral_info0": "$\\systemshort_1\\text{-info0}$",
+        "baseline": "$\\text{BERTopic}_1$",
+        "umap_spectral": "$\\text{BERTopic}_2$",
+        "mv_spectral": "$\\systemshort_2$",
+        "mv_spectral_info0": "$\\systemshort_2\\text{-info0}$",
+        "aligned_umap": "$\\systemshort_3$",
     }
 
     # 2. Build a matrix: rows are model types/names, columns are metrics
+    # Explicitly order the IDs to match requirements
+    desired_order = [
+        "mv_co_reg_spectral",
+        "mv_co_reg_spectral_info0",
+        "mv_spectral",
+        "mv_spectral_info0",
+        "aligned_umap",
+        "baseline",
+        "umap_spectral",
+        "append_umap",
+    ]
+    # Filter to only those present in the results
+    all_ids_present = set()
+    for metric_df in results.values():
+        all_ids_present.update(metric_df[id_col].to_list())
+
+    all_ids = [i for i in desired_order if i in all_ids_present]
+    # Add any others that might be missing from desired_order but are in results
+    all_ids += sorted(list(all_ids_present - set(desired_order)))
+
     rows = []
     for identifier in all_ids:
         display_name = MODEL_RENAME_MAP.get(identifier, identifier.replace("_", " "))
