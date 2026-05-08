@@ -32,14 +32,14 @@ MODEL_SHORT_NAMES = {
 }
 
 LABEL_DESCRIPTIONS = {
-    "{model_name}_1": "{model_name} with co-reg",
-    "{model_name}_1-info0": "{model_name} with co-reg and info0",
-    "{model_name}_2": "{model_name} with spectral",
-    "{model_name}_2-info0": "{model_name} with spectral and info0",
+    "{model_name}_1": "{model_name} with Co-Reg. Spectral Clustering",
+    "{model_name}_1-info0": "Same as above with the info0 parameter",
+    "{model_name}_2": "{model_name} with MV Spectral Clustering",
+    "{model_name}_2-info0": "Same as above with the info0 parameter",
     "{model_name}_3": "{model_name} with Aligned UMAP",
-    "BERTopic_1": "Regular BERTopic",
+    "BERTopic_1": "Default BERTopic",
     "BERTopic_2": "BERTopic with Spectral",
-    "Naive": "Naive baseline (Append UMAP)",
+    "Naive": "Naive baseline",
 }
 
 
