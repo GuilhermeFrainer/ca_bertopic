@@ -241,10 +241,17 @@ def generate_best_models_latex_table(
         caption = f"Best performing models by type for the {dataset} dataset."
 
     # Export to LaTeX
+    if dump:
+        table_label = f"tab:all_models_{dataset}"
+    elif average:
+        table_label = f"tab:avg_models_{dataset}"
+    else:
+        table_label = f"tab:best_models_{dataset}"
+
     latex = display_df.to_latex(
         index=False,
         caption=caption,
-        label=f"tab:best_models_{dataset}" if not dump else f"tab:all_models_{dataset}",
+        label=table_label,
         escape=False,
         column_format="l" + "r" * len(metric_cols),
         position="h!",
