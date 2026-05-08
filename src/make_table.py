@@ -140,13 +140,13 @@ def generate_best_models_latex_table(
     # Model renaming for LaTeX
     MODEL_RENAME_MAP = {
         "append_umap": "Naive",
-        "mv_co_reg_spectral": "$\\systemshort_1$",
-        "mv_co_reg_spectral_info0": "$\\systemshort_1\\text{-info0}$",
+        "mv_co_reg_spectral": "$\\text{\\systemshort}_1$",
+        "mv_co_reg_spectral_info0": "$\\text{\\systemshort}_1\\text{-info0}$",
         "baseline": "$\\text{BERTopic}_1$",
         "umap_spectral": "$\\text{BERTopic}_2$",
-        "mv_spectral": "$\\systemshort_2$",
-        "mv_spectral_info0": "$\\systemshort_2\\text{-info0}$",
-        "aligned_umap": "$\\systemshort_3$",
+        "mv_spectral": "$\\text{\\systemshort}_2$",
+        "mv_spectral_info0": "$\\text{\\systemshort}_2\\text{-info0}$",
+        "aligned_umap": "$\\text{\\systemshort}_3$",
     }
 
     # 2. Build a matrix: rows are model types/names, columns are metrics
