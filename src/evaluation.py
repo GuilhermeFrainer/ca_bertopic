@@ -1,9 +1,32 @@
 import logging
 import random
 
+import numpy as np
 from bertopic import BERTopic
 from octis.evaluation_metrics.coherence_metrics import Coherence
 from octis.evaluation_metrics.diversity_metrics import InvertedRBO, TopicDiversity
+
+
+def topic_words_to_octis(topic_words: list[list[str]]) -> dict[str, list[list[str]]]:
+    """
+    Standardizes a list of topic words into OCTIS format.
+    """
+    return {"topics": topic_words}
+
+
+def get_top_words_from_beta(
+    beta: np.ndarray, vocab: list[str], topk: int = 10
+) -> list[list[str]]:
+    """
+    Extracts the top k words for each topic from a beta matrix (K x V).
+    """
+    topic_words = []
+    for topic_beta in beta:
+        # Assuming beta is either probabilities or log-probabilities
+        top_indices = np.argsort(topic_beta)[::-1][:topk]
+        words = [vocab[i] for i in top_indices]
+        topic_words.append(words)
+    return topic_words
 
 
 def bertopic_output_to_octis(m: BERTopic, topk: int = 10) -> dict[str, list[list[str]]]:

@@ -1,0 +1,222 @@
+# -*- coding: utf-8 -*-
+"""Run STM experiments using R training and Python evaluation."""
+
+import argparse
+import datetime
+import json
+import logging
+import os
+import subprocess
+import sys
+import tempfile
+import traceback
+from pathlib import Path
+
+import numpy as np
+import polars as pl
+from tqdm import tqdm
+
+# Add project root to sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import src.data as data
+import src.evaluation as evaluation
+import src.logger_config as logger_config
+import src.utils as utils
+
+EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
+RESULTS_DIR = PROJECT_ROOT / "results"
+LOG_DIR = PROJECT_ROOT / "logs"
+OUTPUT_DIR = PROJECT_ROOT / "output"
+MODELS_DIR = PROJECT_ROOT / "models"
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run STM experiments.")
+    parser.add_argument(
+        "--exp",
+        type=str,
+        required=True,
+        help="Name of the experiment yaml file (e.g., anes_stm)",
+    )
+    args = parser.parse_args()
+
+    try:
+        # 1. Setup
+        config = utils.load_config(args.exp, EXPERIMENTS_DIR)
+        exp_name = config["experiment"]["name"]
+        random_state = utils.get_random_state(config["experiment"]["random_state"])
+
+        logger = logger_config.setup_logging(exp_name, LOG_DIR)
+        logger.info(f"Starting STM experiment: {exp_name}")
+
+        # 2. Dataset Path and Metadata
+        dataset_path = Path(config["experiment"]["dataset_path"])
+        dataset_name = dataset_path.stem.replace("_embeddings", "")
+        rds_path = PROJECT_ROOT / f"data/processed/{dataset_name}_stm_data.rds"
+        bow_path = PROJECT_ROOT / f"data/processed/{dataset_name}_bow.parquet"
+
+        if not rds_path.exists():
+            logger.error(f"RDS file not found: {rds_path}. Run scripts/build_bow.R first.")
+            return
+
+        # 3. Handle Sampling
+        sample_indices_path = None
+        n_observations = None
+        
+        # We need to load the full bow data to know the total N and to get text for coherence
+        logger.info(f"Loading BoW data from {bow_path}...")
+        bow_df = pl.read_parquet(bow_path)
+        
+        sample_size = config["experiment"].get("sample_size")
+        if sample_size:
+            logger.info(f"Sampling {sample_size} observations...")
+            # Use established sampling logic
+            if len(bow_df) > sample_size:
+                sampled_df = bow_df.sample(n=sample_size, seed=random_state)
+                # Save indices for R to use
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                    json.dump(sampled_df["index"].to_list(), f)
+                    sample_indices_path = f.name
+                n_observations = sample_size
+                # For coherence we use the sampled text
+                eval_texts = sampled_df["bow_text"].to_list()
+            else:
+                logger.warning(f"Sample size {sample_size} >= dataset size {len(bow_df)}. No sampling applied.")
+                n_observations = len(bow_df)
+                eval_texts = bow_df["bow_text"].to_list()
+        else:
+            n_observations = len(bow_df)
+            eval_texts = bow_df["bow_text"].to_list()
+
+        # Tokenize eval_texts for coherence (simple split as they are already BoW)
+        tokenized_texts = [t.split() for t in eval_texts if t]
+
+        start_timestamp = datetime.datetime.now().isoformat()
+        file_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+        results = []
+        qualitative_dfs = []
+
+        # 4. Iterate over models
+        models_config = config.get("models", [])
+        for m_conf in tqdm(models_config, desc="Running STM models"):
+            m_id = m_conf.get("id", "Unknown")
+            k = m_conf.get("parameters", {}).get("k")
+            
+            if not k:
+                logger.error(f"Model {m_id} missing parameter 'k'. Skipping.")
+                continue
+
+            # Temp output dir for R results
+            with tempfile.TemporaryDirectory() as tmp_output:
+                model_filename = f"stm_{dataset_name}_{m_id}_{file_timestamp}.rds"
+                model_path = MODELS_DIR / model_filename
+                
+                # Run R script
+                cmd = [
+                    "Rscript",
+                    "scripts/train_stm.R",
+                    "--rds_path", str(rds_path),
+                    "--k", str(k),
+                    "--output_dir", tmp_output,
+                    "--seed", str(random_state),
+                    "--model_path", str(model_path)
+                ]
+                if sample_indices_path:
+                    cmd.extend(["--indices_path", sample_indices_path])
+
+                logger.info(f"[{m_id}] Running R training script...")
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    logger.error(f"[{m_id}] R training failed:\n{result.stderr}")
+                    continue
+                
+                logger.info(f"[{m_id}] R training successful.")
+
+                # 5. Load R outputs for Evaluation
+                beta = pl.read_parquet(Path(tmp_output) / "beta.parquet").to_numpy()
+                theta = pl.read_parquet(Path(tmp_output) / "theta.parquet").to_numpy()
+                with open(Path(tmp_output) / "vocab.txt", "r") as f:
+                    vocab = [line.strip() for line in f]
+                with open(Path(tmp_output) / "duration.txt", "r") as f:
+                    duration = float(f.read().strip())
+
+                # 6. Compute Metrics
+                top_words = evaluation.get_top_words_from_beta(beta, vocab)
+                octis_output = evaluation.topic_words_to_octis(top_words)
+
+                metrics = {
+                    "model_name": m_id,
+                    "duration_seconds": duration,
+                    "n_topics": k,
+                    "outliers": 0, # STM doesn't really have outliers like HDBSCAN
+                }
+
+                # Coherence Loop
+                for cm in config["experiment"]["coherence_metrics"]:
+                    metrics[cm] = evaluation.compute_coherence(
+                        model_output=octis_output, texts=tokenized_texts, measure=cm
+                    )
+
+                # Diversity Loop
+                for dm in config["experiment"]["diversity_metrics"]:
+                    metrics[dm] = evaluation.compute_diversity(dm, model_output=octis_output)
+
+                # Add Run Metadata
+                run_metadata = {
+                    "experiment_id": exp_name,
+                    "random_state": random_state,
+                    "clustering_algo": "STM",
+                    "dim_red_algo": "None",
+                    "n_observations": n_observations,
+                    "timestamp": start_timestamp,
+                    "file_timestamp": file_timestamp,
+                    "dataset_name": dataset_name,
+                    "k": k
+                }
+                metrics.update(run_metadata)
+                results.append(metrics)
+
+                # 7. Extract Qualitative Data
+                qual_df = utils.extract_stm_qualitative_data(
+                    theta=theta,
+                    beta=beta,
+                    vocab=vocab,
+                    documents=eval_texts,
+                    model_id=m_id,
+                    metadata=run_metadata
+                )
+                qualitative_dfs.append(qual_df)
+
+        # 8. Save Final Results
+        if results:
+            results_df = pl.DataFrame(results)
+            results_filename = f"{exp_name}-{file_timestamp}-{random_state}"
+            results_path = RESULTS_DIR / f"{results_filename}.csv"
+            results_df.write_csv(results_path)
+            logger.info(f"Results saved to {results_path}")
+
+        if qualitative_dfs:
+            consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
+            output_path = OUTPUT_DIR / f"{results_filename}.json"
+            
+            json_str = consolidated_qual_df.write_json()
+            parsed_json = json.loads(json_str)
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(parsed_json, f, indent=4)
+            logger.info(f"Qualitative data saved to {output_path}")
+
+        # Cleanup
+        if sample_indices_path and os.path.exists(sample_indices_path):
+            os.remove(sample_indices_path)
+
+    except Exception:
+        print(traceback.format_exc())
+
+
+if __name__ == "__main__":
+    main()

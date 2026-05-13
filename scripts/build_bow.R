@@ -109,6 +109,7 @@ main <- function() {
     # 1. Output RDS for STM
     cat("Preparing and saving STM data (RDS)...\n")
     # stm_data contains $documents, $vocab, and $meta (aligned with documents)
+    # quanteda::convert automatically includes docvars in $meta
     stm_data <- quanteda::convert(dfm_obj, to = "stm")
     
     rds_output_path <- here::here("data", "processed", paste0(opt$dataset, "_stm_data.rds"))

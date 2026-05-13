@@ -2,8 +2,76 @@ import logging
 import random
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 import yaml
+
+
+def extract_stm_qualitative_data(
+    theta: np.ndarray,
+    beta: np.ndarray,
+    vocab: list[str],
+    documents: list[str],
+    model_id: str,
+    metadata: dict,
+    topk: int = 10,
+) -> pl.DataFrame:
+    """
+    Extracts qualitative data from STM outputs (theta, beta) in a format
+    compatible with the existing BERTopic qualitative data schema.
+    """
+    import json
+
+    n_topics = beta.shape[0]
+
+    # 1. Topic counts (sum of probabilities)
+    counts = np.sum(theta, axis=0)
+
+    # 2. Representations (top words)
+    top_words = []
+    for i in range(n_topics):
+        top_indices = np.argsort(beta[i])[::-1][:topk]
+        top_words.append([vocab[idx] for idx in top_indices])
+
+    # 3. Representative documents (top 3 documents for each topic)
+    rep_docs = []
+    for i in range(n_topics):
+        top_doc_indices = np.argsort(theta[:, i])[::-1][:3]
+        # Ensure we don't go out of bounds if documents is shorter (shouldn't happen)
+        actual_indices = [idx for idx in top_doc_indices if idx < len(documents)]
+        rep_docs.append([documents[idx] for idx in actual_indices])
+
+    # 4. Create DataFrame
+    data = []
+    for i in range(n_topics):
+        topic_id = i
+        data.append(
+            {
+                "topic_id": topic_id,
+                "count": int(counts[i]),
+                "name": f"{topic_id}_" + "_".join(top_words[i][:3]),
+                "representation": top_words[i],
+                "representative_docs": rep_docs[i],
+            }
+        )
+
+    df = pl.DataFrame(data)
+
+    # Add model_id at the front
+    df = df.with_columns(pl.lit(model_id).alias("model_id"))
+
+    # Add metadata columns at the back
+    for key, value in metadata.items():
+        if isinstance(value, (list, dict)):
+            value = json.dumps(value)
+        df = df.with_columns(pl.lit(value).alias(key))
+
+    # Reorder columns
+    topic_cols = ["topic_id", "count", "name", "representation", "representative_docs"]
+    metadata_keys = list(metadata.keys())
+    final_order = ["model_id"] + topic_cols + metadata_keys
+
+    return df.select(final_order)
 
 
 def load_config(exp_name: str, experiments_dir: Path) -> dict:
