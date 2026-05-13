@@ -35,6 +35,7 @@ def find_best_models(
     dump: bool = False,
     average: bool = False,
     merge_info0: bool = False,
+    suppress_nulls: bool = False,
 ) -> Dict[str, pl.DataFrame]:
     """
     Finds the best performing model (or average performance) of each model type
@@ -51,6 +52,7 @@ def find_best_models(
         average: If True, calculates the average performance per model type
             instead of finding the best.
         merge_info0: If True, treats models with and without _info0 as the same type.
+        suppress_nulls: If True, filters out rows with NaNs in any metric column.
 
     Returns:
         A dictionary where keys are metric names and values are DataFrames
@@ -59,6 +61,21 @@ def find_best_models(
     # Filter by dataset
     if "dataset_name" in df.columns:
         df = df.filter(pl.col("dataset_name") == dataset)
+
+    if df.is_empty():
+        return {}
+
+    # Optional: Suppress rows with any NaNs in metric columns
+    if suppress_nulls:
+        actual_metric_cols = [m for m in METRICS if m in df.columns]
+        if actual_metric_cols:
+            # Drop rows where any metric column has a NaN/Null
+            # We cast to float to ensure uniform check
+            null_mask = pl.any_horizontal(
+                pl.col(actual_metric_cols).cast(pl.Float64, strict=False).is_null() |
+                pl.col(actual_metric_cols).cast(pl.Float64, strict=False).is_nan()
+            )
+            df = df.filter(~null_mask)
 
     if df.is_empty():
         return {}

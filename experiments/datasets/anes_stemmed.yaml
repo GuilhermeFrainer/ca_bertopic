@@ -1,0 +1,17 @@
+dataset_path: "data/processed/anes_embeddings.parquet"
+embedding_col: "clean_text_stemmed_embedding"
+text_col: "clean_text_stemmed"
+covariates:
+  numerical:
+    - years_of_education
+    - age
+  categorical:
+    - party_id
+  binary: []
+coherence_metrics:
+  - u_mass
+  - c_v
+  - c_npmi
+diversity_metrics:
+  - irbo
+  - topic_diversity

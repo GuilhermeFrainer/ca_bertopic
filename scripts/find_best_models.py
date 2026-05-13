@@ -148,6 +148,11 @@ def main():
         action="store_true",
         help="Output the label description table as a LaTeX table.",
     )
+    parser.add_argument(
+        "--suppress-nulls",
+        action="store_true",
+        help="Filter out rows that contain NaNs for any of the metric columns.",
+    )
     args = parser.parse_args()
 
     if args.label_table:
@@ -191,6 +196,7 @@ def main():
         dump=args.dump,
         average=args.average,
         merge_info0=args.merge_info0,
+        suppress_nulls=args.suppress_nulls,
     )
 
     if not results:

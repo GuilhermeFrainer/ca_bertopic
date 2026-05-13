@@ -113,6 +113,25 @@ def apply_trump_schema_and_types(df: Frame) -> Frame:
     return df
 
 
+def apply_anes_schema_and_types(df: Frame) -> Frame:
+    """Applies ANES-specific schema and type conversions."""
+    # Consolidate 'Refused', 'Unknown', and 'Other' into 'Unknown'
+    df = df.with_columns(
+        pl.col("party_id")
+        .replace({"Refused": "Unknown", "Other": "Unknown"})
+        .cast(pl.Categorical)
+    )
+    return df
+
+
+def stem_text(text: str, stemmer: nltk.stem.snowball.SnowballStemmer) -> str:
+    """Stems a string of text using the provided NLTK stemmer."""
+    if not text:
+        return ""
+    words = nltk.word_tokenize(text)
+    return " ".join([stemmer.stem(w) for w in words])
+
+
 def remove_urls(text_expr: pl.Expr) -> pl.Expr:
     """Removes URLs and common URL residues from a Polars expression."""
     # Matches http/https, common domain residues like t.co, and cases where
@@ -223,6 +242,7 @@ def process_dataset(
     max_tokens: int | None = None,
     include_metadata: bool = False,
     deduplicate: bool = False,
+    stem: bool = False,
 ) -> pl.DataFrame:
     """Main function to process a single dataset using lazy evaluation and batching.
 
@@ -239,6 +259,8 @@ def process_dataset(
 
     if dataset_name == "trump":
         lf = apply_trump_schema_and_types(lf)
+    elif dataset_name == "anes":
+        lf = apply_anes_schema_and_types(lf)
     else:
         lf = lf.rename(
             {col: col.lower().replace(" ", "_") for col in lf.collect_schema().names()}
@@ -270,6 +292,19 @@ def process_dataset(
             .str.strip_chars()
         )
     )
+
+    if stem:
+        logging.info("Adding stemmed text columns...")
+        # Use a snowball stemmer for better results than Porter
+        stemmer = nltk.stem.snowball.SnowballStemmer("english")
+        
+        # We perform stemming on the lowercased text
+        # Mapping elements is necessary for stemming words individually
+        lf = lf.with_columns(
+            clean_text_stemmed=pl.col("clean_text_lower").map_elements(
+                lambda x: stem_text(x, stemmer), return_dtype=pl.Utf8
+            )
+        )
 
     # Filter out empty or whitespace-only clean_text rows
     initial_row_count = lf.select(pl.len()).collect().item()

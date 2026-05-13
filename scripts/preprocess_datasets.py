@@ -57,6 +57,11 @@ def main():
         action="store_true",
         help="Whether to deduplicate the dataset based on cleaned text.",
     )
+    parser.add_argument(
+        "--stem",
+        action="store_true",
+        help="Whether to stem the documents using SnowballStemmer.",
+    )
     args = parser.parse_args()
 
     process_dataset(
@@ -66,6 +71,7 @@ def main():
         max_tokens=args.max_tokens,
         include_metadata=args.include_metadata,
         deduplicate=args.deduplicate,
+        stem=args.stem,
     )
 
 
