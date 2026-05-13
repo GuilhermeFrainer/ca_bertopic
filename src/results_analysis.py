@@ -95,11 +95,15 @@ def find_best_models(
 
     results = {}
     for metric in available_metrics:
-        # Ensure metric is numeric and filter out nulls
+        # Ensure metric is numeric and filter out nulls/NaNs
         if df[metric].dtype not in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]:
             continue
 
+        # filter out nulls and NaNs
         metric_df = df.filter(pl.col(metric).is_not_null())
+        if metric_df[metric].dtype in [pl.Float32, pl.Float64]:
+            metric_df = metric_df.filter(~pl.col(metric).is_nan())
+            
         if metric_df.is_empty():
             continue
 

@@ -113,3 +113,24 @@ def test_find_best_models_dump():
     assert res_dump["c_v"].height == 2
     assert 0.5 in res_dump["c_v"]["max_value"].to_list()
     assert 0.6 in res_dump["c_v"]["max_value"].to_list()
+
+
+def test_find_best_models_nan_handling():
+    data = {
+        "model_name": ["mv_1", "mv_2", "mv_3"],
+        "dataset_name": ["fed", "fed", "fed"],
+        "c_v": [0.5, float("nan"), 0.6],
+        "u_mass": [float("nan"), float("nan"), -1.0],
+    }
+    df = pl.DataFrame(data)
+
+    results = find_best_models(df, "fed")
+
+    # For c_v, mv_3 (0.6) should be better than mv_1 (0.5), and NaN should be ignored
+    assert results["c_v"]["max_value"][0] == 0.6
+    assert results["c_v"]["best_model_name"][0] == "mv_3"
+
+    # For u_mass, only mv_3 has a valid value
+    assert results["u_mass"].height == 1
+    assert results["u_mass"]["max_value"][0] == -1.0
+    assert results["u_mass"]["best_model_name"][0] == "mv_3"
