@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Gemini
+.gemini/
+
 # Research directories - keep structure but ignore content
 data/*
 !data/.gitkeep
