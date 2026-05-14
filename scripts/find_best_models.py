@@ -61,15 +61,17 @@ def generate_label_table():
         if "_" in fmt_label:
             base, sub = fmt_label.split("_", 1)
             fmt_label = f"$\\text{{{base}}}_{{{sub}}}$"
-        
+
         fmt_desc = desc.format(model_name=MODEL_NAME)
         lines.append(f"    {fmt_label} & {fmt_desc} \\\\")
 
-    lines.extend([
-        "    \\bottomrule",
-        "\\end{tabular}",
-        "\\end{table}",
-    ])
+    lines.extend(
+        [
+            "    \\bottomrule",
+            "\\end{tabular}",
+            "\\end{table}",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -163,6 +165,9 @@ def main():
         parser.error("--dataset is required unless --label-table is provided.")
 
     dataset = args.dataset
+    if dataset == "anes_stemmed":
+        dataset = "anes"
+
     csv_files = list(RESULTS_DIR.glob("*.csv"))
 
     if not csv_files:
@@ -175,9 +180,14 @@ def main():
             df = pl.read_csv(f, infer_schema_length=None)
             # Filter by dataset early if possible
             if "dataset_name" in df.columns:
+                # Normalize dataset name
+                df = df.with_columns(
+                    pl.col("dataset_name").replace("anes_stemmed", "anes")
+                )
                 df = df.filter(pl.col("dataset_name") == dataset)
                 if not df.is_empty():
                     all_dfs.append(df)
+
         except Exception:
             continue
 
@@ -204,13 +214,19 @@ def main():
         return
 
     if args.star_plot:
-        generate_star_plot(results, args.dump, Path(args.star_plot), model_name=MODEL_NAME)
+        generate_star_plot(
+            results, args.dump, Path(args.star_plot), model_name=MODEL_NAME
+        )
 
     if args.parallel:
-        generate_parallel_plot(results, args.dump, Path(args.parallel), model_name=MODEL_NAME)
+        generate_parallel_plot(
+            results, args.dump, Path(args.parallel), model_name=MODEL_NAME
+        )
 
     if args.cleveland:
-        generate_cleveland_plot(results, args.dump, Path(args.cleveland), model_name=MODEL_NAME)
+        generate_cleveland_plot(
+            results, args.dump, Path(args.cleveland), model_name=MODEL_NAME
+        )
 
     if args.latex:
         latex_table = generate_best_models_latex_table(

@@ -297,7 +297,7 @@ def process_dataset(
         logging.info("Adding stemmed text columns...")
         # Use a snowball stemmer for better results than Porter
         stemmer = nltk.stem.snowball.SnowballStemmer("english")
-        
+
         # We perform stemming on the lowercased text
         # Mapping elements is necessary for stemming words individually
         lf = lf.with_columns(

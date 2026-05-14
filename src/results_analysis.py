@@ -13,8 +13,12 @@ def extract_model_type(model_name: str, merge_info0: bool = False) -> str:
     if not isinstance(model_name, str):
         return str(model_name)
 
-    # First remove any trailing numbers (e.g., baseline_1 -> baseline)
     res = model_name
+    # Strip common prefixes
+    if res.startswith("stemmed_"):
+        res = res[len("stemmed_") :]
+
+    # First remove any trailing numbers (e.g., baseline_1 -> baseline)
     if "_" in res:
         parts = res.split("_")
         if parts[-1].isdigit():
@@ -58,6 +62,13 @@ def find_best_models(
         A dictionary where keys are metric names and values are DataFrames
         with models and their scores.
     """
+    # Normalize dataset name and model names
+    if "dataset_name" in df.columns:
+        df = df.with_columns(pl.col("dataset_name").replace("anes_stemmed", "anes"))
+
+    if "model_name" in df.columns:
+        df = df.with_columns(pl.col("model_name").str.replace("^stemmed_", ""))
+
     # Filter by dataset
     if "dataset_name" in df.columns:
         df = df.filter(pl.col("dataset_name") == dataset)
@@ -72,8 +83,8 @@ def find_best_models(
             # Drop rows where any metric column has a NaN/Null
             # We cast to float to ensure uniform check
             null_mask = pl.any_horizontal(
-                pl.col(actual_metric_cols).cast(pl.Float64, strict=False).is_null() |
-                pl.col(actual_metric_cols).cast(pl.Float64, strict=False).is_nan()
+                pl.col(actual_metric_cols).cast(pl.Float64, strict=False).is_null()
+                | pl.col(actual_metric_cols).cast(pl.Float64, strict=False).is_nan()
             )
             df = df.filter(~null_mask)
 
@@ -120,7 +131,7 @@ def find_best_models(
         metric_df = df.filter(pl.col(metric).is_not_null())
         if metric_df[metric].dtype in [pl.Float32, pl.Float64]:
             metric_df = metric_df.filter(~pl.col(metric).is_nan())
-            
+
         if metric_df.is_empty():
             continue
 

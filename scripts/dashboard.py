@@ -45,12 +45,18 @@ def extract_model_type(name: str) -> str:
     """Extracts the base model type from a model name (e.g., baseline_1 -> baseline)."""
     if not name or not isinstance(name, str):
         return "unknown"
+
+    res = name
+    # Strip common prefixes
+    if res.startswith("stemmed_"):
+        res = res[len("stemmed_") :]
+
     # Handles common patterns like 'baseline_1' or 'mv_spectral_2'
     # We take the part before the last underscore if it's followed by a digit
-    parts = name.split("_")
+    parts = res.split("_")
     if len(parts) > 1 and parts[-1].isdigit():
         return "_".join(parts[:-1])
-    return name
+    return res
 
 
 @st.cache_data
@@ -72,6 +78,17 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
                 df = pl.read_json(file, infer_schema_length=None)
             else:
                 continue
+
+            # Normalize dataset and model names early
+            if "dataset_name" in df.columns:
+                df = df.with_columns(
+                    pl.col("dataset_name").replace("anes_stemmed", "anes")
+                )
+
+            if "model_name" in df.columns:
+                df = df.with_columns(pl.col("model_name").str.replace("^stemmed_", ""))
+            elif "model_id" in df.columns:
+                df = df.with_columns(pl.col("model_id").str.replace("^stemmed_", ""))
 
             file_basename = os.path.basename(file)
 

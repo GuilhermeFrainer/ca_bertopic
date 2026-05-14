@@ -134,3 +134,29 @@ def test_find_best_models_nan_handling():
     assert results["u_mass"].height == 1
     assert results["u_mass"]["max_value"][0] == -1.0
     assert results["u_mass"]["best_model_name"][0] == "mv_3"
+
+
+def test_find_best_models_stemmed_normalization():
+    data = {
+        "model_name": ["stemmed_baseline_1", "stemmed_mv_1"],
+        "dataset_name": ["anes_stemmed", "anes_stemmed"],
+        "c_v": [0.7, 0.8],
+    }
+    df = pl.DataFrame(data)
+
+    # Calling with "anes" should find "anes_stemmed" data and normalize it
+    results = find_best_models(df, "anes")
+
+    assert "c_v" in results
+    cv_results = results["c_v"]
+
+    # Model types should be stripped of "stemmed_"
+    assert "baseline" in cv_results["model_type"].to_list()
+    assert "mv" in cv_results["model_type"].to_list()
+
+    # Best model names should be stripped of "stemmed_"
+    assert "baseline_1" in cv_results["best_model_name"].to_list()
+    assert "mv_1" in cv_results["best_model_name"].to_list()
+
+    # Check extract_model_type directly
+    assert extract_model_type("stemmed_baseline_1") == "baseline"

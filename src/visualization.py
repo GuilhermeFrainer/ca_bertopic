@@ -26,13 +26,17 @@ MODEL_RENAME_MAP = {
 }
 
 
-def prepare_plot_data(results: dict[str, pl.DataFrame], dump: bool, model_name: str = "CAST"):
+def prepare_plot_data(
+    results: dict[str, pl.DataFrame], dump: bool, model_name: str = "CAST"
+):
     """Common data preparation for Plotly visualizations."""
     id_col = "best_model_name" if dump else "model_type"
     rows = []
 
     # Map for formatting model names
-    rename_map = {k: v.format(model_name=model_name) for k, v in MODEL_RENAME_MAP.items()}
+    rename_map = {
+        k: v.format(model_name=model_name) for k, v in MODEL_RENAME_MAP.items()
+    }
 
     for metric, metric_df in results.items():
         display_metric = METRIC_DISPLAY_MAP.get(metric, metric)
@@ -86,19 +90,19 @@ def get_color_map(df: pd.DataFrame, model_name: str = "CAST"):
         f"{model_name}<sub>1</sub>": ("#e31a1c", "#fb9a99"),  # Red / Light Red
         f"{model_name}<sub>2</sub>": ("#ff7f00", "#fdbf6f"),  # Orange / Light Orange
         f"{model_name}<sub>3</sub>": ("#e7298a", "#df65b0"),  # Pink / Light Pink
-        "BERTopic<sub>1</sub>": ("#1f78b4", "#a6cee3"),      # Blue / Light Blue
-        "BERTopic<sub>2</sub>": ("#008080", "#40e0d0"),      # Teal / Turquoise
-        "Naive": ("#33a02c", "#b2df8a"),                   # Green / Light Green
+        "BERTopic<sub>1</sub>": ("#1f78b4", "#a6cee3"),  # Blue / Light Blue
+        "BERTopic<sub>2</sub>": ("#008080", "#40e0d0"),  # Teal / Turquoise
+        "Naive": ("#33a02c", "#b2df8a"),  # Green / Light Green
     }
 
     labels = sorted(df["LegendLabel"].unique())
     for label in labels:
         # Determine base label and if it's info0
         is_info0 = "info0" in label.lower()
-        
+
         # Strip info0 to find the base pair
         base = label.replace("-info0", "")
-        
+
         if base in mapping:
             pair = mapping[base]
             color_map[label] = pair[0] if is_info0 else pair[1]
@@ -134,7 +138,10 @@ def clean_legend(fig):
 
 
 def generate_star_plot(
-    results: dict[str, pl.DataFrame], dump: bool, output_path: Path, model_name: str = "CAST"
+    results: dict[str, pl.DataFrame],
+    dump: bool,
+    output_path: Path,
+    model_name: str = "CAST",
 ):
     """Generates a star plot (radar chart) using Plotly with Min-Max normalization."""
     df = prepare_plot_data(results, dump, model_name=model_name)
@@ -194,7 +201,10 @@ def generate_star_plot(
 
 
 def generate_parallel_plot(
-    results: dict[str, pl.DataFrame], dump: bool, output_path: Path, model_name: str = "CAST"
+    results: dict[str, pl.DataFrame],
+    dump: bool,
+    output_path: Path,
+    model_name: str = "CAST",
 ):
     """Generates a parallel coordinates plot (lines) using Plotly."""
     df = prepare_plot_data(results, dump, model_name=model_name)
@@ -239,7 +249,10 @@ def generate_parallel_plot(
 
 
 def generate_cleveland_plot(
-    results: dict[str, pl.DataFrame], dump: bool, output_path: Path, model_name: str = "CAST"
+    results: dict[str, pl.DataFrame],
+    dump: bool,
+    output_path: Path,
+    model_name: str = "CAST",
 ):
     """Generates a Cleveland dot plot using Plotly."""
     df = prepare_plot_data(results, dump, model_name=model_name)

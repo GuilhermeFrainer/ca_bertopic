@@ -4,7 +4,6 @@
 import argparse
 import datetime
 import json
-import logging
 import os
 import subprocess
 import sys
@@ -12,7 +11,6 @@ import tempfile
 import traceback
 from pathlib import Path
 
-import numpy as np
 import polars as pl
 from tqdm import tqdm
 
@@ -21,7 +19,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import src.data as data
 import src.evaluation as evaluation
 import src.logger_config as logger_config
 import src.utils as utils
@@ -59,17 +56,19 @@ def main():
         bow_path = PROJECT_ROOT / f"data/processed/{dataset_name}_bow.parquet"
 
         if not rds_path.exists():
-            logger.error(f"RDS file not found: {rds_path}. Run scripts/build_bow.R first.")
+            logger.error(
+                f"RDS file not found: {rds_path}. Run scripts/build_bow.R first."
+            )
             return
 
         # 3. Handle Sampling
         sample_indices_path = None
         n_observations = None
-        
+
         # We need to load the full bow data to know the total N and to get text for coherence
         logger.info(f"Loading BoW data from {bow_path}...")
         bow_df = pl.read_parquet(bow_path)
-        
+
         sample_size = config["experiment"].get("sample_size")
         if sample_size:
             logger.info(f"Sampling {sample_size} observations...")
@@ -77,14 +76,18 @@ def main():
             if len(bow_df) > sample_size:
                 sampled_df = bow_df.sample(n=sample_size, seed=random_state)
                 # Save indices for R to use
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", delete=False
+                ) as f:
                     json.dump(sampled_df["index"].to_list(), f)
                     sample_indices_path = f.name
                 n_observations = sample_size
                 # For coherence we use the sampled text
                 eval_texts = sampled_df["bow_text"].to_list()
             else:
-                logger.warning(f"Sample size {sample_size} >= dataset size {len(bow_df)}. No sampling applied.")
+                logger.warning(
+                    f"Sample size {sample_size} >= dataset size {len(bow_df)}. No sampling applied."
+                )
                 n_observations = len(bow_df)
                 eval_texts = bow_df["bow_text"].to_list()
         else:
@@ -105,7 +108,7 @@ def main():
         for m_conf in tqdm(models_config, desc="Running STM models"):
             m_id = m_conf.get("id", "Unknown")
             k = m_conf.get("parameters", {}).get("k")
-            
+
             if not k:
                 logger.error(f"Model {m_id} missing parameter 'k'. Skipping.")
                 continue
@@ -114,27 +117,32 @@ def main():
             with tempfile.TemporaryDirectory() as tmp_output:
                 model_filename = f"stm_{dataset_name}_{m_id}_{file_timestamp}.rds"
                 model_path = MODELS_DIR / model_filename
-                
+
                 # Run R script
                 cmd = [
                     "Rscript",
                     "scripts/train_stm.R",
-                    "--rds_path", str(rds_path),
-                    "--k", str(k),
-                    "--output_dir", tmp_output,
-                    "--seed", str(random_state),
-                    "--model_path", str(model_path)
+                    "--rds_path",
+                    str(rds_path),
+                    "--k",
+                    str(k),
+                    "--output_dir",
+                    tmp_output,
+                    "--seed",
+                    str(random_state),
+                    "--model_path",
+                    str(model_path),
                 ]
                 if sample_indices_path:
                     cmd.extend(["--indices_path", sample_indices_path])
 
                 logger.info(f"[{m_id}] Running R training script...")
                 result = subprocess.run(cmd, capture_output=True, text=True)
-                
+
                 if result.returncode != 0:
                     logger.error(f"[{m_id}] R training failed:\n{result.stderr}")
                     continue
-                
+
                 logger.info(f"[{m_id}] R training successful.")
 
                 # 5. Load R outputs for Evaluation
@@ -153,7 +161,7 @@ def main():
                     "model_name": m_id,
                     "duration_seconds": duration,
                     "n_topics": k,
-                    "outliers": 0, # STM doesn't really have outliers like HDBSCAN
+                    "outliers": 0,  # STM doesn't really have outliers like HDBSCAN
                 }
 
                 # Coherence Loop
@@ -164,7 +172,9 @@ def main():
 
                 # Diversity Loop
                 for dm in config["experiment"]["diversity_metrics"]:
-                    metrics[dm] = evaluation.compute_diversity(dm, model_output=octis_output)
+                    metrics[dm] = evaluation.compute_diversity(
+                        dm, model_output=octis_output
+                    )
 
                 # Add Run Metadata
                 run_metadata = {
@@ -176,7 +186,7 @@ def main():
                     "timestamp": start_timestamp,
                     "file_timestamp": file_timestamp,
                     "dataset_name": dataset_name,
-                    "k": k
+                    "k": k,
                 }
                 metrics.update(run_metadata)
                 results.append(metrics)
@@ -188,7 +198,7 @@ def main():
                     vocab=vocab,
                     documents=eval_texts,
                     model_id=m_id,
-                    metadata=run_metadata
+                    metadata=run_metadata,
                 )
                 qualitative_dfs.append(qual_df)
 
@@ -203,7 +213,7 @@ def main():
         if qualitative_dfs:
             consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
             output_path = OUTPUT_DIR / f"{results_filename}.json"
-            
+
             json_str = consolidated_qual_df.write_json()
             parsed_json = json.loads(json_str)
             with open(output_path, "w", encoding="utf-8") as f:
