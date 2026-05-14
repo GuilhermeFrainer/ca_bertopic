@@ -20,6 +20,8 @@ from src.visualization import (
 RESULTS_DIR = PROJECT_ROOT / "results"
 MODEL_NAME = "CAST"
 
+HIGHLIGHT_COLORS = ("FFD700", "C0C0C0", "CD7F32")
+
 MODEL_SHORT_NAMES = {
     "mv_co_reg_spectral": "{model_name}_1",
     "mv_co_reg_spectral_info0": "{model_name}_1-info0",
@@ -230,7 +232,11 @@ def main():
 
     if args.latex:
         latex_table = generate_best_models_latex_table(
-            results, dataset, dump=args.dump, average=args.average
+            results,
+            dataset,
+            dump=args.dump,
+            average=args.average,
+            highlight_colors=HIGHLIGHT_COLORS,
         )
         if args.latex == "__STDOUT__":
             print("\n" + latex_table)

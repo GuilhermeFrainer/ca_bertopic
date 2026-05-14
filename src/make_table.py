@@ -111,6 +111,7 @@ def generate_best_models_latex_table(
     dataset: str,
     dump: bool = False,
     average: bool = False,
+    highlight_colors: tuple[str, str, str] = ("FFD700", "C0C0C0", "CD7F32"),
 ) -> str:
     """
     Generates a consolidated LaTeX table from the best models analysis results.
@@ -120,6 +121,7 @@ def generate_best_models_latex_table(
         dataset: Name of the dataset.
         dump: If True, uses model_name instead of model_type for rows.
         average: If True, indicates that values are averages of model runs.
+        highlight_colors: Tuple of hex colors for 1st, 2nd, and 3rd best results.
 
     Returns:
         A LaTeX table string.
@@ -214,13 +216,9 @@ def generate_best_models_latex_table(
                             return "-"
                         if x in top_vals:
                             rank = top_vals.index(x)
-                            if rank == 0:
-                                color = "B2E0B2"  # Strongest
-                            elif rank == 1:
-                                color = "CCE8CC"  # Medium
-                            else:
-                                color = "E5F5E5"  # Pale
-                            return f"\\cellcolor[HTML]{{{color}}}{x:.3f}"
+                            if rank < len(highlight_colors):
+                                color = highlight_colors[rank]
+                                return f"\\cellcolor[HTML]{{{color}}}{x:.3f}"
                         return f"{x:.3f}"
 
                     formatted_df[col] = df[col].apply(apply_color)
@@ -239,6 +237,12 @@ def generate_best_models_latex_table(
         )
     else:
         caption = f"Best performing models by type for the {dataset} dataset."
+
+    caption += (
+        f" \\textcolor[HTML]{{{highlight_colors[0]}}}{{1st}}, "
+        f"\\textcolor[HTML]{{{highlight_colors[1]}}}{{2nd}}, and "
+        f"\\textcolor[HTML]{{{highlight_colors[2]}}}{{3rd}} best results are highlighted."
+    )
 
     # Export to LaTeX
     if dump:
