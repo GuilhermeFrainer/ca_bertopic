@@ -9,6 +9,8 @@ wheels/
 # Virtual environments
 .venv
 renv/
+!renv/activate.R
+!renv/settings.json
 
 # Gemini
 .gemini/
