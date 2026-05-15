@@ -209,12 +209,23 @@ def main():
     df = pl.concat(all_dfs, how="diagonal")
 
     if args.only_info0:
-        df = df.filter(
-            ~pl.col("model_name").str.contains("mv_spectral|co_reg_spectral")
-            | pl.col("model_name").str.contains("info0")
-        )
-        # Treat them as vanilla models in downstream processing
-        df = df.with_columns(pl.col("model_name").str.replace("_info0", ""))
+        has_info0 = df.filter(pl.col("model_name").str.contains("info0")).height > 0
+        if has_info0:
+            df = df.filter(
+                ~pl.col("model_name").str.contains("mv_spectral|co_reg_spectral")
+                | pl.col("model_name").str.contains("info0")
+            )
+            # Treat them as vanilla models in downstream processing
+            df = df.with_columns(pl.col("model_name").str.replace("_info0", ""))
+        else:
+            print("\n" + "!" * 80)
+            print(
+                f"WARNING: --only-info0 was requested, but no info0 variants were found for dataset '{dataset}'."
+            )
+            print(
+                "Falling back to non-info0 variants, but they will be colored as info0 in the plots."
+            )
+            print("!" * 80 + "\n")
 
     results = find_best_models(
         df,
