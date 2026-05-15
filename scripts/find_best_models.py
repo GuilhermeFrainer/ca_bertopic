@@ -45,7 +45,7 @@ LABEL_DESCRIPTIONS = {
 }
 
 
-def generate_label_table():
+def generate_label_table(only_info0: bool = False):
     """Generates a LaTeX table for model label descriptions."""
     lines = [
         "\\begin{table}[h]",
@@ -58,6 +58,9 @@ def generate_label_table():
         "    \\midrule",
     ]
     for label, desc in LABEL_DESCRIPTIONS.items():
+        if only_info0 and "-info0" in label:
+            continue
+
         # Use math mode for labels to support subscripts
         fmt_label = label.format(model_name=MODEL_NAME)
         if "_" in fmt_label:
@@ -125,6 +128,11 @@ def main():
         help="Merge models with and without info0 into the same model type.",
     )
     parser.add_argument(
+        "--only-info0",
+        action="store_true",
+        help="Filter out MV spectral models that do not have the info0 parameter.",
+    )
+    parser.add_argument(
         "--star-plot",
         type=str,
         help=(
@@ -160,7 +168,7 @@ def main():
     args = parser.parse_args()
 
     if args.label_table:
-        print(generate_label_table())
+        print(generate_label_table(only_info0=args.only_info0))
         return
 
     if not args.dataset:
@@ -199,6 +207,14 @@ def main():
 
     # Combine all dataframes
     df = pl.concat(all_dfs, how="diagonal")
+
+    if args.only_info0:
+        df = df.filter(
+            ~pl.col("model_name").str.contains("mv_spectral|co_reg_spectral")
+            | pl.col("model_name").str.contains("info0")
+        )
+        # Treat them as vanilla models in downstream processing
+        df = df.with_columns(pl.col("model_name").str.replace("_info0", ""))
 
     results = find_best_models(
         df,
