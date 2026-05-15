@@ -233,17 +233,29 @@ def main():
 
     if args.star_plot:
         generate_star_plot(
-            results, args.dump, Path(args.star_plot), model_name=MODEL_NAME
+            results,
+            args.dump,
+            Path(args.star_plot),
+            model_name=MODEL_NAME,
+            only_info0=args.only_info0,
         )
 
     if args.parallel:
         generate_parallel_plot(
-            results, args.dump, Path(args.parallel), model_name=MODEL_NAME
+            results,
+            args.dump,
+            Path(args.parallel),
+            model_name=MODEL_NAME,
+            only_info0=args.only_info0,
         )
 
     if args.cleveland:
         generate_cleveland_plot(
-            results, args.dump, Path(args.cleveland), model_name=MODEL_NAME
+            results,
+            args.dump,
+            Path(args.cleveland),
+            model_name=MODEL_NAME,
+            only_info0=args.only_info0,
         )
 
     if args.latex:

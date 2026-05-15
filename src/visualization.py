@@ -80,7 +80,7 @@ def prepare_plot_data(
     return df
 
 
-def get_color_map(df: pd.DataFrame, model_name: str = "CAST"):
+def get_color_map(df: pd.DataFrame, model_name: str = "CAST", only_info0: bool = False):
     """Generates a color map with explicit paired colors for numbered labels."""
     color_map = {}
 
@@ -99,6 +99,13 @@ def get_color_map(df: pd.DataFrame, model_name: str = "CAST"):
     for label in labels:
         # Determine base label and if it's info0
         is_info0 = "info0" in label.lower()
+
+        # If we are in "only-info0" mode, force info0 colors for our spectral models
+        if only_info0 and label in [
+            f"{model_name}<sub>1</sub>",
+            f"{model_name}<sub>2</sub>",
+        ]:
+            is_info0 = True
 
         # Strip info0 to find the base pair
         base = label.replace("-info0", "")
@@ -142,10 +149,11 @@ def generate_star_plot(
     dump: bool,
     output_path: Path,
     model_name: str = "CAST",
+    only_info0: bool = False,
 ):
     """Generates a star plot (radar chart) using Plotly with Min-Max normalization."""
     df = prepare_plot_data(results, dump, model_name=model_name)
-    color_map = get_color_map(df, model_name=model_name)
+    color_map = get_color_map(df, model_name=model_name, only_info0=only_info0)
     legend_order = get_legend_order(model_name=model_name)
 
     # Build the star plot
@@ -205,10 +213,11 @@ def generate_parallel_plot(
     dump: bool,
     output_path: Path,
     model_name: str = "CAST",
+    only_info0: bool = False,
 ):
     """Generates a parallel coordinates plot (lines) using Plotly."""
     df = prepare_plot_data(results, dump, model_name=model_name)
-    color_map = get_color_map(df, model_name=model_name)
+    color_map = get_color_map(df, model_name=model_name, only_info0=only_info0)
     legend_order = get_legend_order(model_name=model_name)
 
     # Sort metrics for consistent X axis
@@ -253,10 +262,11 @@ def generate_cleveland_plot(
     dump: bool,
     output_path: Path,
     model_name: str = "CAST",
+    only_info0: bool = False,
 ):
     """Generates a Cleveland dot plot using Plotly."""
     df = prepare_plot_data(results, dump, model_name=model_name)
-    color_map = get_color_map(df, model_name=model_name)
+    color_map = get_color_map(df, model_name=model_name, only_info0=only_info0)
     legend_order = get_legend_order(model_name=model_name)
 
     fig = px.scatter(
