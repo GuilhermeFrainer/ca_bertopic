@@ -38,12 +38,28 @@ def main():
         required=True,
         help="Name of the experiment yaml file (e.g., anes_stm)",
     )
+    parser.add_argument(
+        "--sample",
+        type=int,
+        help="Override the sample size specified in the config file.",
+    )
     args = parser.parse_args()
 
     try:
         # 1. Setup
         config = utils.load_config(args.exp, EXPERIMENTS_DIR)
+
+        # Override sample size if requested
+        if args.sample is not None:
+            config["experiment"]["sample_size"] = args.sample
+
         exp_name = config["experiment"]["name"]
+
+        # Adjust experiment name if sampling is applied to distinguish files
+        sample_size = config["experiment"].get("sample_size")
+        if sample_size:
+            exp_name = f"{exp_name}_s{sample_size}"
+
         random_state = utils.get_random_state(config["experiment"]["random_state"])
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
