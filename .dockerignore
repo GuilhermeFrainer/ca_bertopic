@@ -1,0 +1,38 @@
+# .dockerignore
+
+# Source Control
+.git/
+.gitignore
+.gitattributes
+
+# R/renv local state (Machine-dependent)
+renv/library/
+renv/staging/
+renv/python/
+.Rproj.user/
+.Rhistory
+.RData
+.Rprofile.local
+
+# Python local state
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+.python-version
+
+# Heavy Data/Results (Should be mounted via -v at runtime)
+data/
+models/
+output/
+results/
+logs/
+tables/
+
+# Notebooks (Usually not needed for headless cluster training)
+# notebooks/
+
+# Misc
+*.tar
+*.log
