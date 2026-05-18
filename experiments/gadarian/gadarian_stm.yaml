@@ -1,0 +1,25 @@
+extends: "datasets/gadarian.yaml"
+
+experiment:
+  name: "gadarian_stm"
+  random_state: 36201624
+
+models:
+  - id: "stm_k5"
+    parameters:
+      k: 5
+  - id: "stm_k10"
+    parameters:
+      k: 10
+  - id: "stm_k15"
+    parameters:
+      k: 15
+  - id: "stm_k20"
+    parameters:
+      k: 20
+  - id: "stm_k25"
+    parameters:
+      k: 25
+  - id: "stm_k30"
+    parameters:
+      k: 30

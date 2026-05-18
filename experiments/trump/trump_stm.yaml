@@ -1,0 +1,34 @@
+extends: "datasets/trump.yaml"
+
+experiment:
+  name: "trump_stm"
+  random_state: 36201624
+
+models:
+  - id: "stm_k300"
+    parameters:
+      k: 300
+  - id: "stm_k350"
+    parameters:
+      k: 350
+  - id: "stm_k400"
+    parameters:
+      k: 400
+  - id: "stm_k450"
+    parameters:
+      k: 450
+  - id: "stm_k500"
+    parameters:
+      k: 500
+  - id: "stm_k550"
+    parameters:
+      k: 550
+  - id: "stm_k600"
+    parameters:
+      k: 600
+  - id: "stm_k650"
+    parameters:
+      k: 650
+  - id: "stm_k700"
+    parameters:
+      k: 700

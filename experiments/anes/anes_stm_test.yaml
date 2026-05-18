@@ -1,0 +1,13 @@
+extends: "datasets/anes.yaml"
+
+experiment:
+  name: "anes_stm_test"
+  random_state: 36201624
+
+models:
+  - id: "stm_k5"
+    parameters:
+      k: 5
+  - id: "stm_k10"
+    parameters:
+      k: 10

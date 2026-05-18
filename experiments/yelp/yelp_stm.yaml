@@ -1,0 +1,22 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_stm"
+  random_state: 36201624
+
+models:
+  - id: "stm_k75"
+    parameters:
+      k: 75
+  - id: "stm_k80"
+    parameters:
+      k: 80
+  - id: "stm_k90"
+    parameters:
+      k: 90
+  - id: "stm_k100"
+    parameters:
+      k: 100
+  - id: "stm_k110"
+    parameters:
+      k: 110

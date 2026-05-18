@@ -1,0 +1,55 @@
+extends: "datasets/fed.yaml"
+
+experiment:
+  name: "fed_stm"
+  random_state: 36201624
+
+models:
+  - id: "stm_k50"
+    parameters:
+      k: 50
+  - id: "stm_k60"
+    parameters:
+      k: 60
+  - id: "stm_k70"
+    parameters:
+      k: 70
+  - id: "stm_k80"
+    parameters:
+      k: 80
+  - id: "stm_k90"
+    parameters:
+      k: 90
+  - id: "stm_k100"
+    parameters:
+      k: 100
+  - id: "stm_k110"
+    parameters:
+      k: 110
+  - id: "stm_k120"
+    parameters:
+      k: 120
+  - id: "stm_k130"
+    parameters:
+      k: 130
+  - id: "stm_k140"
+    parameters:
+      k: 140
+  - id: "stm_k150"
+    parameters:
+      k: 150
+  - id: "stm_k160"
+    parameters:
+      k: 160
+  - id: "stm_k170"
+    parameters:
+      k: 170
+  - id: "stm_k180"
+    parameters:
+      k: 180
+  - id: "stm_k190"
+    parameters:
+      k: 190
+  - id: "stm_k200"
+    parameters:
+      k: 200
