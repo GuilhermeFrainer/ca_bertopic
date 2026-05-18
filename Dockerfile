@@ -5,12 +5,21 @@ FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV UV_COMPILE_BYTECODE=1
+# Help R arrow package find/download C++ binaries automatically
+ENV NOT_CRAN=true
+ENV LIBARROW_MINIMAL=false
 
 # 1. Install system dependencies
-# We need python3.12, R, and build-essential for compiling various packages
+# We need python3.12, R (4.4+), and build-essential for compiling various packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
+    wget \
+    ca-certificates \
+    gnupg \
+    && add-apt-repository ppa:deadsnakes/ppa -y \
+    # Add CRAN repo for newer R (to match the modern version in renv.lock)
+    && wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | gpg --dearmor -o /usr/share/keyrings/cran-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cran-archive-keyring.gpg] https://cloud.r-project.org/bin/linux/ubuntu jammy-cran40/" | tee /etc/apt/sources.list.d/cran.list \
     && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-dev \
@@ -27,11 +36,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpng-dev \
     libtiff5-dev \
     libjpeg-dev \
-    libarrow-dev \
     git \
     curl \
     rsync \
     build-essential \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Install 'uv' for Python package management
