@@ -269,9 +269,12 @@ def process_dataset(
     for col in NUMERICAL_COLS.get(dataset_name, []):
         lf = add_log_transformation(lf, col)
 
-    # Removes previous ID column
-    # This is necessary because otherwise row IDs will get duplicated when chunking text
-    # They are added once again when stitching in the dataset
+    # Removes previous ID or index columns from the builder stage.
+    # This is necessary because:
+    # 1. Row IDs will get duplicated when chunking text (multiple chunks per doc).
+    # 2. We want a fresh unique 'index' for the chunks at the very end.
+    # 3. We create a new 'id' column during batching that maps each chunk 
+    #    back to its original source row number.
     lf = lf.drop(["index", "id"], strict=False)
 
     logging.info("Applying lazy text preprocessing...")

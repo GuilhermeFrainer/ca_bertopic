@@ -98,6 +98,7 @@ def build(raw_dir: Path, interim_dir: Path):
         text_df.join(metadata_df, on="id")
         .with_columns(pl.col("party_id").replace(party_map).cast(pl.Categorical))
         .drop_nulls()
+        .with_row_index()
     )
 
     output_path = interim_dir / "anes_2008.parquet"

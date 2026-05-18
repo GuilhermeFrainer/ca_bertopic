@@ -10,7 +10,16 @@ main <- function() {
         make_option(
             c("-d", "--dataset"),
             type = "character",
-            help = "Dataset to use (e.g., 'fed', 'anes', 'gadarian', 'trump', 'yelp')"),
+            help = "Dataset name (e.g., 'fed', 'anes', 'gadarian', 'trump', 'yelp')"),
+        make_option(
+            c("-i", "--input"),
+            type = "character",
+            help = "Input parquet file path (optional)"),
+        make_option(
+            c("-t", "--text_col"),
+            type = "character",
+            default = "text",
+            help = "Column containing the text (default: 'text')"),
         make_option(
             c("--min_freq"),
             type = "integer",
@@ -25,7 +34,12 @@ main <- function() {
             c("--no_stem"),
             action = "store_true",
             default = FALSE,
-            help = "Disable stemming (default: FALSE)")
+            help = "Disable stemming (default: FALSE)"),
+        make_option(
+            c("--deduplicate"),
+            action = "store_true",
+            default = FALSE,
+            help = "Remove duplicate documents (default: FALSE)")
     )
     
     opt <- parse_args(OptionParser(option_list = option_list))
@@ -34,18 +48,39 @@ main <- function() {
         stop("Dataset name is required. Use --dataset <name>")
     }
     
-    input_path <- here::here("data", "processed", paste0(opt$dataset, "_embeddings.parquet"))
+    # Determine input path
+    if (is.null(opt$input)) {
+        # Default mapping for interim files
+        file_mapping <- list(
+            fed = "fed_communications.parquet",
+            anes = "anes_2008.parquet",
+            gadarian = "gadarian.parquet",
+            trump = "trump.parquet",
+            yelp = "yelp_reviews.parquet"
+        )
+        
+        file_name <- file_mapping[[opt$dataset]]
+        if (is.null(file_name)) {
+            stop(paste("Unknown dataset:", opt$dataset, ". Please provide --input path."))
+        }
+        input_path <- here::here("data", "interim", file_name)
+    } else {
+        input_path <- opt$input
+    }
+    
     if (!file.exists(input_path)) {
         stop(paste("Input file not found:", input_path))
     }
     
     cat(sprintf("Processing dataset: %s\n", opt$dataset))
+    cat(sprintf("Input path: %s\n", input_path))
+    cat(sprintf("Text column: %s\n", opt$text_col))
     
     # Set arrow option to avoid issues with dictionary/factor conversion
     options(arrow.use_factors = FALSE)
     
-    # Selective loading: exclude embeddings
-    cat("Loading data (excluding embeddings)...\n")
+    # Selective loading: exclude embeddings if they exist in input
+    cat("Loading data...\n")
     tab <- arrow::read_parquet(input_path, as_data_frame = FALSE)
     all_cols <- names(tab)
     meta_cols <- all_cols[!grepl("embedding", all_cols)]
@@ -68,15 +103,39 @@ main <- function() {
     data <- as.data.frame(tab)
     
     cat(sprintf("Loaded %d rows.\n", nrow(data)))
+
+    # Deduplication
+    # We deduplicate here to ensure that BoW models (like STM) run on the same 
+    # unique document set as the embedding models (like BERTopic), which 
+    # use deduplication in src/processing.py.
+    #
+    # Crucially, we use the standardized 'index' column from the interim builders
+    # to maintain alignment for sampling in scripts/run_stm.py.
+    if (opt$deduplicate) {
+        cat("Deduplicating based on text column...\n")
+        initial_count <- nrow(data)
+        
+        if ("date" %in% names(data)) {
+            # Sort by date and keep first occurrence
+            data <- data %>%
+                arrange(date) %>%
+                distinct(!!rlang::sym(opt$text_col), .keep_all = TRUE)
+        } else {
+            data <- data %>%
+                distinct(!!rlang::sym(opt$text_col), .keep_all = TRUE)
+        }
+        
+        final_count <- nrow(data)
+        cat(sprintf("Deduplication complete. Dropped %d duplicate rows.\n", initial_count - final_count))
+    }
     
     # Tokenization and Cleaning
     cat("Tokenizing and cleaning text...\n")
-    # We use 'clean_text' as the source for BoW
-    if (!"clean_text" %in% names(data)) {
-        stop("Column 'clean_text' not found in dataset.")
+    if (!opt$text_col %in% names(data)) {
+        stop(sprintf("Column '%s' not found in dataset.", opt$text_col))
     }
     
-    corp <- quanteda::corpus(data, text_field = "clean_text")
+    corp <- quanteda::corpus(data, text_field = opt$text_col)
     
     toks <- quanteda::tokens(corp,
                              remove_punct = TRUE,

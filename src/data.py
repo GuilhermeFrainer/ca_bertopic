@@ -163,6 +163,14 @@ def process_metadata(
 def sample_from_lf(
     lf: pl.LazyFrame, n: int, seed: Optional[int] = None, replace: bool = False
 ) -> pl.LazyFrame:
+    """
+    Samples rows from a LazyFrame.
+    
+    This function is designed to be index-agnostic: it creates its own 
+    temporary contiguous row index for the sampling mathematics, meaning 
+    it works correctly even if the source data has gaps in its IDs 
+    or no index column at all.
+    """
     rng = np.random.default_rng(seed)
 
     # Add temporary index for sampling to handle potential gaps in original IDs

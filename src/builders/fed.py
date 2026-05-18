@@ -129,7 +129,7 @@ def build(raw_dir: Path, interim_dir: Path):
         )
         .otherwise(pl.col("release_date"))
         .alias("release_date")
-    )
+    ).with_row_index()
 
     output_path = interim_dir / "fed_communications.parquet"
     fed_df.write_parquet(output_path)

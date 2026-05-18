@@ -46,7 +46,7 @@ def build(raw_dir: Path, interim_dir: Path):
     df = (
         df.drop("MetaID")
         .rename({"pid_rep": "partisanship", "open.ended.response": "text"})
-        .with_row_index(name="id")
+        .with_row_index(name="index")
         .with_columns(
             pl.col("treatment").cast(pl.Boolean),
             pl.col("partisanship")

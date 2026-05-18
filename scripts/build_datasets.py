@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.builders import anes, fed, gadarian, yelp
+from src.builders import anes, fed, gadarian, trump, yelp
 
 # Configure logging
 logging.basicConfig(
@@ -29,7 +29,7 @@ def main():
         "--dataset",
         type=str,
         required=True,
-        choices=["fed", "yelp", "anes", "gadarian"],  # Add future datasets here
+        choices=["fed", "yelp", "anes", "gadarian", "trump"],  # Add future datasets here
         help="The dataset to build.",
     )
 
@@ -56,6 +56,9 @@ def main():
     elif args.dataset == "gadarian":
         logger.info("Building Gadarian dataset...")
         gadarian.build(raw_dir=RAW_DIR, interim_dir=INTERIM_DIR)
+    elif args.dataset == "trump":
+        logger.info("Building Trump dataset...")
+        trump.build(raw_dir=RAW_DIR, interim_dir=INTERIM_DIR)
     # Add future datasets here:
     # elif args.dataset == "new_dataset":
     #     logger.info("Building New Dataset...")
