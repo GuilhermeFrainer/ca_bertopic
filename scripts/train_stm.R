@@ -83,10 +83,14 @@ main <- function() {
     write_parquet(theta, file.path(opt$output_dir, "theta.parquet"))
     
     # Vocab
-    writeLines(model$vocab, file.path(opt$output_dir, "vocab.txt"))
+    vocab_con <- file(file.path(opt$output_dir, "vocab.txt"), open = "wt", encoding = "UTF-8")
+    writeLines(model$vocab, vocab_con)
+    close(vocab_con)
     
     # Write duration to a small file for python to read
-    writeLines(as.character(duration), file.path(opt$output_dir, "duration.txt"))
+    duration_con <- file(file.path(opt$output_dir, "duration.txt"), open = "wt", encoding = "UTF-8")
+    writeLines(as.character(duration), duration_con)
+    close(duration_con)
     
     cat("Done!\n")
 }

@@ -164,9 +164,9 @@ def main():
                 # 5. Load R outputs for Evaluation
                 beta = pl.read_parquet(Path(tmp_output) / "beta.parquet").to_numpy()
                 theta = pl.read_parquet(Path(tmp_output) / "theta.parquet").to_numpy()
-                with open(Path(tmp_output) / "vocab.txt", "r") as f:
+                with open(Path(tmp_output) / "vocab.txt", "r", encoding="utf-8") as f:
                     vocab = [line.strip() for line in f]
-                with open(Path(tmp_output) / "duration.txt", "r") as f:
+                with open(Path(tmp_output) / "duration.txt", "r", encoding="utf-8") as f:
                     duration = float(f.read().strip())
 
                 # 6. Compute Metrics

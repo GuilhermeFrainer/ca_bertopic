@@ -86,7 +86,7 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
     if not config_path.exists():
         raise FileNotFoundError(f"Experiment file {config_path} not found.")
 
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     if "extends" in config:
@@ -97,7 +97,7 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
         if not base_path.exists():
             raise FileNotFoundError(f"Base config file {base_path} not found.")
 
-        with open(base_path, "r") as f:
+        with open(base_path, "r", encoding="utf-8") as f:
             base_config = yaml.safe_load(f)
             logger.info(f"Loaded base config from {base_path}")
 
