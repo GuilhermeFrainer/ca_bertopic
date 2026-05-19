@@ -39,7 +39,16 @@ main <- function() {
             c("--deduplicate"),
             action = "store_true",
             default = FALSE,
-            help = "Remove duplicate documents (default: FALSE)")
+            help = "Remove duplicate documents (default: FALSE)"),
+        make_option(
+            c("--sample"),
+            type = "integer",
+            help = "Sample size (default: NULL, no sampling)"),
+        make_option(
+            c("--seed"),
+            type = "integer",
+            default = 36201624,
+            help = "Random seed for sampling (default: 36201624)")
     )
     
     opt <- parse_args(OptionParser(option_list = option_list))
@@ -128,6 +137,18 @@ main <- function() {
         final_count <- nrow(data)
         cat(sprintf("Deduplication complete. Dropped %d duplicate rows.\n", initial_count - final_count))
     }
+
+    # Sampling
+    if (!is.null(opt$sample)) {
+        if (opt$sample < nrow(data)) {
+            cat(sprintf("Sampling %d rows (seed=%d)...\n", opt$sample, opt$seed))
+            set.seed(opt$seed)
+            data <- data[sample(nrow(data), opt$sample), ]
+        } else {
+            cat(sprintf("Sample size %d >= dataset size %d. No sampling applied.\n", opt$sample, nrow(data)))
+            opt$sample <- NULL # Reset to avoid suffixing
+        }
+    }
     
     # Tokenization and Cleaning
     cat("Tokenizing and cleaning text...\n")
@@ -164,6 +185,9 @@ main <- function() {
                                       max_docfreq = opt$max_freq_pct,
                                       docfreq_type = "prop")
     }
+
+    # Suffix for filenames
+    suffix <- if (!is.null(opt$sample)) paste0("_s", opt$sample) else ""
     
     # 1. Output RDS for STM
     cat("Preparing and saving STM data (RDS)...\n")
@@ -171,7 +195,7 @@ main <- function() {
     # quanteda::convert automatically includes docvars in $meta
     stm_data <- quanteda::convert(dfm_obj, to = "stm")
     
-    rds_output_path <- here::here("data", "processed", paste0(opt$dataset, "_stm_data.rds"))
+    rds_output_path <- here::here("data", "processed", paste0(opt$dataset, suffix, "_stm_data.rds"))
     saveRDS(stm_data, file = rds_output_path)
     cat(sprintf("Saved RDS to: %s\n", rds_output_path))
     
@@ -194,7 +218,7 @@ main <- function() {
     
     data$bow_text <- as.character(bow_text_vec)
     
-    parquet_output_path <- here::here("data", "processed", paste0(opt$dataset, "_bow.parquet"))
+    parquet_output_path <- here::here("data", "processed", paste0(opt$dataset, suffix, "_bow.parquet"))
     arrow::write_parquet(data, parquet_output_path)
     cat(sprintf("Saved Parquet to: %s\n", parquet_output_path))
     

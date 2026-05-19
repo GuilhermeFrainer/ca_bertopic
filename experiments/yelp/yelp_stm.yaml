@@ -3,6 +3,7 @@ extends: "datasets/yelp.yaml"
 experiment:
   name: "yelp_stm"
   random_state: 36201624
+  dataset_path: "data/processed/yelp_s10000_embeddings.parquet"
 
 models:
   - id: "stm_k75"
