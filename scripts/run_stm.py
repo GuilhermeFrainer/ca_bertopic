@@ -64,12 +64,17 @@ def main():
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
         logger.info(f"Starting STM experiment: {exp_name}")
+        logger.info(f"Random state: {random_state}")
 
         # 2. Dataset Path and Metadata
         dataset_path = Path(config["experiment"]["dataset_path"])
         dataset_name = dataset_path.stem.replace("_embeddings", "")
         rds_path = PROJECT_ROOT / f"data/processed/{dataset_name}_stm_data.rds"
         bow_path = PROJECT_ROOT / f"data/processed/{dataset_name}_bow.parquet"
+
+        logger.info(f"Dataset name: {dataset_name}")
+        logger.info(f"RDS path: {rds_path}")
+        logger.info(f"BoW path: {bow_path}")
 
         if not rds_path.exists():
             logger.error(
@@ -84,6 +89,10 @@ def main():
         # We need to load the full bow data to know the total N and to get text for coherence
         logger.info(f"Loading BoW data from {bow_path}...")
         bow_df = pl.read_parquet(bow_path)
+        
+        # Log metadata columns
+        meta_cols = [c for c in bow_df.columns if c not in ["bow_text", "index"]]
+        logger.info(f"Available metadata columns: {meta_cols}")
 
         sample_size = config["experiment"].get("sample_size")
         if sample_size:
@@ -110,6 +119,8 @@ def main():
             n_observations = len(bow_df)
             eval_texts = bow_df["bow_text"].to_list()
 
+        logger.info(f"Total observations for training: {n_observations}")
+
         # Tokenize eval_texts for coherence (simple split as they are already BoW)
         tokenized_texts = [t.split() for t in eval_texts if t]
 
@@ -121,6 +132,8 @@ def main():
 
         # 4. Iterate over models
         models_config = config.get("models", [])
+        logger.info(f"Running {len(models_config)} model configurations...")
+
         for m_conf in tqdm(models_config, desc="Running STM models"):
             m_id = m_conf.get("id", "Unknown")
             k = m_conf.get("parameters", {}).get("k")
@@ -128,6 +141,8 @@ def main():
             if not k:
                 logger.error(f"Model {m_id} missing parameter 'k'. Skipping.")
                 continue
+
+            logger.info(f"--- Running model: {m_id} (K={k}) ---")
 
             # Temp output dir for R results
             with tempfile.TemporaryDirectory() as tmp_output:
@@ -159,6 +174,11 @@ def main():
                     logger.error(f"[{m_id}] R training failed:\n{result.stderr}")
                     continue
 
+                # Parse R output for extra info
+                for line in result.stdout.splitlines():
+                    if any(x in line for x in ["Metadata columns:", "Documents:", "Vocab size:", "Generated topics:"]):
+                        logger.info(f"[{m_id}] R: {line}")
+
                 logger.info(f"[{m_id}] R training successful.")
 
                 # 5. Load R outputs for Evaluation
@@ -169,7 +189,7 @@ def main():
                 with open(Path(tmp_output) / "duration.txt", "r", encoding="utf-8") as f:
                     duration = float(f.read().strip())
 
-                # 6. Compute Metrics
+                logger.info(f"[{m_id}] Duration: {duration:.2f}s, Vocab size: {len(vocab)}, Beta shape: {beta.shape}")
                 top_words = evaluation.get_top_words_from_beta(beta, vocab)
                 octis_output = evaluation.topic_words_to_octis(top_words)
 

@@ -42,6 +42,11 @@ main <- function() {
         stm_data$documents <- stm_data$documents[keep_mask]
     }
     
+    # Verbose dataset info
+    cat(sprintf("Documents: %d\n", length(stm_data$documents)))
+    cat(sprintf("Vocab size: %d\n", length(stm_data$vocab)))
+    cat(sprintf("Metadata columns: %s\n", paste(names(stm_data$meta), collapse = ", ")))
+
     # Ensure there are documents left
     if (length(stm_data$documents) == 0) {
         stop("No documents left to train the model.")
@@ -64,6 +69,7 @@ main <- function() {
     end_time <- Sys.time()
     duration <- as.numeric(difftime(end_time, start_time, units = "secs"))
     cat(sprintf("Training finished in %.2f seconds.\n", duration))
+    cat(sprintf("Generated topics: %d\n", model$settings$dim$K))
     
     # 2. Save Model
     cat("Saving model RDS...\n")
