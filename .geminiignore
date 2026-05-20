@@ -1,0 +1,27 @@
+# Standard ignores for context efficiency and security
+.git/
+__pycache__/
+.venv/
+node_modules/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+
+# Keep .gemini ignored as requested
+.gemini/
+
+# Override .gitignore to allow access to research data and output
+!/logs/
+!/results/
+!/output/
+
+# Ignore large binary files or lock files
+*.lock
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.exe
+*.bin
