@@ -25,6 +25,7 @@ main <- function() {
     
     cat("Loading data...\n")
     stm_data <- readRDS(opt$rds_path)
+    cat(sprintf("Loaded RDS data with %d documents.\n", length(stm_data$documents)))
     
     # 1. Apply sampling if indices provided
     if (!is.null(opt$indices_path) && file.exists(opt$indices_path)) {

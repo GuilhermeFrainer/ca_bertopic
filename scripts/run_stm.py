@@ -89,6 +89,7 @@ def main():
         # We need to load the full bow data to know the total N and to get text for coherence
         logger.info(f"Loading BoW data from {bow_path}...")
         bow_df = pl.read_parquet(bow_path)
+        logger.info(f"Loaded BoW data with {len(bow_df)} rows.")
         
         # Log metadata columns
         # We exclude obvious identifiers and text columns from the "metadata" log
@@ -187,7 +188,20 @@ def main():
 
                 # Parse R output for extra info
                 for line in result.stdout.splitlines():
-                    if any(x in line for x in ["Metadata columns:", "Documents:", "Vocab size:", "Generated topics:", "Prevalence formula:", "Formula stored in model:"]):
+                    if any(
+                        x in line
+                        for x in [
+                            "Loaded RDS data",
+                            "Applying sampling",
+                            "Keeping",
+                            "Metadata columns:",
+                            "Documents:",
+                            "Vocab size:",
+                            "Generated topics:",
+                            "Prevalence formula:",
+                            "Formula stored in model:",
+                        ]
+                    ):
                         logger.info(f"[{m_id}] R: {line}")
 
                 logger.info(f"[{m_id}] R training successful.")
