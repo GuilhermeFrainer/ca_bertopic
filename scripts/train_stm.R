@@ -11,7 +11,8 @@ main <- function() {
         make_option(c("-i", "--indices_path"), type = "character", default = NULL, help = "Path to JSON sample indices"),
         make_option(c("-o", "--output_dir"), type = "character", help = "Directory to save outputs"),
         make_option(c("-s", "--seed"), type = "integer", default = 42, help = "Random seed"),
-        make_option(c("--model_path"), type = "character", help = "Path to save the full model RDS")
+        make_option(c("--model_path"), type = "character", help = "Path to save the full model RDS"),
+        make_option(c("--prevalence_formula"), type = "character", default = NULL, help = "Prevalence formula (e.g., '~ as.factor(party)')")
     )
     
     opt <- parse_args(OptionParser(option_list = option_list))
@@ -47,6 +48,15 @@ main <- function() {
     cat(sprintf("Vocab size: %d\n", length(stm_data$vocab)))
     cat(sprintf("Metadata columns: %s\n", paste(names(stm_data$meta), collapse = ", ")))
 
+    # Formula construction
+    formula <- NULL
+    if (!is.null(opt$prevalence_formula)) {
+        cat(sprintf("Prevalence formula: %s\n", opt$prevalence_formula))
+        formula <- as.formula(opt$prevalence_formula)
+    } else {
+        cat("No prevalence formula provided. Using vanilla STM.\n")
+    }
+
     # Ensure there are documents left
     if (length(stm_data$documents) == 0) {
         stop("No documents left to train the model.")
@@ -60,6 +70,7 @@ main <- function() {
         documents = stm_data$documents,
         vocab = stm_data$vocab,
         K = opt$k,
+        prevalence = formula,
         data = stm_data$meta,
         init.type = "Spectral",
         seed = opt$seed,
@@ -70,6 +81,10 @@ main <- function() {
     duration <- as.numeric(difftime(end_time, start_time, units = "secs"))
     cat(sprintf("Training finished in %.2f seconds.\n", duration))
     cat(sprintf("Generated topics: %d\n", model$settings$dim$K))
+    
+    if (!is.null(model$settings$covariates$formula)) {
+        cat(sprintf("Formula stored in model: %s\n", Reduce(paste, deparse(model$settings$covariates$formula))))
+    }
     
     # 2. Save Model
     cat("Saving model RDS...\n")

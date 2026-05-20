@@ -91,8 +91,10 @@ def main():
         bow_df = pl.read_parquet(bow_path)
         
         # Log metadata columns
-        meta_cols = [c for c in bow_df.columns if c not in ["bow_text", "index"]]
-        logger.info(f"Available metadata columns: {meta_cols}")
+        # We exclude obvious identifiers and text columns from the "metadata" log
+        exclude_cols = ["bow_text", "index", "id", "text", "clean_text", "clean_text_lower", "clean_text_lower_punctless", "token_count"]
+        meta_cols = [c for c in bow_df.columns if c not in exclude_cols]
+        logger.info(f"Available metadata columns (potential covariates): {meta_cols}")
 
         sample_size = config["experiment"].get("sample_size")
         if sample_size:
@@ -134,6 +136,12 @@ def main():
         models_config = config.get("models", [])
         logger.info(f"Running {len(models_config)} model configurations...")
 
+        prevalence_formula = config["experiment"].get("prevalence_formula")
+        if prevalence_formula:
+            logger.info(f"Using prevalence formula: {prevalence_formula}")
+        else:
+            logger.warning("No prevalence formula provided. Running vanilla STM (no metadata).")
+
         for m_conf in tqdm(models_config, desc="Running STM models"):
             m_id = m_conf.get("id", "Unknown")
             k = m_conf.get("parameters", {}).get("k")
@@ -166,6 +174,9 @@ def main():
                 ]
                 if sample_indices_path:
                     cmd.extend(["--indices_path", sample_indices_path])
+                
+                if prevalence_formula:
+                    cmd.extend(["--prevalence_formula", prevalence_formula])
 
                 logger.info(f"[{m_id}] Running R training script...")
                 result = subprocess.run(cmd, capture_output=True, text=True)
@@ -176,7 +187,7 @@ def main():
 
                 # Parse R output for extra info
                 for line in result.stdout.splitlines():
-                    if any(x in line for x in ["Metadata columns:", "Documents:", "Vocab size:", "Generated topics:"]):
+                    if any(x in line for x in ["Metadata columns:", "Documents:", "Vocab size:", "Generated topics:", "Prevalence formula:", "Formula stored in model:"]):
                         logger.info(f"[{m_id}] R: {line}")
 
                 logger.info(f"[{m_id}] R training successful.")

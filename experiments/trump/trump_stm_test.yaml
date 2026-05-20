@@ -3,6 +3,7 @@ extends: "datasets/trump.yaml"
 experiment:
   name: "trump_stm_test"
   random_state: 36201624
+  prevalence_formula: "~ log_favorites + log_retweets + date + as.factor(device) + as.factor(is_retweet) + as.factor(is_deleted) + as.factor(is_flagged)"
 
 models:
   - id: "stm_k5"

@@ -3,6 +3,7 @@ extends: "datasets/anes.yaml"
 experiment:
   name: "anes_stm_test"
   random_state: 36201624
+  prevalence_formula: "~ as.factor(party_id) + years_of_education + age + as.factor(party_id):age"
 
 models:
   - id: "stm_k5"

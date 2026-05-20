@@ -4,6 +4,7 @@ experiment:
   name: "yelp_stm"
   random_state: 36201624
   dataset_path: "data/processed/yelp_s10000_embeddings.parquet"
+  prevalence_formula: "~ date + stars + user_average_stars + yelping_since + business_stars + as.factor(state)"
 
 models:
   - id: "stm_k75"
