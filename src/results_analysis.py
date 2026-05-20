@@ -18,6 +18,9 @@ def extract_model_type(model_name: str, merge_info0: bool = False) -> str:
     if res.startswith("stemmed_"):
         res = res[len("stemmed_") :]
 
+    if res.startswith("stm_"):
+        return "stm"
+
     # First remove any trailing numbers (e.g., baseline_1 -> baseline)
     if "_" in res:
         parts = res.split("_")
@@ -64,7 +67,11 @@ def find_best_models(
     """
     # Normalize dataset name and model names
     if "dataset_name" in df.columns:
-        df = df.with_columns(pl.col("dataset_name").replace("anes_stemmed", "anes"))
+        df = df.with_columns(
+            pl.col("dataset_name")
+            .replace("anes_stemmed", "anes")
+            .str.replace(r"_s\d+$", "")
+        )
 
     if "model_name" in df.columns:
         df = df.with_columns(pl.col("model_name").str.replace("^stemmed_", ""))

@@ -23,6 +23,7 @@ MODEL_RENAME_MAP = {
     "mv_spectral": "{model_name}<sub>2</sub>",
     "mv_spectral_info0": "{model_name}<sub>2-info0</sub>",
     "aligned_umap": "{model_name}<sub>3</sub>",
+    "stm": "STM",
 }
 
 
@@ -93,6 +94,7 @@ def get_color_map(df: pd.DataFrame, model_name: str = "CAST", only_info0: bool =
         "BERTopic<sub>1</sub>": ("#1f78b4", "#a6cee3"),  # Blue / Light Blue
         "BERTopic<sub>2</sub>": ("#008080", "#40e0d0"),  # Teal / Turquoise
         "Naive": ("#33a02c", "#b2df8a"),  # Green / Light Green
+        "STM": ("#984ea3", "#decbe4"),  # Purple / Light Purple
     }
 
     labels = sorted(df["LegendLabel"].unique())
@@ -128,9 +130,10 @@ def get_legend_order(model_name: str = "CAST"):
         f"{model_name}<sub>2</sub>",
         f"{model_name}<sub>2-info0</sub>",
         f"{model_name}<sub>3</sub>",
+        "Naive",
         "BERTopic<sub>1</sub>",
         "BERTopic<sub>2</sub>",
-        "Naive",
+        "STM",
     ]
 
 

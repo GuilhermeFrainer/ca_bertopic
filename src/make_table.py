@@ -149,6 +149,7 @@ def generate_best_models_latex_table(
         "mv_spectral": "$\\text{\\systemshort}_2$",
         "mv_spectral_info0": "$\\text{\\systemshort}_2\\text{-info0}$",
         "aligned_umap": "$\\text{\\systemshort}_3$",
+        "stm": "STM",
     }
 
     # 2. Build a matrix: rows are model types/names, columns are metrics
@@ -159,9 +160,10 @@ def generate_best_models_latex_table(
         "mv_spectral",
         "mv_spectral_info0",
         "aligned_umap",
+        "append_umap",
         "baseline",
         "umap_spectral",
-        "append_umap",
+        "stm",
     ]
     # Filter to only those present in the results
     all_ids_present = set()

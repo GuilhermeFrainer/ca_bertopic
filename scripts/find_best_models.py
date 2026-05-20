@@ -31,6 +31,7 @@ MODEL_SHORT_NAMES = {
     "baseline": "BERTopic_1",
     "umap_spectral": "BERTopic_2",
     "append_umap": "Naive",
+    "stm": "STM",
 }
 
 LABEL_DESCRIPTIONS = {
@@ -42,6 +43,7 @@ LABEL_DESCRIPTIONS = {
     "BERTopic_1": "Default BERTopic",
     "BERTopic_2": "BERTopic with Spectral",
     "Naive": "Naive baseline",
+    "STM": "Structural Topic Model",
 }
 
 
@@ -192,7 +194,9 @@ def main():
             if "dataset_name" in df.columns:
                 # Normalize dataset name
                 df = df.with_columns(
-                    pl.col("dataset_name").replace("anes_stemmed", "anes")
+                    pl.col("dataset_name")
+                    .replace("anes_stemmed", "anes")
+                    .str.replace(r"_s\d+$", "")
                 )
                 df = df.filter(pl.col("dataset_name") == dataset)
                 if not df.is_empty():
