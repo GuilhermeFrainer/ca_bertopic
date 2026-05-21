@@ -180,7 +180,9 @@ def main():
                     cmd.extend(["--prevalence_formula", prevalence_formula])
 
                 logger.info(f"[{m_id}] Running R training script...")
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, encoding="utf-8"
+                )
 
                 if result.returncode != 0:
                     logger.error(f"[{m_id}] R training failed:\n{result.stderr}")
