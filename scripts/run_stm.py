@@ -43,6 +43,11 @@ def main():
         type=int,
         help="Override the sample size specified in the config file.",
     )
+    parser.add_argument(
+        "--start_from",
+        type=str,
+        help="Model ID to start execution from (skips previous models)",
+    )
     args = parser.parse_args()
 
     try:
@@ -143,9 +148,21 @@ def main():
         else:
             logger.warning("No prevalence formula provided. Running vanilla STM (no metadata).")
 
+        skip_models = False
+        if args.start_from:
+            skip_models = True
+
         for m_conf in tqdm(models_config, desc="Running STM models"):
             m_id = m_conf.get("id", "Unknown")
             k = m_conf.get("parameters", {}).get("k")
+
+            if skip_models:
+                if m_id == args.start_from:
+                    skip_models = False
+                    logger.info(f"Resuming execution from model: {m_id}")
+                else:
+                    logger.info(f"Skipping model: {m_id}")
+                    continue
 
             if not k:
                 logger.error(f"Model {m_id} missing parameter 'k'. Skipping.")
@@ -264,6 +281,22 @@ def main():
                     metadata=run_metadata,
                 )
                 qualitative_dfs.append(qual_df)
+
+                # Incremental Save
+                if results:
+                    inc_results_filename = f"{exp_name}-{file_timestamp}-{random_state}_incremental"
+                    inc_results_path = RESULTS_DIR / f"{inc_results_filename}.csv"
+                    pl.DataFrame(results).write_csv(inc_results_path)
+                    logger.info(f"[{m_id}] Incremental results saved to {inc_results_path}")
+                    
+                if qualitative_dfs:
+                    inc_output_path = OUTPUT_DIR / f"{inc_results_filename}.json"
+                    inc_consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
+                    json_str = inc_consolidated_qual_df.write_json()
+                    parsed_json = json.loads(json_str)
+                    with open(inc_output_path, "w", encoding="utf-8") as f:
+                        json.dump(parsed_json, f, indent=4)
+                    logger.info(f"[{m_id}] Incremental qualitative data saved to {inc_output_path}")
 
         # 8. Save Final Results
         if results:
