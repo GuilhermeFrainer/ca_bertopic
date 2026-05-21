@@ -1,9 +1,19 @@
 import argparse
 import os
 import pathlib
+import re
 from typing import Dict, List, Tuple
 
 import polars as pl
+
+
+def normalize_dataset_name(name: str) -> str:
+    """
+    Strips sampling suffixes like _s10000 from the dataset name.
+    """
+    if not name:
+        return name
+    return re.sub(r"_s\d+$", "", name)
 
 
 def parse_filename(filename: str) -> Tuple[str, str, str]:
@@ -65,6 +75,8 @@ def group_files(
         dataset_name = get_dataset_name(file_path)
         if not dataset_name:
             continue
+
+        dataset_name = normalize_dataset_name(dataset_name)
 
         if exp_id:
             key = (dataset_name, exp_id, random_state)
