@@ -44,8 +44,10 @@ tables/*
 models/
 
 # Scripts
+batch/
 *.bat
 *.ps1
+*.sh
 
 .stignore
 .stfolder

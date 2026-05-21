@@ -84,89 +84,108 @@ def generate_label_table(only_info0: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Find the best performing model of each type for each metric."
+        description=(
+            "Find and visualize the best performing models from experiment results.\n\n"
+            "This script scans the results/ directory for CSV files, filters by dataset, "
+            "and identifies the best model configuration for each metric (or calculates averages).\n"
+            "It can output LaTeX tables and various diagnostic plots (Star, Parallel, Cleveland)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  # Find best models for the 'fed' dataset\n"
+            "  python scripts/find_best_models.py --dataset fed\n\n"
+            "  # Generate a LaTeX table for 'trump' results\n"
+            "  python scripts/find_best_models.py --dataset trump --latex\n\n"
+            "  # Generate a star plot and exclude certain algorithms\n"
+            "  python scripts/find_best_models.py --dataset yelp --star-plot yelp_star.pdf \\\n"
+            "      --exclude-clustering k_means --exclude-dim-red pca\n\n"
+            "  # Show average performance across all runs for a dataset\n"
+            "  python scripts/find_best_models.py --dataset fed --average"
+        ),
     )
-    parser.add_argument(
+
+    data_group = parser.add_argument_group("Data & Filtering Options")
+    data_group.add_argument(
         "--dataset",
         type=str,
-        required=False,
-        help="Name of the dataset (e.g., fed, yelp, trump)",
+        help="Name of the dataset to analyze (e.g., fed, yelp, trump, anes).",
     )
-    parser.add_argument(
+    data_group.add_argument(
         "--exclude-clustering",
         type=str,
         nargs="+",
-        help="Clustering algorithms to exclude.",
+        metavar="ALG",
+        help="Clustering algorithms to exclude (e.g., k_means, spectral).",
     )
-    parser.add_argument(
+    data_group.add_argument(
         "--exclude-dim-red",
         type=str,
         nargs="+",
-        help="Dimensionality reduction algorithms to exclude.",
+        metavar="ALG",
+        help="Dimensionality reduction algorithms to exclude (e.g., umap, pca).",
     )
-    parser.add_argument(
-        "--latex",
-        type=str,
-        nargs="?",
-        const="__STDOUT__",
-        help="Output the results as a LaTeX table. Optionally specify a file path.",
-    )
-    parser.add_argument(
-        "--dump",
-        action="store_true",
-        help="Dump all results instead of only the best per type.",
-    )
-    parser.add_argument(
-        "--average",
-        action="store_true",
-        help=(
-            "Calculate the average performance per model type "
-            "instead of finding the best."
-        ),
-    )
-    parser.add_argument(
-        "--merge-info0",
-        action="store_true",
-        help="Merge models with and without info0 into the same model type.",
-    )
-    parser.add_argument(
-        "--only-info0",
-        action="store_true",
-        help="Filter out MV spectral models that do not have the info0 parameter.",
-    )
-    parser.add_argument(
-        "--star-plot",
-        type=str,
-        help=(
-            "Output the results as a star plot. Specify a file path (defaults to .pdf)."
-        ),
-    )
-    parser.add_argument(
-        "--parallel",
-        type=str,
-        help=(
-            "Output a parallel lines plot. "
-            "Specify a file path (defaults to _parallel.pdf)."
-        ),
-    )
-    parser.add_argument(
-        "--cleveland",
-        type=str,
-        help=(
-            "Output a Cleveland dot plot. "
-            "Specify a file path (defaults to _cleveland.pdf)."
-        ),
-    )
-    parser.add_argument(
-        "--label-table",
-        action="store_true",
-        help="Output the label description table as a LaTeX table.",
-    )
-    parser.add_argument(
+    data_group.add_argument(
         "--suppress-nulls",
         action="store_true",
         help="Filter out rows that contain NaNs for any of the metric columns.",
     )
+
+    proc_group = parser.add_argument_group("Processing & Aggregation")
+    proc_group.add_argument(
+        "--dump",
+        action="store_true",
+        help="Show all model configurations instead of only the best one per type.",
+    )
+    proc_group.add_argument(
+        "--average",
+        action="store_true",
+        help="Calculate the average performance per model type instead of finding the best.",
+    )
+    proc_group.add_argument(
+        "--merge-info0",
+        action="store_true",
+        help="Treat models with and without the 'info0' parameter as the same model type.",
+    )
+    proc_group.add_argument(
+        "--only-info0",
+        action="store_true",
+        help="Focus analysis only on multi-view models that use the 'info0' parameter.",
+    )
+
+    output_group = parser.add_argument_group("Output Options (Plots & Tables)")
+    output_group.add_argument(
+        "--latex",
+        type=str,
+        nargs="?",
+        const="__STDOUT__",
+        metavar="FILE",
+        help="Output the results as a LaTeX table. If FILE is omitted, prints to stdout.",
+    )
+    output_group.add_argument(
+        "--star-plot",
+        type=str,
+        metavar="FILE",
+        help="Generate a star plot and save to FILE (e.g., output.pdf).",
+    )
+    output_group.add_argument(
+        "--parallel",
+        type=str,
+        metavar="FILE",
+        help="Generate a parallel coordinates plot and save to FILE.",
+    )
+    output_group.add_argument(
+        "--cleveland",
+        type=str,
+        metavar="FILE",
+        help="Generate a Cleveland dot plot and save to FILE.",
+    )
+    output_group.add_argument(
+        "--label-table",
+        action="store_true",
+        help="Output the LaTeX table of model label descriptions and exit.",
+    )
+
     args = parser.parse_args()
 
     if args.label_table:
