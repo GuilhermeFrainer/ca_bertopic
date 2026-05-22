@@ -26,9 +26,9 @@ for k in "${K_VALUES[@]}"; do
 #SBATCH --partition=cidia
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mem=128G
-#SBATCH --cpus-per-task=16
-#SBATCH --time=48:00:00
+#SBATCH --mem=16G
+#SBATCH --cpus-per-task=1
+#SBATCH --time=36:00:00
 #SBATCH --output=slurm_log/%x_%j.out
 #SBATCH --error=slurm_log/%x_%j.err
 
