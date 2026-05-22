@@ -47,7 +47,6 @@ models/
 batch/
 *.bat
 *.ps1
-*.sh
 
 .stignore
 .stfolder

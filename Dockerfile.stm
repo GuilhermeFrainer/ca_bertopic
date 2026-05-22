@@ -1,0 +1,12 @@
+# Use the official R base image (lightweight)
+FROM r-base:4.3.2
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy our simple script into the container
+# This assumes you run docker build from the root directory of your project
+COPY scripts/hello_world.R /app/hello_world.R
+
+# Define the command that runs when the container starts
+CMD ["Rscript", "/app/hello_world.R"]
