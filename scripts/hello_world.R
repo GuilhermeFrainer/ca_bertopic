@@ -27,13 +27,20 @@ if (file.exists(input_file)) {
     short_docs <- stm_data$documents[1:n_sample]
     short_meta <- stm_data$meta[1:n_sample, ]
     
+    cat("Cleaning subset with prepDocuments...\n")
+    # prepDocuments ensures indices are 1-indexed and sequential
+    processed <- prepDocuments(short_docs, stm_data$vocab, short_meta, lower.thresh = 1)
+    
+    cat(sprintf("After cleaning: %d documents, %d words in vocab.\n", 
+                length(processed$documents), length(processed$vocab)))
+
     cat("Training 5-topic model (K=5)...\n")
     start_time <- Sys.time()
     model <- stm(
-        documents = short_docs,
-        vocab = stm_data$vocab,
+        documents = processed$documents,
+        vocab = processed$vocab,
         K = 5,
-        data = short_meta,
+        data = processed$meta,
         init.type = "Spectral",
         max.em.its = 5,
         verbose = TRUE
