@@ -12,10 +12,10 @@
 # ==============================================================================
 # HOW TO USE THIS SCRIPT:
 # 1. On your local machine, build the Docker image:
-#    docker build -f Dockerfile.stm -t r_hello_world:v1 .
+#    docker build -f Dockerfile.stm -t cast:stm-lite-v0.1.0 .
 # 
 # 2. Save the image to a tar file:
-#    docker save -o r_hello_world_v1.tar r_hello_world:v1
+#    docker save -o cast_stm-lite-v0.1.0.tar cast:stm-lite-v0.1.0
 # 
 # 3. Transfer the tar file to the cluster:
 #    Put the tar file in your $HOME/docker_images/ directory on the cluster.
@@ -31,8 +31,8 @@
 mkdir -p slurm_log
 
 # 2. Define image info
-IMAGE_NAME="r_hello_world"
-VERSION="v1"
+IMAGE_NAME="cast"
+VERSION="stm-lite-v0.1.0"
 
 echo "Starting job at $(date)..."
 
