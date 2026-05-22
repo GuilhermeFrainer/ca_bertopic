@@ -50,9 +50,12 @@ docker run --rm \
     Rscript scripts/hello_world.R
 
 # 6. Sync RESULTS back to $HOME
-echo "Syncing results back to $HOME..."
-rsync -av $SCRATCH/ca_bertopic/results/ $HOME/ca_bertopic/results/
-rsync -av $SCRATCH/ca_bertopic/models/ $HOME/ca_bertopic/models/
-rsync -av $SCRATCH/ca_bertopic/logs/ $HOME/ca_bertopic/logs/
+echo "Syncing results back to $HOME/slurm..."
+mkdir -p $HOME/slurm/{results,models,logs,output,tables}
+rsync -av $SCRATCH/ca_bertopic/results/ $HOME/slurm/results/
+rsync -av $SCRATCH/ca_bertopic/models/  $HOME/slurm/models/
+rsync -av $SCRATCH/ca_bertopic/logs/    $HOME/slurm/logs/
+rsync -av $SCRATCH/ca_bertopic/output/  $HOME/slurm/output/
+rsync -av $SCRATCH/ca_bertopic/tables/  $HOME/slurm/tables/
 
 echo "Job finished at $(date)"
