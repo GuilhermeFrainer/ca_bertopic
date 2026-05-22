@@ -64,7 +64,7 @@ if (file.exists(input_file)) {
     cat(" - Exported mock_model.rds\n")
     
     cat("==========================================\n")
-    cat("Handoff files are ready in /app/results/test_handoff/\n")
+    cat("Handoff files are ready in results/test_handoff/\n")
     cat("==========================================\n")
 } else {
     cat("ERROR: Data file NOT found at:", input_file, "\n")

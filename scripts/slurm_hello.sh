@@ -39,12 +39,12 @@ if ! docker image inspect ${IMAGE_NAME}:${VERSION} >/dev/null 2>&1; then
 fi
 
 # 5. Run via DOCKER with VOLUME MOUNTS
-# We mount the SCRATCH workspace to /app inside the container
-# We explicitly call Rscript on the script path INSIDE the mount
+# We mount the project into a SUBDIRECTORY to avoid shadowing /app/renv/library
+# We set the WORKDIR to that subdirectory so relative paths work
 echo "Running Docker container..."
 docker run --rm \
-    -v $SCRATCH/ca_bertopic:/app \
-    -w /app \
+    -v $SCRATCH/ca_bertopic:/app/ca_bertopic \
+    -w /app/ca_bertopic \
     ${IMAGE_NAME}:${VERSION} \
     Rscript scripts/hello_world.R
 
