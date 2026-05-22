@@ -4,6 +4,8 @@ library(arrow)
 
 cat("==========================================\n")
 cat("Starting Mock STM Pipeline inside Docker\n")
+cat("Library Paths:\n")
+print(.libPaths())
 cat("==========================================\n")
 
 # Setup paths (relative to /app)

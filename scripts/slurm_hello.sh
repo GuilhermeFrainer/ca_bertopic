@@ -40,11 +40,12 @@ fi
 
 # 5. Run via DOCKER with VOLUME MOUNTS
 # We mount the project into a SUBDIRECTORY to avoid shadowing /app/renv/library
-# We set the WORKDIR to that subdirectory so relative paths work
+# We set RENV_PATHS_LIBRARY to point to the libraries we built into the image
 echo "Running Docker container..."
 docker run --rm \
     -v $SCRATCH/ca_bertopic:/app/ca_bertopic \
     -w /app/ca_bertopic \
+    -e RENV_PATHS_LIBRARY=/app/renv/library \
     ${IMAGE_NAME}:${VERSION} \
     Rscript scripts/hello_world.R
 
