@@ -18,6 +18,8 @@ echo "Queuing 5 STM models for dataset: $DATASET"
 
 for k in "${K_VALUES[@]}"; do
     model_id="stm_k${k}"
+    OUTPUT_DIR="results/${DATASET}_${model_id}"
+    MODEL_PATH="models/${DATASET}_${model_id}.rds"
     echo "  -> Dispatching $model_id"
 
     sbatch <<EOF
@@ -52,10 +54,6 @@ fi
 
 # 4. RUN TRAINING via Docker
 # We create a specific output folder for this K to avoid overwrites
-# We expand these in the master script so they are hardcoded in the Slurm job
-OUTPUT_DIR="results/${DATASET}_${model_id}"
-MODEL_PATH="models/${DATASET}_${model_id}.rds"
-
 mkdir -p \$SCRATCH/ca_bertopic/${OUTPUT_DIR}
 
 # Note: We quote all arguments to prevent empty-string issues
