@@ -1,53 +1,55 @@
 #!/bin/bash
-#SBATCH --job-name=hello_r_docker
+#SBATCH --job-name=stm_docker_test
 #SBATCH --partition=cidia
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mem=4G
+#SBATCH --mem=32G
 #SBATCH --cpus-per-task=1
-#SBATCH --time=00:10:00
+#SBATCH --time=01:00:00
 #SBATCH --output=slurm_log/%x_%j.out
 #SBATCH --error=slurm_log/%x_%j.err
 
 # ==============================================================================
-# HOW TO USE THIS SCRIPT:
-# 1. On your local machine, build the Docker image:
-#    docker build -f Dockerfile.stm -t cast:stm-lite-v0.1.0 .
-# 
-# 2. Save the image to a tar file:
-#    docker save -o cast_stm-lite-v0.1.0.tar cast:stm-lite-v0.1.0
-# 
-# 3. Transfer the tar file to the cluster:
-#    Put the tar file in your $HOME/docker_images/ directory on the cluster.
-#    (Create the directory if it doesn't exist: mkdir -p ~/docker_images)
-# 
-# 4. Transfer this Slurm script to the cluster.
-# 
-# 5. Submit the job on the cluster:
-#    sbatch slurm_hello.sh
+# IMAGE CONFIG
 # ==============================================================================
-
-# 1. Create logs directory for Slurm output
-mkdir -p slurm_log
-
-# 2. Define image info
 IMAGE_NAME="cast"
 VERSION="stm-lite-v0.1.0"
 
-echo "Starting job at $(date)..."
+echo "Job started at $(date)"
 
-# 3. Ensure the specific Docker image is loaded on the node.
-# Compute nodes might not have internet access or might have empty image caches.
-# We load it from a pre-saved .tar file just in case.
+# 1. Setup SCRATCH directory
+# This avoids heavy I/O on the network-mounted $HOME directory
+mkdir -p $SCRATCH/ca_bertopic
+mkdir -p $SCRATCH/ca_bertopic/{data/processed,results,models,logs}
+
+# 2. Sync CODE to SCRATCH (Excluding heavy data/results to be fast)
+echo "Syncing code to SCRATCH..."
+rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \
+    $HOME/ca_bertopic/ $SCRATCH/ca_bertopic/
+
+# 3. Sync SPECIFIC DATA needed for the test
+echo "Syncing Trump dataset..."
+rsync -av $HOME/ca_bertopic/data/processed/trump_stm_data.rds \
+    $SCRATCH/ca_bertopic/data/processed/
+
+# 4. Ensure Docker image is loaded
 if ! docker image inspect ${IMAGE_NAME}:${VERSION} >/dev/null 2>&1; then
-    echo "Image ${IMAGE_NAME}:${VERSION} not found on this node."
-    echo "Loading from $HOME/docker_images/${IMAGE_NAME}_${VERSION}.tar..."
+    echo "Loading Docker image from $HOME/docker_images/..."
     docker load < $HOME/docker_images/${IMAGE_NAME}_${VERSION}.tar
 fi
 
-# 4. Run the Docker container
-# --rm removes the container after it finishes running
+# 5. Run via DOCKER with VOLUME MOUNTS
+# We mount the SCRATCH workspace to /app inside the container
 echo "Running Docker container..."
-docker run --rm ${IMAGE_NAME}:${VERSION}
+docker run --rm \
+    -v $SCRATCH/ca_bertopic:/app \
+    -w /app \
+    ${IMAGE_NAME}:${VERSION}
 
-echo "Job finished at $(date)."
+# 6. Sync RESULTS back to $HOME
+echo "Syncing results back to $HOME..."
+rsync -av $SCRATCH/ca_bertopic/results/ $HOME/ca_bertopic/results/
+rsync -av $SCRATCH/ca_bertopic/models/ $HOME/ca_bertopic/models/
+rsync -av $SCRATCH/ca_bertopic/logs/ $HOME/ca_bertopic/logs/
+
+echo "Job finished at $(date)"
