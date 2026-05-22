@@ -41,8 +41,8 @@ echo "Starting job at $(date)..."
 # We load it from a pre-saved .tar file just in case.
 if ! docker image inspect ${IMAGE_NAME}:${VERSION} >/dev/null 2>&1; then
     echo "Image ${IMAGE_NAME}:${VERSION} not found on this node."
-    echo "Loading from \$HOME/docker_images/${IMAGE_NAME}_${VERSION}.tar..."
-    docker load < \$HOME/docker_images/${IMAGE_NAME}_${VERSION}.tar
+    echo "Loading from $HOME/docker_images/${IMAGE_NAME}_${VERSION}.tar..."
+    docker load < $HOME/docker_images/${IMAGE_NAME}_${VERSION}.tar
 fi
 
 # 4. Run the Docker container
