@@ -40,11 +40,13 @@ fi
 
 # 5. Run via DOCKER with VOLUME MOUNTS
 # We mount the SCRATCH workspace to /app inside the container
+# We explicitly call Rscript on the script path INSIDE the mount
 echo "Running Docker container..."
 docker run --rm \
     -v $SCRATCH/ca_bertopic:/app \
     -w /app \
-    ${IMAGE_NAME}:${VERSION}
+    ${IMAGE_NAME}:${VERSION} \
+    Rscript scripts/hello_world.R
 
 # 6. Sync RESULTS back to $HOME
 echo "Syncing results back to $HOME..."
