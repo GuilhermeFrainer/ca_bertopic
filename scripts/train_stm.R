@@ -17,9 +17,28 @@ main <- function() {
     
     opt <- parse_args(OptionParser(option_list = option_list))
     
+    # --- Pre-flight check ---
+    cat("\n=== [STM TRAINING PRE-FLIGHT CHECK] ===\n")
+    cat("Working Directory: ", getwd(), "\n")
+    cat("Arguments received:\n")
+    for (name in names(opt)) {
+        cat(sprintf("  --%-18s: %s\n", name, as.character(opt[[name]])))
+    }
+    
+    if (is.null(opt$rds_path) || !file.exists(opt$rds_path)) {
+        stop(sprintf("ERROR: rds_path not found: '%s'. Check your volume mounts.", opt$rds_path))
+    }
+    
+    if (is.null(opt$output_dir)) {
+        stop("ERROR: output_dir is missing.")
+    }
+    
     if (!dir.exists(opt$output_dir)) {
+        cat("Creating output directory:", opt$output_dir, "\n")
         dir.create(opt$output_dir, recursive = TRUE)
     }
+    cat("======================================\n\n")
+    # ------------------------
     
     set.seed(opt$seed)
     

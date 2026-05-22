@@ -28,7 +28,7 @@ for k in "${K_VALUES[@]}"; do
 #SBATCH --ntasks=1
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=1
-#SBATCH --time=36:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=slurm_log/%x_%j.out
 #SBATCH --error=slurm_log/%x_%j.err
 
@@ -37,7 +37,9 @@ mkdir -p \$SCRATCH/ca_bertopic
 mkdir -p \$SCRATCH/ca_bertopic/{data/processed,results,models,logs}
 
 # 2. Sync Code and Data
+# We exclude .venv and .git to keep the sync fast and lean
 rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \
+    --exclude='.venv/' --exclude='.git/' \
     \$HOME/ca_bertopic/ \$SCRATCH/ca_bertopic/
 
 rsync -av \$HOME/ca_bertopic/data/processed/trump_stm_data.rds \
@@ -56,17 +58,18 @@ MODEL_PATH="models/${DATASET}_${model_id}.rds"
 
 mkdir -p \$SCRATCH/ca_bertopic/${OUTPUT_DIR}
 
+# Note: We quote all arguments to prevent empty-string issues
 docker run --rm \
     -v \$SCRATCH/ca_bertopic:/app/ca_bertopic \
     -w /app/ca_bertopic \
     -e RENV_PATHS_LIBRARY=/app/renv/library \
     ${IMAGE_NAME}:${VERSION} \
     Rscript scripts/train_stm.R \
-    --rds_path data/processed/trump_stm_data.rds \
-    --k ${k} \
-    --output_dir ${OUTPUT_DIR} \
-    --seed ${SEED} \
-    --model_path ${MODEL_PATH} \
+    --rds_path "data/processed/trump_stm_data.rds" \
+    --k "${k}" \
+    --output_dir "${OUTPUT_DIR}" \
+    --seed "${SEED}" \
+    --model_path "${MODEL_PATH}" \
     --prevalence_formula "${FORMULA}"
 
 # 5. Sync Results back to HOME/slurm
