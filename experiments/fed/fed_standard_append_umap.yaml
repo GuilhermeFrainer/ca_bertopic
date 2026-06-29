@@ -1,0 +1,27 @@
+extends: "datasets/fed.yaml"
+
+experiment:
+  name: "fed_standard_append_umap"
+  description: "Append UMAP model on fed with standard topic counts."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "append_umap"
+  description: "BERTopic with Append UMAP."
+  dimensionality_reduction:
+    type: "append_umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "hdbscan"
+    params: null
+  bertopic:
+    params:
+      nr_topics:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

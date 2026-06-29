@@ -1,0 +1,26 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_standard_umap_spectral"
+  description: "UMAP + Single-View Spectral Clustering on yelp with standard topic counts."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "umap_spectral"
+  description: "UMAP + Single-View Spectral Clustering"
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "spectral_clustering"
+    params:
+      n_init: 10
+      n_clusters:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

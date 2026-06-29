@@ -1,0 +1,29 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_standard_baseline"
+  description: "Standard baseline model (simplified UMAP + HDBSCAN) on yelp with standard topic counts."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "baseline"
+  description: "Standard BERTopic: no metadata and default hyperparameters (simplified config)."
+  is_baseline: true
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "hdbscan"
+    params:
+      min_cluster_size: 15
+  bertopic:
+    params:
+      nr_topics:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

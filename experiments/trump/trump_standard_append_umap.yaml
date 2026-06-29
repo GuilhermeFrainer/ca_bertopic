@@ -1,0 +1,28 @@
+extends: "datasets/trump.yaml"
+
+experiment:
+  name: "trump_standard_append_umap"
+  description: "Append UMAP model on trump with standard topic counts."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "append_umap"
+  description: "BERTopic with Append UMAP."
+  dimensionality_reduction:
+    type: "append_umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "hdbscan"
+    params:
+      min_cluster_size: 30
+  bertopic:
+    params:
+      nr_topics:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

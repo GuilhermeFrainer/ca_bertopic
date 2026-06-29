@@ -1,0 +1,28 @@
+extends: "datasets/trump.yaml"
+
+experiment:
+  name: "trump_standard_aligned_umap"
+  description: "Aligned UMAP model on trump with standard topic counts."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "aligned_umap"
+  description: "BERTopic with Aligned UMAP integration."
+  dimensionality_reduction:
+    type: "aligned_umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "hdbscan"
+    params:
+      min_cluster_size: 30
+  bertopic:
+    params:
+      nr_topics:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

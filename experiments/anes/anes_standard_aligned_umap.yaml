@@ -1,0 +1,27 @@
+extends: "datasets/anes.yaml"
+
+experiment:
+  name: "anes_standard_aligned_umap"
+  description: "Aligned UMAP model on anes with standard topic counts."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "aligned_umap"
+  description: "BERTopic with Aligned UMAP integration."
+  dimensionality_reduction:
+    type: "aligned_umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "hdbscan"
+    params: null
+  bertopic:
+    params:
+      nr_topics:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

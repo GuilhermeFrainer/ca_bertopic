@@ -1,0 +1,23 @@
+extends: "datasets/fed.yaml"
+
+experiment:
+  name: "fed_standard_stm"
+  random_state: 36201624
+  prevalence_formula: '~ gdp_monthly + gdp_monthly_lag + gdp_yearly + gdp_yearly_lag + cpi_monthly + cpi_monthly_lag + cpi_yearly + cpi_yearly_lag + funds_rate + funds_rate_lag + unemployment + unemployment_lag + as.factor(type) + as.factor(president) + as.factor(party) + as.factor(fed_chair)'
+
+models:
+  - id: "stm_k10"
+    parameters:
+      k: 10
+  - id: "stm_k20"
+    parameters:
+      k: 20
+  - id: "stm_k30"
+    parameters:
+      k: 30
+  - id: "stm_k40"
+    parameters:
+      k: 40
+  - id: "stm_k50"
+    parameters:
+      k: 50
