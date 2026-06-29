@@ -29,7 +29,13 @@ def main():
         "--dataset",
         type=str,
         required=True,
-        choices=["fed", "yelp", "anes", "gadarian", "trump"],  # Add future datasets here
+        choices=[
+            "fed",
+            "yelp",
+            "anes",
+            "gadarian",
+            "trump",
+        ],  # Add future datasets here
         help="The dataset to build.",
     )
 

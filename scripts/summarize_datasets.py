@@ -10,11 +10,11 @@ like explode().
 
 import logging
 import sys
-import yaml
 from pathlib import Path
 from typing import Any, Dict, List
 
 import polars as pl
+import yaml
 from great_tables import GT
 
 # Add project root to sys.path
@@ -47,7 +47,7 @@ def get_raw_count(dataset_key: str) -> int:
     if not path or not path.exists():
         logging.warning(f"Raw path not found for {dataset_key}: {path}")
         return 0
-    
+
     try:
         if path.suffix == ".csv":
             return pl.scan_csv(path).select(pl.len()).collect().item()
@@ -68,14 +68,14 @@ def get_metadata_counts() -> Dict[str, int]:
             # if the filename doesn't match the dataset name in the parquet.
             # In our case, anes_stemmed.yaml and anes.yaml both exist.
             dataset_name = yaml_file.stem
-            
+
             covariates = config.get("covariates", {})
             total_metadata = 0
             for group in ["numerical", "categorical", "binary"]:
                 total_metadata += len(covariates.get(group, []))
-            
+
             counts[dataset_name] = total_metadata
-            
+
     return counts
 
 
@@ -97,7 +97,7 @@ def compute_dataset_summary(file_path: Path, metadata_count: int) -> Dict[str, A
 
     # Initialize LazyFrame and select only required columns to save memory
     lf = pl.scan_parquet(file_path)
-    
+
     available_cols = lf.collect_schema().names()
 
     # n_unique of 'id' gives the number of documents that passed preprocessing
@@ -108,7 +108,9 @@ def compute_dataset_summary(file_path: Path, metadata_count: int) -> Dict[str, A
     elif "id" in available_cols:
         kept_docs_expr = pl.col("id").n_unique()
     else:
-        logging.warning(f"Column for document counting not found in {file_path.name}. 'Kept Docs' will be estimated as 'Total Chunks'.")
+        logging.warning(
+            f"Column for document counting not found in {file_path.name}. 'Kept Docs' will be estimated as 'Total Chunks'."
+        )
         kept_docs_expr = pl.len()
 
     cols_to_select = [TEXT_COL, CLEAN_TEXT_COL]
@@ -117,7 +119,7 @@ def compute_dataset_summary(file_path: Path, metadata_count: int) -> Dict[str, A
     if "index" in available_cols:
         cols_to_select.append("index")
 
-    # For the Yelp sample, the 'Original' count is the number of documents 
+    # For the Yelp sample, the 'Original' count is the number of documents
     # we sampled, which is the raw_count of the un-chunked interim file.
     # To show 0 dropped, we ensure Kept Docs matches this for the sample.
     if dataset_key == "yelp_s10000":
@@ -160,29 +162,30 @@ def main() -> None:
     results: List[Dict[str, Any]] = []
 
     logger.info(f"Analyzing datasets in {DATA_DIR}...")
-    
+
     # Find all embeddings parquet files, omitting the full yelp dataset
     dataset_files = [
-        f for f in sorted(DATA_DIR.glob("*_embeddings.parquet"))
+        f
+        for f in sorted(DATA_DIR.glob("*_embeddings.parquet"))
         if f.name != "yelp_embeddings.parquet"
     ]
-    
+
     if not dataset_files:
         logger.error(f"No suitable *_embeddings.parquet files found in {DATA_DIR}")
         return
 
     for file_path in dataset_files:
         logger.info(f"  Processing {file_path.name}...")
-        
+
         # Determine metadata count
         dataset_key = file_path.name.replace("_embeddings.parquet", "")
         if dataset_key == "yelp_s10000":
             meta_key = "yelp"
         else:
             meta_key = dataset_key
-        
+
         metadata_count = metadata_counts.get(meta_key, 0)
-        
+
         try:
             summary = compute_dataset_summary(file_path, metadata_count)
             if "Error" in summary:
@@ -203,12 +206,14 @@ def main() -> None:
     # Prepare transposed DataFrame for LaTeX
     # 1. Pivot or transpose: Metrics as rows, Datasets as columns
     metrics = [c for c in df_results.columns if c != "Dataset"]
-    
+
     # Transpose using Polars
     # First, make Dataset the index (not strictly possible in polars, so we transpose manually)
-    df_transposed = df_results.unpivot(index="Dataset", on=metrics).pivot(
-        on="Dataset", index="variable", values="value"
-    ).rename({"variable": "Metric"})
+    df_transposed = (
+        df_results.unpivot(index="Dataset", on=metrics)
+        .pivot(on="Dataset", index="variable", values="value")
+        .rename({"variable": "Metric"})
+    )
 
     # Rename metrics for a squished LaTeX table
     metric_rename_map = {
@@ -236,13 +241,13 @@ def main() -> None:
         .opt_table_font(font="small")
         .fmt_number(
             columns=dataset_cols,
-            rows=[0, 1, 2, 3, 4, 5], # Counts (Orig. Docs to Sents)
+            rows=[0, 1, 2, 3, 4, 5],  # Counts (Orig. Docs to Sents)
             decimals=0,
             use_seps=True,
         )
         .fmt_number(
             columns=dataset_cols,
-            rows=[6], # Avg Tokens
+            rows=[6],  # Avg Tokens
             decimals=2,
         )
         .cols_align(align="center", columns=dataset_cols)
@@ -263,7 +268,6 @@ def main() -> None:
         f.write(latex_code)
 
     logger.info(f"\nLaTeX table saved to: {latex_output_path}")
-
 
 
 if __name__ == "__main__":

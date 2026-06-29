@@ -165,10 +165,10 @@ def sample_from_lf(
 ) -> pl.LazyFrame:
     """
     Samples rows from a LazyFrame.
-    
-    This function is designed to be index-agnostic: it creates its own 
-    temporary contiguous row index for the sampling mathematics, meaning 
-    it works correctly even if the source data has gaps in its IDs 
+
+    This function is designed to be index-agnostic: it creates its own
+    temporary contiguous row index for the sampling mathematics, meaning
+    it works correctly even if the source data has gaps in its IDs
     or no index column at all.
     """
     rng = np.random.default_rng(seed)

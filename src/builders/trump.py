@@ -26,22 +26,21 @@ def build(raw_dir: Path, interim_dir: Path):
 
     logger.info("Transforming Trump tweets dataset...")
 
-    df = (
-        df.with_columns(
-            # Convert boolean-like columns ('t'/'f') to actual booleans
-            (pl.col("isRetweet").str.to_lowercase() == "t").alias("is_retweet"),
-            (pl.col("isDeleted").str.to_lowercase() == "t").alias("is_deleted"),
-            (pl.col("isFlagged").str.to_lowercase() == "t").alias("is_flagged"),
-            # Convert date column
-            pl.col("date").str.to_datetime("%Y-%m-%d %H:%M:%S", strict=False),
-            # Cast device to categorical
-            pl.col("device").cast(pl.Categorical),
-        )
-        .drop(["isRetweet", "isDeleted", "isFlagged"])
-    )
+    df = df.with_columns(
+        # Convert boolean-like columns ('t'/'f') to actual booleans
+        (pl.col("isRetweet").str.to_lowercase() == "t").alias("is_retweet"),
+        (pl.col("isDeleted").str.to_lowercase() == "t").alias("is_deleted"),
+        (pl.col("isFlagged").str.to_lowercase() == "t").alias("is_flagged"),
+        # Convert date column
+        pl.col("date").str.to_datetime("%Y-%m-%d %H:%M:%S", strict=False),
+        # Cast device to categorical
+        pl.col("device").cast(pl.Categorical),
+    ).drop(["isRetweet", "isDeleted", "isFlagged"])
 
     # Ensure all other columns are snake_case if they aren't already
-    df = df.rename({col: col.lower().replace(" ", "_") for col in df.columns}).with_row_index()
+    df = df.rename(
+        {col: col.lower().replace(" ", "_") for col in df.columns}
+    ).with_row_index()
 
     output_path = interim_dir / "trump.parquet"
     df.write_parquet(output_path)

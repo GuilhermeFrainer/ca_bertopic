@@ -273,7 +273,7 @@ def process_dataset(
     # This is necessary because:
     # 1. Row IDs will get duplicated when chunking text (multiple chunks per doc).
     # 2. We want a fresh unique 'index' for the chunks at the very end.
-    # 3. We create a new 'id' column during batching that maps each chunk 
+    # 3. We create a new 'id' column during batching that maps each chunk
     #    back to its original source row number.
     lf = lf.drop(["index", "id"], strict=False)
 

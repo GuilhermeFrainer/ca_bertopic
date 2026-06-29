@@ -95,10 +95,19 @@ def main():
         logger.info(f"Loading BoW data from {bow_path}...")
         bow_df = pl.read_parquet(bow_path)
         logger.info(f"Loaded BoW data with {len(bow_df)} rows.")
-        
+
         # Log metadata columns
         # We exclude obvious identifiers and text columns from the "metadata" log
-        exclude_cols = ["bow_text", "index", "id", "text", "clean_text", "clean_text_lower", "clean_text_lower_punctless", "token_count"]
+        exclude_cols = [
+            "bow_text",
+            "index",
+            "id",
+            "text",
+            "clean_text",
+            "clean_text_lower",
+            "clean_text_lower_punctless",
+            "token_count",
+        ]
         meta_cols = [c for c in bow_df.columns if c not in exclude_cols]
         logger.info(f"Available metadata columns (potential covariates): {meta_cols}")
 
@@ -146,7 +155,9 @@ def main():
         if prevalence_formula:
             logger.info(f"Using prevalence formula: {prevalence_formula}")
         else:
-            logger.warning("No prevalence formula provided. Running vanilla STM (no metadata).")
+            logger.warning(
+                "No prevalence formula provided. Running vanilla STM (no metadata)."
+            )
 
         skip_models = False
         if args.start_from:
@@ -192,7 +203,7 @@ def main():
                 ]
                 if sample_indices_path:
                     cmd.extend(["--indices_path", sample_indices_path])
-                
+
                 if prevalence_formula:
                     cmd.extend(["--prevalence_formula", prevalence_formula])
 
@@ -230,10 +241,14 @@ def main():
                 theta = pl.read_parquet(Path(tmp_output) / "theta.parquet").to_numpy()
                 with open(Path(tmp_output) / "vocab.txt", "r", encoding="utf-8") as f:
                     vocab = [line.strip() for line in f]
-                with open(Path(tmp_output) / "duration.txt", "r", encoding="utf-8") as f:
+                with open(
+                    Path(tmp_output) / "duration.txt", "r", encoding="utf-8"
+                ) as f:
                     duration = float(f.read().strip())
 
-                logger.info(f"[{m_id}] Duration: {duration:.2f}s, Vocab size: {len(vocab)}, Beta shape: {beta.shape}")
+                logger.info(
+                    f"[{m_id}] Duration: {duration:.2f}s, Vocab size: {len(vocab)}, Beta shape: {beta.shape}"
+                )
                 top_words = evaluation.get_top_words_from_beta(beta, vocab)
                 octis_output = evaluation.topic_words_to_octis(top_words)
 
@@ -284,19 +299,27 @@ def main():
 
                 # Incremental Save
                 if results:
-                    inc_results_filename = f"{exp_name}-{file_timestamp}-{random_state}_incremental"
+                    inc_results_filename = (
+                        f"{exp_name}-{file_timestamp}-{random_state}_incremental"
+                    )
                     inc_results_path = RESULTS_DIR / f"{inc_results_filename}.csv"
                     pl.DataFrame(results).write_csv(inc_results_path)
-                    logger.info(f"[{m_id}] Incremental results saved to {inc_results_path}")
-                    
+                    logger.info(
+                        f"[{m_id}] Incremental results saved to {inc_results_path}"
+                    )
+
                 if qualitative_dfs:
                     inc_output_path = OUTPUT_DIR / f"{inc_results_filename}.json"
-                    inc_consolidated_qual_df = pl.concat(qualitative_dfs, how="diagonal")
+                    inc_consolidated_qual_df = pl.concat(
+                        qualitative_dfs, how="diagonal"
+                    )
                     json_str = inc_consolidated_qual_df.write_json()
                     parsed_json = json.loads(json_str)
                     with open(inc_output_path, "w", encoding="utf-8") as f:
                         json.dump(parsed_json, f, indent=4)
-                    logger.info(f"[{m_id}] Incremental qualitative data saved to {inc_output_path}")
+                    logger.info(
+                        f"[{m_id}] Incremental qualitative data saved to {inc_output_path}"
+                    )
 
         # 8. Save Final Results
         if results:
