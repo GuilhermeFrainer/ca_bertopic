@@ -212,8 +212,30 @@ def test_determinism_via_sorting():
     comb_a = generate_hyperparameter_combinations(config_a)
     comb_b = generate_hyperparameter_combinations(config_b)
 
-    # Compare only the varied_params part for simplicity
     params_a = [c[1] for c in comb_a]
     params_b = [c[1] for c in comb_b]
 
     assert params_a == params_b
+
+
+def test_bertopic_hyperparameter():
+    """
+    Tests generation with a bertopic hyperparameter list.
+    """
+    model_config = {
+        "id": "test",
+        "bertopic": {"params": {"nr_topics": [10, 20, 30]}},
+    }
+    combinations = generate_hyperparameter_combinations(model_config)
+
+    assert len(combinations) == 3
+
+    # Check generated configs
+    assert combinations[0][0]["bertopic"]["params"]["nr_topics"] == 10
+    assert combinations[1][0]["bertopic"]["params"]["nr_topics"] == 20
+    assert combinations[2][0]["bertopic"]["params"]["nr_topics"] == 30
+
+    # Check varied params dict
+    assert combinations[0][1] == {"bertopic.params.nr_topics": 10}
+    assert combinations[1][1] == {"bertopic.params.nr_topics": 20}
+    assert combinations[2][1] == {"bertopic.params.nr_topics": 30}

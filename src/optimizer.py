@@ -62,6 +62,7 @@ def collect_hyperparameters(
 
     collect_from_component("dimensionality_reduction")
     collect_from_component("clustering")
+    collect_from_component("bertopic")
 
     return param_paths, param_values
 
@@ -98,9 +99,9 @@ def clean_varied_params(varied_params: Dict[str, Any]) -> Dict[str, Any]:
     Cleans up parameter names for reporting and results.
     """
     return {
-        key.replace("clustering.params.", "").replace(
-            "dimensionality_reduction.params.", ""
-        ): value
+        key.replace("clustering.params.", "")
+        .replace("dimensionality_reduction.params.", "")
+        .replace("bertopic.params.", ""): value
         for key, value in varied_params.items()
     }
 

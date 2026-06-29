@@ -50,8 +50,20 @@ def create_bertopic_instance(
             random_state=random_state,
         )
 
+    # Extract BERTopic parameters
+    bertopic_config = model_config.get("bertopic") or {}
+    bertopic_params = bertopic_config.get("params") or {}
+    # Copy parameters to avoid modifying the original config dict
+    bertopic_params = bertopic_params.copy()
+    if "top_n_words" not in bertopic_params:
+        bertopic_params["top_n_words"] = 50
+
     # Return the assembled object
-    return BERTopic(umap_model=umap_model, hdbscan_model=hdbscan_model, top_n_words=50)
+    return BERTopic(
+        umap_model=umap_model,
+        hdbscan_model=hdbscan_model,
+        **bertopic_params,
+    )
 
 
 def get_algorithm(
