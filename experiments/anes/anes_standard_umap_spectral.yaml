@@ -3,7 +3,10 @@ extends: "datasets/anes.yaml"
 experiment:
   name: "anes_standard_umap_spectral"
   description: "UMAP + Single-View Spectral Clustering on anes with standard topic counts."
-  random_state: 36201624
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
   decimal_digits: 3
 
 model:

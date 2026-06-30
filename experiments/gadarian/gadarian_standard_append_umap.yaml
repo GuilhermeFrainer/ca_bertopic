@@ -3,7 +3,10 @@ extends: "datasets/gadarian.yaml"
 experiment:
   name: "gadarian_standard_append_umap"
   description: "Append UMAP model on gadarian with standard topic counts."
-  random_state: 36201624
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
   decimal_digits: 3
 
 model:

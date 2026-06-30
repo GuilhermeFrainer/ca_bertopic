@@ -2,7 +2,10 @@ extends: "datasets/gadarian.yaml"
 
 experiment:
   name: "gadarian_standard_stm"
-  random_state: 36201624
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
   prevalence_formula: '~ as.factor(treatment) + as.factor(partisanship) + as.factor(treatment):as.factor(partisanship)'
 
 models:

@@ -3,7 +3,10 @@ extends: "datasets/fed.yaml"
 experiment:
   name: "fed_standard_baseline"
   description: "Standard baseline model (simplified UMAP + HDBSCAN) on fed with standard topic counts."
-  random_state: 36201624
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
   decimal_digits: 3
 
 model:

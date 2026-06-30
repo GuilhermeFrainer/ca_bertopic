@@ -3,7 +3,10 @@ extends: "datasets/anes.yaml"
 experiment:
   name: "anes_standard_mv_co_reg_spectral"
   description: "Multi-View Co-Regularized Spectral Clustering on anes with standard topic counts."
-  random_state: 36201624
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
   decimal_digits: 3
 
 model:

@@ -3,7 +3,10 @@ extends: "datasets/trump.yaml"
 experiment:
   name: "trump_standard_umap_spectral"
   description: "UMAP + Single-View Spectral Clustering on trump with standard topic counts."
-  random_state: 36201624
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
   decimal_digits: 3
 
 model:

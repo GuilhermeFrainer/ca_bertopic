@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # Master Script to queue all standard Trump experiments on SLURM
-# Generates one separate job for each model instance index (1 to 5).
+# Generates one separate job for each model instance index (1 to 15).
 # ==============================================================================
 
 # Models to run
@@ -12,9 +12,9 @@ MODELS=("aligned_umap" "append_umap" "baseline" "mv_co_reg_spectral" "mv_co_reg_
 mkdir -p slurm_log
 
 # 1. Queue CA-BERTopic experiments (Non-STM)
-# Each of the 8 models has 5 standard configurations (nr_topics = 10, 20, 30, 40, 50)
+# Each of the 8 models has 5 standard configurations (nr_topics = 10, 20, 30, 40, 50) and 3 seeds (15 total runs)
 for model in "${MODELS[@]}"; do
-    for model_idx in {1..5}; do
+    for model_idx in {1..15}; do
         job_name="ca_bertopic_trump_${model}_m${model_idx}"
         echo "Queuing job: $job_name"
 
@@ -66,22 +66,23 @@ EOF
 done
 
 # 2. Queue STM experiments via Docker
-# For Trump STM standard, K values are 10, 20, 30, 40, 50
+# For Trump STM standard, K values are 10, 20, 30, 40, 50 and 3 seeds
 K_VALUES=(10 20 30 40 50)
-SEED=36201624
+SEEDS=(36201624 62613654 57116123)
 IMAGE_NAME="cast"
 VERSION="stm-lite-v0.1.0"
 FORMULA="~ log(favorites + 1) + log(retweets + 1) + date + as.factor(device) + as.factor(is_retweet) + as.factor(is_deleted) + as.factor(is_flagged)"
 
 for k in "${K_VALUES[@]}"; do
-    model_id="stm_k${k}"
-    job_name="stm_trump_k${k}"
-    echo "Queuing job: $job_name"
+    for seed in "${SEEDS[@]}"; do
+        model_id="stm_k${k}_seed${seed}"
+        job_name="stm_trump_k${k}_s${seed}"
+        echo "Queuing job: $job_name"
 
-    output_dir="results/trump_${model_id}"
-    model_path="models/trump_${model_id}.rds"
+        output_dir="results/trump_${model_id}"
+        model_path="models/trump_${model_id}.rds"
 
-    sbatch <<EOF
+        sbatch <<EOF
 #!/bin/bash
 #SBATCH --job-name=${job_name}
 #SBATCH --partition=cidia
@@ -123,7 +124,7 @@ docker run --rm \\
     --rds_path "data/processed/trump_stm_data.rds" \\
     --k "${k}" \\
     --output_dir "${output_dir}" \\
-    --seed "${SEED}" \\
+    --seed "${seed}" \\
     --model_path "${model_path}" \\
     --prevalence_formula "${FORMULA}"
 
@@ -135,6 +136,7 @@ rsync -a \$SCRATCH/ca_bertopic/logs/           \$HOME/slurm/logs/
 
 echo "Job finished at \$(date)"
 EOF
+    done
 done
 
 echo "------------------------------------------------"

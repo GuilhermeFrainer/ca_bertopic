@@ -3,7 +3,10 @@ extends: "datasets/yelp.yaml"
 experiment:
   name: "yelp_standard_baseline"
   description: "Standard baseline model (simplified UMAP + HDBSCAN) on yelp with standard topic counts."
-  random_state: 36201624
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
   decimal_digits: 3
 
 model:
