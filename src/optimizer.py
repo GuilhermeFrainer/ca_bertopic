@@ -168,38 +168,52 @@ class Optimizer:
         hyperparameter_combinations = generate_hyperparameter_combinations(
             self.model_config
         )
-        num_combinations = len(hyperparameter_combinations)
+
+        # Determine all seeds
+        seeds = (
+            self.random_state
+            if isinstance(self.random_state, list)
+            else [self.random_state]
+        )
+
+        # Generate a flat list of runs: (combo_idx, model_config, varied_params, seed)
+        all_runs = []
+        for combo_idx, (model_config, varied_params) in enumerate(
+            hyperparameter_combinations
+        ):
+            for seed in seeds:
+                all_runs.append((combo_idx, model_config, varied_params, seed))
+
+        num_runs = len(all_runs)
 
         if target_index is not None:
-            if target_index < 0 or target_index >= num_combinations:
+            if target_index < 0 or target_index >= num_runs:
                 self.logger.error(
-                    f"Target index {target_index + 1} is out of range "
-                    f"(1-{num_combinations})."
+                    f"Target index {target_index + 1} is out of range (1-{num_runs})."
                 )
                 return
-            run_indices = [target_index]
+            run_runs = [all_runs[target_index]]
             self.logger.info(
                 f"Running specific model configuration index {target_index + 1} "
-                f"of {num_combinations}."
+                f"of {num_runs}."
             )
         else:
-            if start_index >= num_combinations:
+            if start_index >= num_runs:
                 self.logger.info(
                     f"Start index {start_index} is beyond total combinations "
-                    f"{num_combinations}. Nothing to do."
+                    f"{num_runs}. Nothing to do."
                 )
                 return
 
-            run_indices = range(start_index, num_combinations)
+            run_runs = all_runs[start_index:]
             if start_index == 0:
                 self.logger.info(
-                    f"Starting hyperparameter optimization for "
-                    f"{num_combinations} models."
+                    f"Starting hyperparameter optimization for {num_runs} models."
                 )
             else:
                 self.logger.info(
                     "Resuming hyperparameter optimization for "
-                    f"{num_combinations} models "
+                    f"{num_runs} models "
                     f"(starting at index {start_index + 1})."
                 )
 
@@ -211,23 +225,25 @@ class Optimizer:
         n_observations = len(self.texts)
 
         try:
-            for i in run_indices:
-                model_config, varied_params = hyperparameter_combinations[i]
+            for run_idx, (combo_idx, model_config, varied_params, seed) in enumerate(
+                run_runs
+            ):
                 model_id = self.model_config.get("id", "model")
-                run_id = f"{model_id}_{i + 1}"
+                if len(seeds) > 1:
+                    run_id = f"{model_id}_{combo_idx + 1}_seed{seed}"
+                else:
+                    run_id = f"{model_id}_{combo_idx + 1}"
 
                 # Clean up param names for reporting
                 cleaned_varied_params = clean_varied_params(varied_params)
-                self.logger.info(
-                    f"--- Training model [{run_id}] ({i + 1}/{num_combinations}) ---"
-                )
+                self.logger.info(f"--- Training model [{run_id}] with seed {seed} ---")
                 self.logger.info(f"Varied Parameters: {cleaned_varied_params}")
 
                 # 1. Create Model Instance
                 topic_model = models.create_bertopic_instance(
                     model_config=model_config,
                     scaled_metadata=self.scaled_metadata,
-                    random_state=self.experiment_config["experiment"]["random_state"],
+                    random_state=seed,
                 )
 
                 # 2. Train and Evaluate
@@ -244,7 +260,7 @@ class Optimizer:
                     # and metadata
                     run_metadata = {
                         "experiment_id": self.experiment_id,
-                        "random_state": self.random_state,
+                        "random_state": seed,
                         "clustering_algo": model_config["clustering"]["type"],
                         "dim_red_algo": model_config["dimensionality_reduction"][
                             "type"
@@ -269,7 +285,7 @@ class Optimizer:
                 except Exception as e:
                     self.logger.error(
                         f"Failed to train model [{run_id}] with params "
-                        f"{cleaned_varied_params}: {e}"
+                        f"{cleaned_varied_params} and seed {seed}: {e}"
                     )
                     continue
         except KeyboardInterrupt:

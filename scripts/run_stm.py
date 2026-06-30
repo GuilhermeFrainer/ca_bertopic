@@ -66,10 +66,24 @@ def main():
             exp_name = f"{exp_name}_s{sample_size}"
 
         random_state = utils.get_random_state(config["experiment"]["random_state"])
+        primary_random_state = (
+            random_state[0] if isinstance(random_state, list) else random_state
+        )
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
         logger.info(f"Starting STM experiment: {exp_name}")
         logger.info(f"Random state: {random_state}")
+
+        if isinstance(random_state, list) and (
+            args.sample is not None
+            or config["experiment"].get("sample_size") is not None
+        ):
+            logger.warning(
+                f"Multiple seeds are specified, but data sampling is active. "
+                f"Only the first seed ({primary_random_state}) will be used "
+                "for data sampling to ensure consistent data inputs across "
+                "different model runs."
+            )
 
         # 2. Dataset Path and Metadata
         dataset_path = Path(config["experiment"]["dataset_path"])
@@ -116,7 +130,7 @@ def main():
             logger.info(f"Sampling {sample_size} observations...")
             # Use established sampling logic
             if len(bow_df) > sample_size:
-                sampled_df = bow_df.sample(n=sample_size, seed=random_state)
+                sampled_df = bow_df.sample(n=sample_size, seed=primary_random_state)
                 # Save indices for R to use
                 with tempfile.NamedTemporaryFile(
                     mode="w", suffix=".json", delete=False
@@ -163,6 +177,9 @@ def main():
         if args.start_from:
             skip_models = True
 
+        # Determine all seeds
+        seeds = random_state if isinstance(random_state, list) else [random_state]
+
         for m_conf in tqdm(models_config, desc="Running STM models"):
             m_id = m_conf.get("id", "Unknown")
             k = m_conf.get("parameters", {}).get("k")
@@ -179,152 +196,171 @@ def main():
                 logger.error(f"Model {m_id} missing parameter 'k'. Skipping.")
                 continue
 
-            logger.info(f"--- Running model: {m_id} (K={k}) ---")
+            for seed in seeds:
+                if len(seeds) > 1:
+                    run_id = f"{m_id}_seed{seed}"
+                else:
+                    run_id = m_id
 
-            # Temp output dir for R results
-            with tempfile.TemporaryDirectory() as tmp_output:
-                model_filename = f"stm_{dataset_name}_{m_id}_{file_timestamp}.rds"
-                model_path = MODELS_DIR / model_filename
+                logger.info(f"--- Running model: {run_id} (K={k}) with seed {seed} ---")
 
-                # Run R script
-                cmd = [
-                    "Rscript",
-                    "scripts/train_stm.R",
-                    "--rds_path",
-                    str(rds_path),
-                    "--k",
-                    str(k),
-                    "--output_dir",
-                    tmp_output,
-                    "--seed",
-                    str(random_state),
-                    "--model_path",
-                    str(model_path),
-                ]
-                if sample_indices_path:
-                    cmd.extend(["--indices_path", sample_indices_path])
+                # Temp output dir for R results
+                with tempfile.TemporaryDirectory() as tmp_output:
+                    model_filename = f"stm_{dataset_name}_{run_id}_{file_timestamp}.rds"
+                    model_path = MODELS_DIR / model_filename
 
-                if prevalence_formula:
-                    cmd.extend(["--prevalence_formula", prevalence_formula])
+                    # Run R script
+                    cmd = [
+                        "Rscript",
+                        "scripts/train_stm.R",
+                        "--rds_path",
+                        str(rds_path),
+                        "--k",
+                        str(k),
+                        "--output_dir",
+                        tmp_output,
+                        "--seed",
+                        str(seed),
+                        "--model_path",
+                        str(model_path),
+                    ]
+                    if sample_indices_path:
+                        cmd.extend(["--indices_path", sample_indices_path])
 
-                logger.info(f"[{m_id}] Running R training script...")
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, encoding="utf-8"
-                )
+                    if prevalence_formula:
+                        cmd.extend(["--prevalence_formula", prevalence_formula])
 
-                if result.returncode != 0:
-                    logger.error(f"[{m_id}] R training failed:\n{result.stderr}")
-                    continue
-
-                # Parse R output for extra info
-                for line in result.stdout.splitlines():
-                    if any(
-                        x in line
-                        for x in [
-                            "Loaded RDS data",
-                            "Applying sampling",
-                            "Keeping",
-                            "Metadata columns:",
-                            "Documents:",
-                            "Vocab size:",
-                            "Generated topics:",
-                            "Prevalence formula:",
-                            "Formula stored in model:",
-                        ]
-                    ):
-                        logger.info(f"[{m_id}] R: {line}")
-
-                logger.info(f"[{m_id}] R training successful.")
-
-                # 5. Load R outputs for Evaluation
-                beta = pl.read_parquet(Path(tmp_output) / "beta.parquet").to_numpy()
-                theta = pl.read_parquet(Path(tmp_output) / "theta.parquet").to_numpy()
-                with open(Path(tmp_output) / "vocab.txt", "r", encoding="utf-8") as f:
-                    vocab = [line.strip() for line in f]
-                with open(
-                    Path(tmp_output) / "duration.txt", "r", encoding="utf-8"
-                ) as f:
-                    duration = float(f.read().strip())
-
-                logger.info(
-                    f"[{m_id}] Duration: {duration:.2f}s, Vocab size: {len(vocab)}, Beta shape: {beta.shape}"
-                )
-                top_words = evaluation.get_top_words_from_beta(beta, vocab)
-                octis_output = evaluation.topic_words_to_octis(top_words)
-
-                metrics = {
-                    "model_name": m_id,
-                    "duration_seconds": duration,
-                    "n_topics": k,
-                    "outliers": 0,  # STM doesn't really have outliers like HDBSCAN
-                }
-
-                # Coherence Loop
-                for cm in config["experiment"]["coherence_metrics"]:
-                    metrics[cm] = evaluation.compute_coherence(
-                        model_output=octis_output, texts=tokenized_texts, measure=cm
+                    logger.info(f"[{run_id}] Running R training script...")
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, encoding="utf-8"
                     )
 
-                # Diversity Loop
-                for dm in config["experiment"]["diversity_metrics"]:
-                    metrics[dm] = evaluation.compute_diversity(
-                        dm, model_output=octis_output
-                    )
+                    if result.returncode != 0:
+                        logger.error(f"[{run_id}] R training failed:\n{result.stderr}")
+                        continue
 
-                # Add Run Metadata
-                run_metadata = {
-                    "experiment_id": exp_name,
-                    "random_state": random_state,
-                    "clustering_algo": "STM",
-                    "dim_red_algo": "None",
-                    "n_observations": n_observations,
-                    "timestamp": start_timestamp,
-                    "file_timestamp": file_timestamp,
-                    "dataset_name": dataset_name,
-                    "k": k,
-                }
-                metrics.update(run_metadata)
-                results.append(metrics)
+                    # Parse R output for extra info
+                    for line in result.stdout.splitlines():
+                        if any(
+                            x in line
+                            for x in [
+                                "Loaded RDS data",
+                                "Applying sampling",
+                                "Keeping",
+                                "Metadata columns:",
+                                "Documents:",
+                                "Vocab size:",
+                                "Generated topics:",
+                                "Prevalence formula:",
+                                "Formula stored in model:",
+                            ]
+                        ):
+                            logger.info(f"[{run_id}] R: {line}")
 
-                # 7. Extract Qualitative Data
-                qual_df = utils.extract_stm_qualitative_data(
-                    theta=theta,
-                    beta=beta,
-                    vocab=vocab,
-                    documents=eval_texts,
-                    model_id=m_id,
-                    metadata=run_metadata,
-                )
-                qualitative_dfs.append(qual_df)
+                    logger.info(f"[{run_id}] R training successful.")
 
-                # Incremental Save
-                if results:
-                    inc_results_filename = (
-                        f"{exp_name}-{file_timestamp}-{random_state}_incremental"
-                    )
-                    inc_results_path = RESULTS_DIR / f"{inc_results_filename}.csv"
-                    pl.DataFrame(results).write_csv(inc_results_path)
+                    # 5. Load R outputs for Evaluation
+                    beta = pl.read_parquet(Path(tmp_output) / "beta.parquet").to_numpy()
+                    theta = pl.read_parquet(
+                        Path(tmp_output) / "theta.parquet"
+                    ).to_numpy()
+                    with open(
+                        Path(tmp_output) / "vocab.txt", "r", encoding="utf-8"
+                    ) as f:
+                        vocab = [line.strip() for line in f]
+                    with open(
+                        Path(tmp_output) / "duration.txt", "r", encoding="utf-8"
+                    ) as f:
+                        duration = float(f.read().strip())
+
                     logger.info(
-                        f"[{m_id}] Incremental results saved to {inc_results_path}"
+                        f"[{run_id}] Duration: {duration:.2f}s, "
+                        f"Vocab size: {len(vocab)}, "
+                        f"Beta shape: {beta.shape}"
                     )
+                    top_words = evaluation.get_top_words_from_beta(beta, vocab)
+                    octis_output = evaluation.topic_words_to_octis(top_words)
 
-                if qualitative_dfs:
-                    inc_output_path = OUTPUT_DIR / f"{inc_results_filename}.json"
-                    inc_consolidated_qual_df = pl.concat(
-                        qualitative_dfs, how="diagonal"
+                    metrics = {
+                        "model_name": run_id,
+                        "duration_seconds": duration,
+                        "n_topics": k,
+                        "outliers": 0,  # STM doesn't really have outliers like HDBSCAN
+                    }
+
+                    # Coherence Loop
+                    for cm in config["experiment"]["coherence_metrics"]:
+                        metrics[cm] = evaluation.compute_coherence(
+                            model_output=octis_output, texts=tokenized_texts, measure=cm
+                        )
+
+                    # Diversity Loop
+                    for dm in config["experiment"]["diversity_metrics"]:
+                        metrics[dm] = evaluation.compute_diversity(
+                            dm, model_output=octis_output
+                        )
+
+                    # Add Run Metadata
+                    run_metadata = {
+                        "experiment_id": exp_name,
+                        "random_state": seed,
+                        "clustering_algo": "STM",
+                        "dim_red_algo": "None",
+                        "n_observations": n_observations,
+                        "timestamp": start_timestamp,
+                        "file_timestamp": file_timestamp,
+                        "dataset_name": dataset_name,
+                        "k": k,
+                    }
+                    metrics.update(run_metadata)
+                    results.append(metrics)
+
+                    # 7. Extract Qualitative Data
+                    qual_df = utils.extract_stm_qualitative_data(
+                        theta=theta,
+                        beta=beta,
+                        vocab=vocab,
+                        documents=eval_texts,
+                        model_id=run_id,
+                        metadata=run_metadata,
                     )
-                    json_str = inc_consolidated_qual_df.write_json()
-                    parsed_json = json.loads(json_str)
-                    with open(inc_output_path, "w", encoding="utf-8") as f:
-                        json.dump(parsed_json, f, indent=4)
-                    logger.info(
-                        f"[{m_id}] Incremental qualitative data saved to {inc_output_path}"
-                    )
+                    qualitative_dfs.append(qual_df)
+
+                    # Incremental Save
+                    if results:
+                        inc_results_filename = (
+                            f"{exp_name}-{file_timestamp}-"
+                            f"{primary_random_state}_incremental"
+                        )
+                        inc_results_path = (
+                            RESULTS_DIR / f"{inc_results_filename}.csv"
+                        )
+                        pl.DataFrame(results).write_csv(inc_results_path)
+                        logger.info(
+                            f"[{run_id}] Incremental results saved to "
+                            f"{inc_results_path}"
+                        )
+
+                    if qualitative_dfs:
+                        inc_output_path = (
+                            OUTPUT_DIR / f"{inc_results_filename}.json"
+                        )
+                        inc_consolidated_qual_df = pl.concat(
+                            qualitative_dfs, how="diagonal"
+                        )
+                        json_str = inc_consolidated_qual_df.write_json()
+                        parsed_json = json.loads(json_str)
+                        with open(inc_output_path, "w", encoding="utf-8") as f:
+                            json.dump(parsed_json, f, indent=4)
+                        logger.info(
+                            f"[{run_id}] Incremental qualitative data saved "
+                            f"to {inc_output_path}"
+                        )
 
         # 8. Save Final Results
         if results:
             results_df = pl.DataFrame(results)
-            results_filename = f"{exp_name}-{file_timestamp}-{random_state}"
+            results_filename = f"{exp_name}-{file_timestamp}-{primary_random_state}"
             results_path = RESULTS_DIR / f"{results_filename}.csv"
             results_df.write_csv(results_path)
             logger.info(f"Results saved to {results_path}")

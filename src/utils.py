@@ -124,7 +124,9 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
     return config
 
 
-def get_random_state(random_state: str | int) -> int:
+def get_random_state(random_state: str | int | list[str | int]) -> int | list[int]:
+    if isinstance(random_state, list):
+        return [get_random_state(r) for r in random_state]
     if isinstance(random_state, int):
         return random_state
     elif random_state == "random":

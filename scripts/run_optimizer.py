@@ -60,13 +60,27 @@ def main():
 
         exp_name = config["experiment"]["name"]
         random_state = utils.get_random_state(config["experiment"]["random_state"])
+        primary_random_state = (
+            random_state[0] if isinstance(random_state, list) else random_state
+        )
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
+
+        if isinstance(random_state, list) and (
+            args.sample is not None
+            or config["experiment"].get("sample_size") is not None
+        ):
+            logger.warning(
+                f"Multiple seeds are specified, but data sampling is active. "
+                f"Only the first seed ({primary_random_state}) will be used "
+                "for data sampling to ensure consistent data inputs across "
+                "different model runs."
+            )
 
         # Data loading
         logger.info("Loading and preparing data...")
         text, embeddings, scaled_metadata = data.load_and_prep_data(
-            config, random_state=random_state
+            config, random_state=primary_random_state
         )
 
         # Check for NaNs and warn if found
@@ -94,7 +108,7 @@ def main():
         results_path = None
 
         if args.resume:
-            pattern = f"{exp_name}-*-{random_state}.csv"
+            pattern = f"{exp_name}-*-{primary_random_state}.csv"
             matching_files = sorted(RESULTS_DIR.glob(pattern))
             if matching_files:
                 latest_file = matching_files[-1]
@@ -120,7 +134,7 @@ def main():
 
         if results_path is None:
             file_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            results_filename = f"{exp_name}-{file_timestamp}-{random_state}"
+            results_filename = f"{exp_name}-{file_timestamp}-{primary_random_state}"
             results_path = RESULTS_DIR / f"{results_filename}.csv"
         else:
             # Extract timestamp from existing filename
