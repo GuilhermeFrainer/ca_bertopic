@@ -332,9 +332,7 @@ def main():
                             f"{exp_name}-{file_timestamp}-"
                             f"{primary_random_state}_incremental"
                         )
-                        inc_results_path = (
-                            RESULTS_DIR / f"{inc_results_filename}.csv"
-                        )
+                        inc_results_path = RESULTS_DIR / f"{inc_results_filename}.csv"
                         pl.DataFrame(results).write_csv(inc_results_path)
                         logger.info(
                             f"[{run_id}] Incremental results saved to "
@@ -342,9 +340,7 @@ def main():
                         )
 
                     if qualitative_dfs:
-                        inc_output_path = (
-                            OUTPUT_DIR / f"{inc_results_filename}.json"
-                        )
+                        inc_output_path = OUTPUT_DIR / f"{inc_results_filename}.json"
                         inc_consolidated_qual_df = pl.concat(
                             qualitative_dfs, how="diagonal"
                         )
