@@ -62,9 +62,13 @@ Each dataset can be regenerated step-by-step using the following commands:
     ```bash
     uv run scripts/generate_embeddings.py --dataset <dataset_name> --columns clean_text
     ```
+4.  **Generate R Representations** (creating BoW Parquet and STM RDS):
+    ```bash
+    Rscript scripts/build_bow.R --dataset <dataset_name>
+    ```
 
 ### B. ANES (with Stemming)
-Since ANES runs both standard and stemmed experiments, it requires generating both standard and stemmed text embeddings into `anes_embeddings.parquet`:
+Since ANES runs both standard and stemmed experiments, it requires generating both standard and stemmed text embeddings, and R representations:
 1.  **Build**:
     ```bash
     uv run scripts/build_datasets.py --dataset anes
@@ -76,6 +80,10 @@ Since ANES runs both standard and stemmed experiments, it requires generating bo
 3.  **Generate Embeddings**:
     ```bash
     uv run scripts/generate_embeddings.py --dataset anes --columns clean_text clean_text_stemmed
+    ```
+4.  **Generate R Representations**:
+    ```bash
+    Rscript scripts/build_bow.R --dataset anes
     ```
 
 ### C. Yelp (Large Dataset)
@@ -92,7 +100,11 @@ To avoid converting raw Yelp NDJSON files directly (which is extremely slow), sk
     ```bash
     uv run scripts/generate_embeddings.py --dataset yelp --columns clean_text
     ```
-4.  **Align Sample (10k Sample)**:
+4.  **Generate R Representations** (sampling 10k rows for STM):
+    ```bash
+    Rscript scripts/build_bow.R --dataset yelp --sample 10000
+    ```
+5.  **Align Sample (10k Sample)**:
     Since standard experiments run on a 10k sampled version of Yelp, execute the alignment script to sample and synchronize the document IDs:
     ```bash
     uv run python scripts/align_yelp_sample.py
@@ -113,3 +125,29 @@ We have provided a PowerShell script to automate the entire process from scratch
 ```
 
 Refer to [scripts/build_all_datasets.ps1](file:///D:/CA-BERTopic/scripts/build_all_datasets.ps1) for execution and options.
+
+---
+
+## 6. What is `align_yelp_sample.py` and Why is it Needed?
+
+The script [align_yelp_sample.py](file:///D:/CA-BERTopic/scripts/align_yelp_sample.py) is a specialized dataset alignment utility. Its primary goal is to **subsample the massive Yelp dataset (16+ GB) down to a representative 10,000-document set while maintaining exact document alignment between BERTopic and STM**.
+
+### The Core Problem: Chunked vs. Un-chunked Alignment
+BERTopic and Structural Topic Models (STM) handle document token limits and inputs differently:
+1.  **BERTopic (Chunked)**: During Python preprocessing, long documents are split into smaller chunks (under the token limit of the SentenceTransformer model) with overlapping sentences. Consequently, a single Yelp review can produce multiple chunks in `yelp_embeddings.parquet`.
+2.  **STM (Un-chunked)**: Structural Topic Models operate on the bag-of-words representation of the *original, un-chunked reviews*.
+
+To compare the performance of these models fairly, **they must run on the exact same subset of reviews**. If we randomly sampled 10,000 chunks for BERTopic, and 10,000 reviews for STM independently, their source texts would not match.
+
+### How `align_yelp_sample.py` Resolves This
+The alignment script synchronizes the datasets through three steps:
+
+1.  **Sample Chunks from Embeddings**:
+    It samples exactly 10,000 chunks from `yelp_embeddings.parquet` using a fixed seed (`36201624`). This creates the standard subset file `yelp_s10000_embeddings.parquet` used for BERTopic experiments.
+2.  **Map Chunks to Source Document IDs**:
+    It joins these 10,000 sampled chunk indices with `yelp_processed.parquet` to find the unique source document IDs (`id`) that those chunks originated from.
+3.  **Reconstruct matching Un-chunked Sample**:
+    It loads the raw processed Yelp dataset (`yelp_reviews.parquet`), cleans the text, filters for only the documents matching the source IDs found in Step 2, and saves it to `yelp_s10000_unchunked.parquet`.
+
+This ensures that the un-chunked R bag-of-words and RDS representations (generated from `yelp_s10000_unchunked.parquet` by `build_bow.R`) contain the **exact same original reviews** as the chunked embeddings used by BERTopic.
+
