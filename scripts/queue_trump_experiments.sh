@@ -24,9 +24,9 @@ for model in "${MODELS[@]}"; do
 #SBATCH --partition=cidia
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --mem=100G
-#SBATCH --cpus-per-task=16
-#SBATCH --time=48:00:00
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=4
+#SBATCH --time=24:00:00
 #SBATCH --output=slurm_log/%x_%j.out
 #SBATCH --error=slurm_log/%x_%j.err
 

@@ -42,9 +42,9 @@ rsync -a \$HOME/ca_bertopic/data/processed/${data_prefix}_embeddings.parquet \$S
             run_command="uv run python scripts/run_stm.py --exp ${dataset}/${dataset}_standard_stm"
         else
             job_name="ca_bertopic_${dataset}_${model}"
-            mem="100G"
-            cpus=16
-            time_limit="48:00:00"
+            mem="32G"
+            cpus=4
+            time_limit="24:00:00"
 
             # Data copy commands for non-STM
             # For Yelp, we use the 10k presampled embeddings file to avoid copying and loading the full 16GB dataset.
