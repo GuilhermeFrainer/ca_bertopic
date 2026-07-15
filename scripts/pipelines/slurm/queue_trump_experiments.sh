@@ -50,7 +50,7 @@ rsync -a \$HOME/ca_bertopic/data/processed/trump_embeddings.parquet \$SCRATCH/ca
 export PATH="\$HOME/.local/bin:\$PATH"
 
 # 5. Run specific model instance
-uv run python scripts/run_optimizer.py --exp trump/trump_standard_${model} --model ${model_idx}
+uv run python scripts/experiments/run_optimizer.py --exp trump/trump_standard_${model} --model ${model_idx}
 
 # 6. Sync results back to HOME/slurm
 mkdir -p \$HOME/slurm/{results,logs,output,tables,models}
@@ -101,8 +101,8 @@ mkdir -p \$SCRATCH/ca_bertopic
 mkdir -p \$SCRATCH/ca_bertopic/{data/processed,results,models,logs}
 
 # 2. Sync Code base
-rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \\
-    --exclude='.venv/' --exclude='.git/' \\
+rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \
+    --exclude='.venv/' --exclude='.git/' \
     \$HOME/ca_bertopic/ \$SCRATCH/ca_bertopic/
 
 # 3. Sync specific data file (Trump STM data)
@@ -115,17 +115,17 @@ fi
 
 # 5. Run training via Docker
 mkdir -p \$SCRATCH/ca_bertopic/${output_dir}
-docker run --rm \\
-    -v \$SCRATCH/ca_bertopic:/app/ca_bertopic \\
-    -w /app/ca_bertopic \\
-    -e RENV_PATHS_LIBRARY=/app/renv/library \\
-    ${IMAGE_NAME}:${VERSION} \\
-    Rscript scripts/train_stm.R \\
-    --rds_path "data/processed/trump_stm_data.rds" \\
-    --k "${k}" \\
-    --output_dir "${output_dir}" \\
-    --seed "${seed}" \\
-    --model_path "${model_path}" \\
+docker run --rm \
+    -v \$SCRATCH/ca_bertopic:/app/ca_bertopic \
+    -w /app/ca_bertopic \
+    -e RENV_PATHS_LIBRARY=/app/renv/library \
+    ${IMAGE_NAME}:${VERSION} \
+    Rscript scripts/r_scripts/train_stm.R \
+    --rds_path "data/processed/trump_stm_data.rds" \
+    --k "${k}" \
+    --output_dir "${output_dir}" \
+    --seed "${seed}" \
+    --model_path "${model_path}" \
     --prevalence_formula "${FORMULA}"
 
 # 6. Sync results back to HOME/slurm

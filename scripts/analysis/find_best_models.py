@@ -85,23 +85,30 @@ def generate_label_table(only_info0: bool = False):
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Find and visualize the best performing models from experiment results.\n\n"
-            "This script scans the results/ directory for CSV files, filters by dataset, "
-            "and identifies the best model configuration for each metric (or calculates averages).\n"
-            "It can output LaTeX tables and various diagnostic plots (Star, Parallel, Cleveland)."
+            "Find and visualize the best performing models "
+            "from experiment results.\n\n"
+            "This script scans the results/ directory for CSV files, "
+            "filters by dataset, and identifies the best model configuration "
+            "for each metric (or calculates averages).\n"
+            "It can output LaTeX tables and various diagnostic plots "
+            "(Star, Parallel, Cleveland)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
             "  # Find best models for the 'fed' dataset\n"
-            "  python scripts/find_best_models.py --dataset fed\n\n"
+            "  python scripts/analysis/find_best_models.py \\\n"
+            "      --dataset fed\n\n"
             "  # Generate a LaTeX table for 'trump' results\n"
-            "  python scripts/find_best_models.py --dataset trump --latex\n\n"
+            "  python scripts/analysis/find_best_models.py \\\n"
+            "      --dataset trump --latex\n\n"
             "  # Generate a star plot and exclude certain algorithms\n"
-            "  python scripts/find_best_models.py --dataset yelp --star-plot yelp_star.pdf \\\n"
+            "  python scripts/analysis/find_best_models.py \\\n"
+            "      --dataset yelp --star-plot yelp_star.pdf \\\n"
             "      --exclude-clustering k_means --exclude-dim-red pca\n\n"
             "  # Show average performance across all runs for a dataset\n"
-            "  python scripts/find_best_models.py --dataset fed --average"
+            "  python scripts/analysis/find_best_models.py \\\n"
+            "      --dataset fed --average"
         ),
     )
 

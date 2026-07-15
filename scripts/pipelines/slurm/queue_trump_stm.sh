@@ -62,7 +62,7 @@ docker run --rm \
     -w /app/ca_bertopic \
     -e RENV_PATHS_LIBRARY=/app/renv/library \
     ${IMAGE_NAME}:${VERSION} \
-    Rscript scripts/train_stm.R \
+    Rscript scripts/r_scripts/train_stm.R \
     --rds_path "data/processed/trump_stm_data.rds" \
     --k "${k}" \
     --output_dir "${OUTPUT_DIR}" \

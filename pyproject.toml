@@ -66,6 +66,6 @@ select = ["E", "F", "W", "I"]
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore "Module level import not at top of file" in scripts where sys.path is manipulated
-"scripts/*.py" = ["E402"]
+"scripts/**/*.py" = ["E402"]
 "tests/test_find_best_models.py" = ["E402"]
 "notebooks/*.ipynb" = ["E402", "F821", "E711", "F811", "E501"]

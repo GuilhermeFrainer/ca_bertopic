@@ -97,7 +97,8 @@ def main():
 
         if not rds_path.exists():
             logger.error(
-                f"RDS file not found: {rds_path}. Run scripts/build_bow.R first."
+                f"RDS file not found: {rds_path}. "
+                "Run scripts/r_scripts/build_bow.R first."
             )
             return
 
@@ -212,7 +213,7 @@ def main():
                     # Run R script
                     cmd = [
                         "Rscript",
-                        "scripts/train_stm.R",
+                        "scripts/r_scripts/train_stm.R",
                         "--rds_path",
                         str(rds_path),
                         "--k",

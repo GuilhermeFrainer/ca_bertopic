@@ -44,7 +44,8 @@ tables/*
 models/
 
 # Scripts
-batch/
+scripts/pipelines/local_windows/
+scripts/pipelines/local_unix/
 *.bat
 *.ps1
 

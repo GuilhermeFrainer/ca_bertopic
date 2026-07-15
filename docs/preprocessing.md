@@ -52,62 +52,62 @@ Each dataset can be regenerated step-by-step using the following commands:
 ### A. General Datasets (`fed`, `gadarian`, `trump`)
 1.  **Build** the dataset:
     ```bash
-    uv run scripts/build_datasets.py --dataset <dataset_name>
+    uv run scripts/data_prep/build_datasets.py --dataset <dataset_name>
     ```
 2.  **Preprocess** the dataset:
     ```bash
-    uv run scripts/preprocess_datasets.py --dataset <dataset_name>
+    uv run scripts/data_prep/preprocess_datasets.py --dataset <dataset_name>
     ```
 3.  **Generate Embeddings** (creating `clean_text_embedding`):
     ```bash
-    uv run scripts/generate_embeddings.py --dataset <dataset_name> --columns clean_text
+    uv run scripts/data_prep/generate_embeddings.py --dataset <dataset_name> --columns clean_text
     ```
 4.  **Generate R Representations** (creating BoW Parquet and STM RDS):
     ```bash
-    Rscript scripts/build_bow.R --dataset <dataset_name>
+    Rscript scripts/r_scripts/build_bow.R --dataset <dataset_name>
     ```
 
 ### B. ANES (with Stemming)
 Since ANES runs both standard and stemmed experiments, it requires generating both standard and stemmed text embeddings, and R representations:
 1.  **Build**:
     ```bash
-    uv run scripts/build_datasets.py --dataset anes
+    uv run scripts/data_prep/build_datasets.py --dataset anes
     ```
 2.  **Preprocess** (enabling stemming):
     ```bash
-    uv run scripts/preprocess_datasets.py --dataset anes --stem
+    uv run scripts/data_prep/preprocess_datasets.py --dataset anes --stem
     ```
 3.  **Generate Embeddings**:
     ```bash
-    uv run scripts/generate_embeddings.py --dataset anes --columns clean_text clean_text_stemmed
+    uv run scripts/data_prep/generate_embeddings.py --dataset anes --columns clean_text clean_text_stemmed
     ```
 4.  **Generate R Representations**:
     ```bash
-    Rscript scripts/build_bow.R --dataset anes
+    Rscript scripts/r_scripts/build_bow.R --dataset anes
     ```
 
 ### C. Yelp (Large Dataset)
 To avoid converting raw Yelp NDJSON files directly (which is extremely slow), skip the raw JSON conversion:
 1.  **Build**:
     ```bash
-    uv run scripts/build_datasets.py --dataset yelp --skip-convert
+    uv run scripts/data_prep/build_datasets.py --dataset yelp --skip-convert
     ```
 2.  **Preprocess**:
     ```bash
-    uv run scripts/preprocess_datasets.py --dataset yelp
+    uv run scripts/data_prep/preprocess_datasets.py --dataset yelp
     ```
 3.  **Generate Embeddings**:
     ```bash
-    uv run scripts/generate_embeddings.py --dataset yelp --columns clean_text
+    uv run scripts/data_prep/generate_embeddings.py --dataset yelp --columns clean_text
     ```
 4.  **Generate R Representations** (sampling 10k rows for STM):
     ```bash
-    Rscript scripts/build_bow.R --dataset yelp --sample 10000
+    Rscript scripts/r_scripts/build_bow.R --dataset yelp --sample 10000
     ```
 5.  **Align Sample (10k Sample)**:
     Since standard experiments run on a 10k sampled version of Yelp, execute the alignment script to sample and synchronize the document IDs:
     ```bash
-    uv run python scripts/align_yelp_sample.py
+    uv run python scripts/data_prep/align_yelp_sample.py
     ```
 
 ---
@@ -118,19 +118,19 @@ We have provided a PowerShell script to automate the entire process from scratch
 
 ```powershell
 # Run for all datasets by default
-.\scripts\build_all_datasets.ps1
+.\scripts\pipelines\local_windows\build_all_datasets.ps1
 
 # Run only for specific datasets
-.\scripts\build_all_datasets.ps1 -Datasets "fed", "anes"
+.\scripts\pipelines\local_windows\build_all_datasets.ps1 -Datasets "fed", "anes"
 ```
 
-Refer to [scripts/build_all_datasets.ps1](file:///D:/CA-BERTopic/scripts/build_all_datasets.ps1) for execution and options.
+Refer to [build_all_datasets.ps1](../scripts/pipelines/local_windows/build_all_datasets.ps1) for execution and options.
 
 ---
 
 ## 6. What is `align_yelp_sample.py` and Why is it Needed?
 
-The script [align_yelp_sample.py](file:///D:/CA-BERTopic/scripts/align_yelp_sample.py) is a specialized dataset alignment utility. Its primary goal is to **subsample the massive Yelp dataset (16+ GB) down to a representative 10,000-document set while maintaining exact document alignment between BERTopic and STM**.
+The script [align_yelp_sample.py](../scripts/data_prep/align_yelp_sample.py) is a specialized dataset alignment utility. Its primary goal is to **subsample the massive Yelp dataset (16+ GB) down to a representative 10,000-document set while maintaining exact document alignment between BERTopic and STM**.
 
 ### The Core Problem: Chunked vs. Un-chunked Alignment
 BERTopic and Structural Topic Models (STM) handle document token limits and inputs differently:

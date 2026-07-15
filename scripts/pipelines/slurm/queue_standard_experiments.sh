@@ -39,7 +39,7 @@ rsync -a \$HOME/ca_bertopic/data/processed/${data_prefix}_bow.parquet \$SCRATCH/
 rsync -a \$HOME/ca_bertopic/data/processed/${data_prefix}_embeddings.parquet \$SCRATCH/ca_bertopic/data/processed/"
 
             # Run command for STM
-            run_command="uv run python scripts/run_stm.py --exp ${dataset}/${dataset}_standard_stm"
+            run_command="uv run python scripts/experiments/run_stm.py --exp ${dataset}/${dataset}_standard_stm"
         else
             job_name="ca_bertopic_${dataset}_${model}"
             mem="32G"
@@ -55,7 +55,7 @@ rsync -a \$HOME/ca_bertopic/data/processed/${data_prefix}_embeddings.parquet \$S
             fi
 
             # Run command for non-STM
-            run_command="uv run python scripts/run_optimizer.py --exp ${dataset}/${dataset}_standard_${model}"
+            run_command="uv run python scripts/experiments/run_optimizer.py --exp ${dataset}/${dataset}_standard_${model}"
         fi
 
         # Submit to SLURM using a here-doc

@@ -32,47 +32,47 @@ Some datasets require an additional step to unify multiple raw data sources or c
 The FED dataset joins communications with macro indicators and political metadata.
 1.  Build the unified dataset:
     ```bash
-    uv run scripts/build_datasets.py --dataset fed
+    uv run scripts/data_prep/build_datasets.py --dataset fed
     ```
 
 ### Yelp Dataset
 The Yelp dataset converts raw JSON files to Parquet and joins them.
 1.  Build the unified dataset:
     ```bash
-    uv run scripts/build_datasets.py --dataset yelp
+    uv run scripts/data_prep/build_datasets.py --dataset yelp
     ```
 
 2.  Preprocess any dataset:
     ```bash
-    uv run scripts/preprocess_datasets.py --dataset <dataset_name>
+    uv run scripts/data_prep/preprocess_datasets.py --dataset <dataset_name>
     ```
 
 ## Running Experiments
 
-Experiments are defined by `.yaml` files in the `experiments/` directory and can be run using the `scripts/run_experiment.py` script.
+Experiments are defined by `.yaml` files in the `experiments/` directory and can be run using the `scripts/experiments/run_experiment.py` script.
 
 To run an experiment, use the following command:
 ```bash
-python scripts/run_experiment.py --exp <experiment_name>
+python scripts/experiments/run_experiment.py --exp <experiment_name>
 ```
 Replace `<experiment_name>` with the name of the yaml file in the `experiments` directory (without the `.yaml` extension).
 
 For example, to run the `trump.yaml` experiment:
 ```bash
-python scripts/run_experiment.py --exp trump
+python scripts/experiments/run_experiment.py --exp trump
 ```
 
 ### Running Hyperparameter Optimization
 
-For hyperparameter tuning, use the `scripts/run_optimizer.py` script. The setup is similar to a regular experiment, but the YAML file should contain a single `model` configuration. Within that configuration, any parameter that you want to search over should be specified as a list of values.
+For hyperparameter tuning, use the `scripts/experiments/run_optimizer.py` script. The setup is similar to a regular experiment, but the YAML file should contain a single `model` configuration. Within that configuration, any parameter that you want to search over should be specified as a list of values.
 
 To run an optimization, use the following command:
 ```bash
-python scripts/run_optimizer.py --exp <optimization_name>
+python scripts/experiments/run_optimizer.py --exp <optimization_name>
 ```
 For example, to run the `yelp_opt_spectral.yaml` optimization:
 ```bash
-python scripts/run_optimizer.py --exp yelp_opt_spectral
+python scripts/experiments/run_optimizer.py --exp yelp_opt_spectral
 ```
 
 ## Visualizing Results
@@ -105,13 +105,14 @@ uv run -m pytest
 ├── models/            # Saved model files
 ├── notebooks/         # Jupyter notebooks for exploration and analysis
 ├── results/           # Experiment results
-├── scripts/           # Utility scripts
-│   ├── build_datasets.py
-│   ├── dashboard.py       # Interactive results dashboard
-│   ├── generate_embeddings.py
-│   ├── preprocess_datasets.py
-│   ├── run_experiment.py
-│   └── run_optimizer.py
+├── scripts/           # Utility scripts and pipelines
+│   ├── data_prep/     # Dataset building, preprocessing, and feature prep
+│   ├── experiments/   # Core model runners and hyperparameter tuning
+│   ├── analysis/      # Output parsers, metrics evaluation, and plotting
+│   ├── pipelines/     # Orchestrators (Windows, Unix, Slurm Cluster)
+│   ├── r_scripts/     # Language-specific R scripts
+│   ├── temp/          # Temporary testing scripts
+│   └── dashboard.py   # Streamlit visual results dashboard
 ├── src/               # Source code
 │   ├── data.py        # Data loading and preprocessing
 │   ├── models.py      # Custom model definitions
@@ -141,6 +142,7 @@ uv run -m pytest
 - **Test-Driven Development:** Always run the test suite (`uv run -m pytest`) after implementing new features, fixing bugs, or refactoring code, even if not explicitly asked.
 - **Verification:** Ensure all tests pass before considering a task complete. If tests fail, diagnose and fix the issues immediately.
 - **Linting and Formatting:** Always run Ruff (`uvx ruff check . --fix` and `uvx ruff format .`) after making any code changes to ensure consistent style and catch potential issues.
+- **Portable Documentation Links:** Always use relative links in markdown documentation files (e.g., in `docs/`) instead of absolute `file:///` paths to ensure portability across different development environments.
 
 ## Coding Style
 
