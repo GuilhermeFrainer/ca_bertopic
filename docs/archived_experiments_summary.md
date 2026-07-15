@@ -30,6 +30,7 @@ experiments/
 
 *   **Active Subdirectories Kept:** `anes`, `fed`, `gadarian`, `trump`, `yelp`
 *   **Active Configurations Kept:** Only files matching `*_standard_*.yaml` remain in the active dataset subdirectories.
+*   **Newly Added Standard Configs:** Added standard versions of UMAP + K-Means (`*_standard_k_means.yaml`) and PCA + K-Means (`*_standard_pca_k_means.yaml`) for all 5 active datasets.
 *   **Fully Archived Subdirectories:** `anes_stemmed` (contains no standard runs, so all files were moved to `archive/` and the empty active directory was deleted).
 *   **Total Files Moved:** 98 files (including optimization runs `*_opt_*.yaml`, exploratory tests `*_test.yaml`, alternative configurations `*_alt_vanilla.yaml`, and baseline runs `*.yaml` that aren't the standard runs).
 
