@@ -9,14 +9,13 @@ import sys
 from pathlib import Path
 
 # Add project root to sys.path
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.processing import process_dataset
 
 # Constants
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DATA_PATHS = {
     "trump": PROJECT_ROOT / "data/raw/trump_tweets.csv",
     "yelp": PROJECT_ROOT / "data/interim/yelp_reviews.parquet",
