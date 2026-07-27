@@ -1,0 +1,28 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_standard_append_umap_mv_spherical_k_means"
+  description: "Append UMAP + Multi-View Spherical K-Means on yelp with standard topic counts."
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
+  decimal_digits: 3
+
+model:
+  id: "append_umap_mv_spherical_k_means"
+  description: "Append UMAP + Multi-View Spherical K-Means"
+  dimensionality_reduction:
+    type: "append_umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "multi_view_spherical_k_means"
+    params:
+      n_clusters:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

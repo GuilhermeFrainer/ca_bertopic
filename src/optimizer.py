@@ -37,7 +37,7 @@ def collect_hyperparameters(
 
     def collect_from_component(component_name: str):
         component = model_config.get(component_name, {})
-        params = component.get("params", {})
+        params = component.get("params") or {}
         # Sort keys to ensure deterministic order of combinations
         for key in sorted(params.keys()):
             value = params[key]
