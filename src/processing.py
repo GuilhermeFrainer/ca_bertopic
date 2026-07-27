@@ -2,6 +2,7 @@
 """Core data-processing functions for Trump and Yelp datasets."""
 
 import logging
+import re
 import tempfile
 from pathlib import Path
 from typing import Union
@@ -22,6 +23,11 @@ try:
     nltk.data.find("tokenizers/punkt")
 except LookupError:
     nltk.download("punkt", quiet=True)
+
+try:
+    nltk.data.find("corpora/stopwords")
+except LookupError:
+    nltk.download("stopwords", quiet=True)
 
 # Constants
 TOKENIZER_NAME = "sentence-transformers/all-MiniLM-L6-v2"
@@ -122,6 +128,23 @@ def apply_anes_schema_and_types(df: Frame) -> Frame:
         .cast(pl.Categorical)
     )
     return df
+
+
+def stem_and_remove_stopwords(
+    text: str,
+    stemmer: nltk.stem.snowball.SnowballStemmer,
+    stop_words: set[str],
+) -> str:
+    """Lowercases, removes punctuation, removes stopwords, and stems tokens."""
+    if not text:
+        return ""
+    # Lowercase & strip punctuation [^\w\s]
+    clean = re.sub(r"[^\w\s]", "", text.lower())
+    words = nltk.word_tokenize(clean)
+    stemmed_words = [
+        stemmer.stem(w) for w in words if w not in stop_words and w.strip()
+    ]
+    return " ".join(stemmed_words)
 
 
 def stem_text(text: str, stemmer: nltk.stem.snowball.SnowballStemmer) -> str:
@@ -242,7 +265,7 @@ def process_dataset(
     max_tokens: int | None = None,
     include_metadata: bool = False,
     deduplicate: bool = False,
-    stem: bool = False,
+    stem: bool = True,
 ) -> pl.DataFrame:
     """Main function to process a single dataset using lazy evaluation and batching.
 
@@ -269,21 +292,22 @@ def process_dataset(
     for col in NUMERICAL_COLS.get(dataset_name, []):
         lf = add_log_transformation(lf, col)
 
-    # Removes previous ID or index columns from the builder stage.
-    # This is necessary because:
-    # 1. Row IDs will get duplicated when chunking text (multiple chunks per doc).
-    # 2. We want a fresh unique 'index' for the chunks at the very end.
-    # 3. We create a new 'id' column during batching that maps each chunk
-    #    back to its original source row number.
     lf = lf.drop(["index", "id"], strict=False)
 
     logging.info("Applying lazy text preprocessing...")
+    # clean_text: Version 1 (Lightest preprocessing - URLs, numbers, artifacts removed;
+    # casing and punctuation preserved; excess whitespace collapsed)
     lf = (
         lf.with_columns(clean_text=remove_numbers(remove_urls(pl.col("text"))))
         .with_columns(
             clean_text=remove_artifacts(
                 pl.col("clean_text"), ARTIFACTS_TO_REMOVE.get(dataset_name, [])
             )
+        )
+        .with_columns(
+            clean_text=pl.col("clean_text")
+            .str.replace_all(r"\s+", " ")
+            .str.strip_chars()
         )
         .with_columns(
             clean_text_lower=pl.col("clean_text").str.to_lowercase(),
@@ -297,28 +321,66 @@ def process_dataset(
     )
 
     if stem:
-        logging.info("Adding stemmed text columns...")
-        # Use a snowball stemmer for better results than Porter
+        logging.info("Adding stemmed and stopword-removed text column (Version 2)...")
         stemmer = nltk.stem.snowball.SnowballStemmer("english")
+        stop_words = set(nltk.corpus.stopwords.words("english"))
 
-        # We perform stemming on the lowercased text
-        # Mapping elements is necessary for stemming words individually
         lf = lf.with_columns(
-            clean_text_stemmed=pl.col("clean_text_lower").map_elements(
-                lambda x: stem_text(x, stemmer), return_dtype=pl.Utf8
+            clean_text_stemmed=pl.col("clean_text").map_elements(
+                lambda x: stem_and_remove_stopwords(x, stemmer, stop_words),
+                return_dtype=pl.Utf8,
             )
         )
 
-    # Filter out empty or whitespace-only clean_text rows
+    # Filter out empty or whitespace-only rows in clean_text and clean_text_stemmed
     initial_row_count = lf.select(pl.len()).collect().item()
-    lf = lf.filter(pl.col("clean_text").str.strip_chars() != "")
-    after_empty_filter_count = lf.select(pl.len()).collect().item()
 
+    if stem or "clean_text_stemmed" in lf.collect_schema().names():
+        empty_clean = (
+            lf.filter(pl.col("clean_text").str.strip_chars() == "")
+            .select(pl.len())
+            .collect()
+            .item()
+        )
+        empty_stemmed = (
+            lf.filter(pl.col("clean_text_stemmed").str.strip_chars() == "")
+            .select(pl.len())
+            .collect()
+            .item()
+        )
+
+        asymmetric_empty = (
+            lf.filter(
+                (pl.col("clean_text").str.strip_chars() == "")
+                ^ (pl.col("clean_text_stemmed").str.strip_chars() == "")
+            )
+            .select(pl.len())
+            .collect()
+            .item()
+        )
+
+        if asymmetric_empty > 0:
+            logging.warning(
+                f"WARNING: {asymmetric_empty} rows were non-empty in one column "
+                f"but empty in another (clean_text empty: {empty_clean}, "
+                f"clean_text_stemmed empty: {empty_stemmed}). Dropping these "
+                "rows from both columns to maintain strict row alignment across "
+                "representations."
+            )
+
+        lf = lf.filter(
+            (pl.col("clean_text").str.strip_chars() != "")
+            & (pl.col("clean_text_stemmed").str.strip_chars() != "")
+        )
+    else:
+        lf = lf.filter(pl.col("clean_text").str.strip_chars() != "")
+
+    after_empty_filter_count = lf.select(pl.len()).collect().item()
     dropped_empty = initial_row_count - after_empty_filter_count
     if dropped_empty > 0:
         logging.info(
-            f"Dropped {dropped_empty} rows because clean_text was empty "
-            "or whitespace-only."
+            f"Dropped {dropped_empty} rows where clean_text or clean_text_stemmed "
+            "was empty or whitespace-only."
         )
 
     if deduplicate:

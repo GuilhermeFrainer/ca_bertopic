@@ -22,14 +22,14 @@ def main():
         "--dataset",
         type=str,
         required=True,
-        choices=["trump", "yelp", "fed", "anes", "gadarian"],
+        choices=["trump", "yelp", "yelp_s10000", "fed", "anes", "gadarian"],
         help="The name of the dataset to process.",
     )
     parser.add_argument(
         "--columns",
         nargs="+",
-        default=["text"],
-        help="List of columns to embed (e.g., --columns text title). Default: 'text'",
+        default=["clean_text", "clean_text_stemmed"],
+        help="List of columns to embed (e.g., --columns clean_text clean_text_stemmed).",
     )
     parser.add_argument(
         "--model_name",

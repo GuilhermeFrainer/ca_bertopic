@@ -31,10 +31,15 @@ main <- function() {
             default = 1.0,
             help = "Maximum document frequency percentage for terms (default: 1.0)"),
         make_option(
+            c("--output_suffix"),
+            type = "character",
+            default = "",
+            help = "Suffix for output files (e.g., '_stemmed')"),
+        make_option(
             c("--no_stem"),
             action = "store_true",
             default = FALSE,
-            help = "Disable stemming (default: FALSE)"),
+            help = "Deprecated: Stemming is now handled in Python preprocessing"),
         make_option(
             c("--deduplicate"),
             action = "store_true",
@@ -57,15 +62,21 @@ main <- function() {
         stop("Dataset name is required. Use --dataset <name>")
     }
     
+    # Auto set output suffix if text_col is clean_text_stemmed and suffix not explicitly set
+    if (opt$text_col == "clean_text_stemmed" && opt$output_suffix == "") {
+        opt$output_suffix <- "_stemmed"
+    }
+    
     # Determine input path
     if (is.null(opt$input)) {
         # Default mapping for interim files
         file_mapping <- list(
-            fed = "fed_communications.parquet",
-            anes = "anes_2008.parquet",
-            gadarian = "gadarian.parquet",
-            trump = "trump.parquet",
-            yelp = "yelp_reviews.parquet"
+            fed = "fed_processed.parquet",
+            anes = "anes_processed.parquet",
+            gadarian = "gadarian_processed.parquet",
+            trump = "trump_processed.parquet",
+            yelp = "yelp_processed.parquet",
+            yelp_s10000 = "yelp_s10000_processed.parquet"
         )
         
         file_name <- file_mapping[[opt$dataset]]
@@ -114,12 +125,6 @@ main <- function() {
     cat(sprintf("Loaded %d rows.\n", nrow(data)))
 
     # Deduplication
-    # We deduplicate here to ensure that BoW models (like STM) run on the same 
-    # unique document set as the embedding models (like BERTopic), which 
-    # use deduplication in src/processing.py.
-    #
-    # Crucially, we use the standardized 'index' column from the interim builders
-    # to maintain alignment for sampling in scripts/run_stm.py.
     if (opt$deduplicate) {
         cat("Deduplicating based on text column...\n")
         initial_count <- nrow(data)
@@ -151,26 +156,33 @@ main <- function() {
     }
     
     # Tokenization and Cleaning
-    cat("Tokenizing and cleaning text...\n")
+    cat("Tokenizing text from Python preprocessed text column...\n")
     if (!opt$text_col %in% names(data)) {
         stop(sprintf("Column '%s' not found in dataset.", opt$text_col))
     }
     
     corp <- quanteda::corpus(data, text_field = opt$text_col)
     
-    toks <- quanteda::tokens(corp,
-                             remove_punct = TRUE,
-                             remove_symbols = TRUE,
-                             remove_numbers = TRUE,
-                             remove_url = TRUE,
-                             remove_separators = TRUE)
-    
-    toks <- quanteda::tokens_tolower(toks)
-    toks <- quanteda::tokens_remove(toks, quanteda::stopwords("en"))
-    
-    if (!opt$no_stem) {
-        cat("Stemming tokens...\n")
-        toks <- quanteda::tokens_wordstem(toks)
+    if (opt$text_col == "clean_text_stemmed") {
+        # Python has already lowercased, stripped punctuation, removed stopwords, and stemmed
+        # Tokenize by splitting on whitespace without applying R-side text modifications
+        toks <- quanteda::tokens(corp,
+                                 split_hyphens = FALSE,
+                                 remove_punct = FALSE,
+                                 remove_symbols = FALSE,
+                                 remove_numbers = FALSE,
+                                 remove_url = FALSE,
+                                 remove_separators = TRUE)
+    } else {
+        # Unstemmed text (Version 1): lowercase and strip punctuation/symbols for BoW matrix,
+        # but do NOT perform stopword removal or stemming in R.
+        toks <- quanteda::tokens(corp,
+                                 remove_punct = TRUE,
+                                 remove_symbols = TRUE,
+                                 remove_numbers = TRUE,
+                                 remove_url = TRUE,
+                                 remove_separators = TRUE)
+        toks <- quanteda::tokens_tolower(toks)
     }
     
     # Create DFM
@@ -187,38 +199,34 @@ main <- function() {
     }
 
     # Suffix for filenames
-    suffix <- if (!is.null(opt$sample)) paste0("_s", opt$sample) else ""
+    sample_suffix <- if (!is.null(opt$sample)) paste0("_s", opt$sample) else ""
+    full_suffix <- paste0(sample_suffix, opt$output_suffix)
     
     # 1. Output RDS for STM
     cat("Preparing and saving STM data (RDS)...\n")
-    # stm_data contains $documents, $vocab, and $meta (aligned with documents)
-    # quanteda::convert automatically includes docvars in $meta
     stm_data <- quanteda::convert(dfm_obj, to = "stm")
     
-    rds_output_path <- here::here("data", "processed", paste0(opt$dataset, suffix, "_stm_data.rds"))
+    rds_output_path <- here::here("data", "processed", paste0(opt$dataset, full_suffix, "_stm_data.rds"))
     saveRDS(stm_data, file = rds_output_path)
     cat(sprintf("Saved RDS to: %s\n", rds_output_path))
     
     # 2. Output BoW Parquet
     cat("Preparing and saving BoW Parquet...\n")
-    # Reconstruct bow_text from tokens or DFM
     kept_features <- quanteda::featnames(dfm_obj)
     
     # Filter tokens to keep only those in DFM
     toks_filtered <- quanteda::tokens_select(toks, pattern = kept_features, selection = "keep")
     
     # Collapse tokens back to string
-    # sapply on tokens returns a named character vector
     bow_text_vec <- sapply(toks_filtered, paste, collapse = " ")
     
-    # Ensure it's a character vector of the same length as data
     if (length(bow_text_vec) != nrow(data)) {
         stop(sprintf("Length mismatch: bow_text (%d) vs data (%d)", length(bow_text_vec), nrow(data)))
     }
     
     data$bow_text <- as.character(bow_text_vec)
     
-    parquet_output_path <- here::here("data", "processed", paste0(opt$dataset, suffix, "_bow.parquet"))
+    parquet_output_path <- here::here("data", "processed", paste0(opt$dataset, full_suffix, "_bow.parquet"))
     arrow::write_parquet(data, parquet_output_path)
     cat(sprintf("Saved Parquet to: %s\n", parquet_output_path))
     

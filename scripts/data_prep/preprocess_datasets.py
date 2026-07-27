@@ -19,6 +19,7 @@ from src.processing import process_dataset
 RAW_DATA_PATHS = {
     "trump": PROJECT_ROOT / "data/raw/trump_tweets.csv",
     "yelp": PROJECT_ROOT / "data/interim/yelp_reviews.parquet",
+    "yelp_s10000": PROJECT_ROOT / "data/interim/yelp_s10000_raw.parquet",
     "fed": PROJECT_ROOT / "data/interim/fed_communications.parquet",
     "anes": PROJECT_ROOT / "data/interim/anes_2008.parquet",
     "gadarian": PROJECT_ROOT / "data/interim/gadarian.parquet",
@@ -26,6 +27,7 @@ RAW_DATA_PATHS = {
 INTERIM_DATA_PATHS = {
     "trump": PROJECT_ROOT / "data/interim/trump_processed.parquet",
     "yelp": PROJECT_ROOT / "data/interim/yelp_processed.parquet",
+    "yelp_s10000": PROJECT_ROOT / "data/interim/yelp_s10000_processed.parquet",
     "fed": PROJECT_ROOT / "data/interim/fed_processed.parquet",
     "anes": PROJECT_ROOT / "data/interim/anes_processed.parquet",
     "gadarian": PROJECT_ROOT / "data/interim/gadarian_processed.parquet",
@@ -41,7 +43,7 @@ def main():
         "--dataset",
         type=str,
         required=True,
-        choices=["trump", "yelp", "fed", "anes", "gadarian"],
+        choices=["trump", "yelp", "yelp_s10000", "fed", "anes", "gadarian"],
     )
     parser.add_argument(
         "--max-tokens", type=int, help="Maximum number of tokens per chunk."
@@ -57,20 +59,20 @@ def main():
         help="Whether to deduplicate the dataset based on cleaned text.",
     )
     parser.add_argument(
-        "--stem",
+        "--no-stem",
         action="store_true",
-        help="Whether to stem the documents using SnowballStemmer.",
+        help="Disable adding the clean_text_stemmed column.",
     )
     args = parser.parse_args()
 
     process_dataset(
-        dataset_name=args.dataset,
+        dataset_name=args.dataset if args.dataset != "yelp_s10000" else "yelp",
         input_path=str(RAW_DATA_PATHS[args.dataset]),
         output_path=str(INTERIM_DATA_PATHS[args.dataset]),
         max_tokens=args.max_tokens,
         include_metadata=args.include_metadata,
         deduplicate=args.deduplicate,
-        stem=args.stem,
+        stem=not args.no_stem,
     )
 
 
