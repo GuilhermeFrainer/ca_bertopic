@@ -5,7 +5,7 @@ param (
 )
 
 # Set output directory
-$releaseDir = "E:\30-39 Estudos\36 Mestrado\36.13 Artigo ACL"
+$releaseDir = "E:\30-39 Estudos\36 Mestrado\36.14 Dissertation"
 if ($Release -and $releaseDir -ne "") {
     $outputDir = $releaseDir
 } else {

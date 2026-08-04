@@ -8,7 +8,7 @@ METRICS = ["u_mass", "c_v", "c_npmi", "irbo", "topic_diversity"]
 def extract_model_type(model_name: str, merge_info0: bool = False) -> str:
     """Extracts the base model type from a model name.
 
-    Example: 'baseline_1' -> 'baseline'.
+    Example: 'baseline_1' -> 'baseline', 'baseline_seed36201624' -> 'baseline'.
     """
     if not isinstance(model_name, str):
         return str(model_name)
@@ -21,7 +21,11 @@ def extract_model_type(model_name: str, merge_info0: bool = False) -> str:
     if res.startswith("stm_"):
         return "stm"
 
-    # First remove any trailing numbers (e.g., baseline_1 -> baseline)
+    # Remove seed suffixes if present (e.g., _seed36201624)
+    if "_seed" in res:
+        res = res.split("_seed")[0]
+
+    # Remove any trailing numbers (e.g., baseline_1 -> baseline)
     if "_" in res:
         parts = res.split("_")
         if parts[-1].isdigit():
@@ -45,8 +49,8 @@ def find_best_models(
     suppress_nulls: bool = False,
 ) -> Dict[str, pl.DataFrame]:
     """
-    Finds the best performing model (or average performance) of each model type
-    for each metric in the given dataset.
+    Finds the best performing model (or average performance with standard deviation)
+    of each model type for each metric in the given dataset.
 
     Args:
         df: Polars DataFrame containing experiment results.
@@ -56,14 +60,14 @@ def find_best_models(
             algorithms to exclude.
         dump: If True, returns all model configurations instead of
             just the best per type.
-        average: If True, calculates the average performance per model type
-            instead of finding the best.
+        average: If True, calculates the average performance and standard deviation
+            per model type across runs/seeds.
         merge_info0: If True, treats models with and without _info0 as the same type.
         suppress_nulls: If True, filters out rows with NaNs in any metric column.
 
     Returns:
         A dictionary where keys are metric names and values are DataFrames
-        with models and their scores.
+        with models and their scores (including max_value, std_value, n_seeds).
     """
     # Normalize dataset name and model names
     if "dataset_name" in df.columns:
@@ -148,15 +152,19 @@ def find_best_models(
                 [
                     pl.col("model_name").alias("best_model_name"),
                     pl.col(metric).alias("max_value"),
+                    pl.lit(0.0).alias("std_value"),
+                    pl.lit(1).alias("n_seeds"),
                     pl.col("model_type"),
                 ]
             )
         elif average:
-            # For average mode, group by model_type and calculate mean
+            # For average mode, group by model_type and calculate mean, std, n_seeds
             best_per_type = (
                 metric_df.group_by("model_type")
                 .agg(
                     pl.col(metric).mean().alias("max_value"),
+                    pl.col(metric).std().fill_null(0.0).alias("std_value"),
+                    pl.col(metric).count().alias("n_seeds"),
                     pl.col("model_type").first().alias("best_model_name"),
                 )
                 .sort("max_value", descending=True)
@@ -168,6 +176,8 @@ def find_best_models(
                 .group_by("model_type")
                 .agg(
                     pl.col(metric).first().alias("max_value"),
+                    pl.lit(0.0).alias("std_value"),
+                    pl.lit(1).alias("n_seeds"),
                     pl.col("model_name").first().alias("best_model_name"),
                 )
                 .sort("max_value", descending=True)

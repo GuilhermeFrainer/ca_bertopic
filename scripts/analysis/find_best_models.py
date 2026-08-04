@@ -326,11 +326,14 @@ def main():
             print(f"\nMetric: {metric}")
             print("-" * (8 + len(metric)))
 
-            # Print results in a nice format
             for row in best_per_type.iter_rows(named=True):
                 model_name = row["best_model_name"]
                 max_value = row["max_value"]
-                print(f"  {model_name:<50} | {max_value:>8.4f}")
+                std_value = row.get("std_value", 0.0)
+                if std_value is not None and std_value > 0.0:
+                    print(f"  {model_name:<50} | {max_value:>8.4f} ± {std_value:<7.4f}")
+                else:
+                    print(f"  {model_name:<50} | {max_value:>8.4f}")
 
 
 if __name__ == "__main__":

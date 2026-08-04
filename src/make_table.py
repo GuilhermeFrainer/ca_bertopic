@@ -182,7 +182,9 @@ def generate_best_models_latex_table(
             # Find the value for this specific identifier
             match = metric_df.filter(pl.col(id_col) == identifier)
             if not match.is_empty():
-                row[metric] = match["max_value"][0]
+                mean_val = match["max_value"][0]
+                std_val = match["std_value"][0] if "std_value" in match.columns else 0.0
+                row[metric] = (mean_val, std_val)
             else:
                 row[metric] = None
         rows.append(row)
@@ -203,25 +205,42 @@ def generate_best_models_latex_table(
     }
     actual_rename = {k: v for k, v in rename_map.items() if k in final_df.columns}
 
-    # Custom formatter for 3-tier coloring
+    # Custom formatter for 3-tier coloring with mean +- std support
     def format_with_highlights(df):
         formatted_df = df.copy()
         for col in metric_cols:
             if col in df.columns:
-                valid_vals = df[col].dropna()
-                if not valid_vals.empty:
-                    # Get top 3 unique values
-                    top_vals = sorted(valid_vals.unique(), reverse=True)[:3]
+                valid_entries = df[col].dropna()
+                if not valid_entries.empty:
+                    # Extract mean values for ranking
+                    mean_vals = [
+                        e[0] if isinstance(e, (tuple, list)) else e
+                        for e in valid_entries
+                    ]
+                    top_vals = sorted(set(mean_vals), reverse=True)[:3]
 
-                    def apply_color(x):
-                        if pd.isnull(x):
+                    def apply_color(entry):
+                        if pd.isnull(entry):
                             return "-"
-                        if x in top_vals:
-                            rank = top_vals.index(x)
+                        if isinstance(entry, (tuple, list)):
+                            mean_val, std_val = entry
+                        else:
+                            mean_val, std_val = entry, 0.0
+
+                        if pd.isnull(mean_val):
+                            return "-"
+
+                        if std_val is not None and std_val > 0.0:
+                            val_str = f"${mean_val:.3f} \\pm {std_val:.3f}$"
+                        else:
+                            val_str = f"${mean_val:.3f}$"
+
+                        if mean_val in top_vals:
+                            rank = top_vals.index(mean_val)
                             if rank < len(highlight_colors):
                                 color = highlight_colors[rank]
-                                return f"\\cellcolor[HTML]{{{color}}}{x:.3f}"
-                        return f"{x:.3f}"
+                                return f"\\cellcolor[HTML]{{{color}}}{{{val_str}}}"
+                        return val_str
 
                     formatted_df[col] = df[col].apply(apply_color)
         return formatted_df
@@ -235,7 +254,8 @@ def generate_best_models_latex_table(
     elif average:
         caption = (
             f"Average performance by model type for the {dataset} dataset "
-            "(results are averaged across different model runs)."
+            "(results are reported as $\\text{mean} \\pm \\text{std}$ "
+            "across random seeds)."
         )
     else:
         caption = f"Best performing models by type for the {dataset} dataset."

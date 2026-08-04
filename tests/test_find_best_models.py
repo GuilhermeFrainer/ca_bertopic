@@ -160,3 +160,39 @@ def test_find_best_models_stemmed_normalization():
 
     # Check extract_model_type directly
     assert extract_model_type("stemmed_baseline_1") == "baseline"
+
+
+def test_find_best_models_average_std():
+    data = {
+        "model_name": ["baseline_seed1", "baseline_seed2", "baseline_seed3"],
+        "dataset_name": ["fed", "fed", "fed"],
+        "c_v": [0.5, 0.6, 0.7],
+        "random_state": [1, 2, 3],
+    }
+    df = pl.DataFrame(data)
+
+    results = find_best_models(df, "fed", average=True)
+    assert "c_v" in results
+    cv_df = results["c_v"]
+    assert cv_df.height == 1
+    assert abs(cv_df["max_value"][0] - 0.6) < 1e-5
+    assert cv_df["n_seeds"][0] == 3
+    assert cv_df["std_value"][0] > 0.0
+
+
+def test_generate_best_models_latex_table_std():
+    from src.make_table import generate_best_models_latex_table
+
+    data = {
+        "model_name": ["baseline_seed1", "baseline_seed2"],
+        "dataset_name": ["fed", "fed"],
+        "c_v": [0.5, 0.7],
+        "random_state": [1, 2],
+    }
+    df = pl.DataFrame(data)
+    results = find_best_models(df, "fed", average=True)
+
+    latex_str = generate_best_models_latex_table(results, "fed", average=True)
+    assert "\\begin{table}" in latex_str
+    assert "\\pm" in latex_str
+    assert "mean" in latex_str or "std" in latex_str
