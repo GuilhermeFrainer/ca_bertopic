@@ -1,4 +1,5 @@
 param (
+    [switch]$Figures,
     [switch]$MergeInfo0,
     [switch]$OnlyInfo0,
     [switch]$Release
@@ -40,37 +41,47 @@ foreach ($dataset in $datasets) {
     Write-Host " PROCESSING DATASET: $dataset" -ForegroundColor Green
     Write-Host "============================================================" -ForegroundColor Green
 
-    # 1. Cleveland Dot Plots
-    Write-Host "Generating Cleveland Dot Plot (Best)..."
-    $clevelandBestPath = Join-Path $figuresDir "${dataset}_cleveland.pdf"
-    uv run scripts/analysis/find_best_models.py --dataset $dataset --cleveland "$clevelandBestPath" --suppress-nulls @mergeFlags
+    if ($Figures) {
+        # 1. Cleveland Dot Plots
+        Write-Host "Generating Cleveland Dot Plot (Best)..."
+        $clevelandBestPath = Join-Path $figuresDir "${dataset}_cleveland.pdf"
+        uv run scripts/analysis/find_best_models.py --dataset $dataset --cleveland "$clevelandBestPath" --suppress-nulls @mergeFlags
 
-    Write-Host "Generating Cleveland Dot Plot (Average)..."
-    $clevelandAvgPath = Join-Path $figuresDir "${dataset}_cleveland_avg.pdf"
-    uv run scripts/analysis/find_best_models.py --dataset $dataset --cleveland "$clevelandAvgPath" --average --suppress-nulls @mergeFlags
+        Write-Host "Generating Cleveland Dot Plot (Average)..."
+        $clevelandAvgPath = Join-Path $figuresDir "${dataset}_cleveland_avg.pdf"
+        uv run scripts/analysis/find_best_models.py --dataset $dataset --cleveland "$clevelandAvgPath" --average --suppress-nulls @mergeFlags
 
-    # 2. Parallel Lines Plot (Dump)
-    Write-Host "Generating Parallel Lines Plot (Dump)..."
-    $parallelPath = Join-Path $figuresDir "${dataset}_parallel.pdf"
-    uv run scripts/analysis/find_best_models.py --dataset $dataset --parallel "$parallelPath" --dump --suppress-nulls @mergeFlags
+        # 2. Parallel Lines Plot (Dump)
+        Write-Host "Generating Parallel Lines Plot (Dump)..."
+        $parallelPath = Join-Path $figuresDir "${dataset}_parallel.pdf"
+        uv run scripts/analysis/find_best_models.py --dataset $dataset --parallel "$parallelPath" --dump --suppress-nulls @mergeFlags
 
-    # 3. Star Plots
-    Write-Host "Generating Star Plot (Best)..."
-    $starBestPath = Join-Path $figuresDir "${dataset}_star_best.pdf"
-    uv run scripts/analysis/find_best_models.py --dataset $dataset --star-plot "$starBestPath" --suppress-nulls @mergeFlags  
+        # 3. Star Plots
+        Write-Host "Generating Star Plot (Best)..."
+        $starBestPath = Join-Path $figuresDir "${dataset}_star_best.pdf"
+        uv run scripts/analysis/find_best_models.py --dataset $dataset --star-plot "$starBestPath" --suppress-nulls @mergeFlags  
 
-    Write-Host "Generating Star Plot (Average)..."
-    $starAvgPath = Join-Path $figuresDir "${dataset}_star_avg.pdf"
-    uv run scripts/analysis/find_best_models.py --dataset $dataset --star-plot "$starAvgPath" --average --suppress-nulls @mergeFlags
+        Write-Host "Generating Star Plot (Average)..."
+        $starAvgPath = Join-Path $figuresDir "${dataset}_star_avg.pdf"
+        uv run scripts/analysis/find_best_models.py --dataset $dataset --star-plot "$starAvgPath" --average --suppress-nulls @mergeFlags
+    }
 
     # 4. LaTeX Tables
     Write-Host "Generating LaTeX Table (Best)..."
     $tableBestPath = Join-Path $tablesDir "${dataset}_table_best.tex"
     uv run scripts/analysis/find_best_models.py --dataset $dataset --latex "$tableBestPath" --suppress-nulls @mergeFlags     
 
+    Write-Host "Generating LaTeX Table (Best - Full with PCA & K-Means)..."
+    $tableBestFullPath = Join-Path $tablesDir "${dataset}_table_best_full.tex"
+    uv run scripts/analysis/find_best_models.py --dataset $dataset --latex "$tableBestFullPath" --suppress-nulls --exclude-clustering none --exclude-dim-red none @mergeFlags
+
     Write-Host "Generating LaTeX Table (Average)..."
     $tableAvgPath = Join-Path $tablesDir "${dataset}_table_avg.tex"
     uv run scripts/analysis/find_best_models.py --dataset $dataset --latex "$tableAvgPath" --average --suppress-nulls @mergeFlags
+
+    Write-Host "Generating LaTeX Table (Average - Full with PCA & K-Means)..."
+    $tableAvgFullPath = Join-Path $tablesDir "${dataset}_table_avg_full.tex"
+    uv run scripts/analysis/find_best_models.py --dataset $dataset --latex "$tableAvgFullPath" --average --suppress-nulls --exclude-clustering none --exclude-dim-red none @mergeFlags
 
     # 5. LaTeX Table (Dump)
     Write-Host "Generating LaTeX Table (Dump)..."
