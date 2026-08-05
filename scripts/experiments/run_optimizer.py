@@ -46,6 +46,16 @@ def main():
     parser.add_argument(
         "--model", type=int, help="Run only the n-th model configuration (1-indexed)."
     )
+    parser.add_argument(
+        "--remove-rep-stopwords",
+        action="store_true",
+        help=(
+            "Remove English stop words from BERTopic topic representations "
+            "(c-TF-IDF) using CountVectorizer. Note: This only affects "
+            "representation topic word extraction and does NOT modify "
+            "original document texts or document embeddings."
+        ),
+    )
     args = parser.parse_args()
 
     logger = None  # Initialize logger to None
@@ -158,6 +168,7 @@ def main():
             experiment_id=exp_name,
             random_state=random_state,
             file_timestamp=file_timestamp,
+            remove_rep_stopwords=args.remove_rep_stopwords,
         )
 
         target_index = args.model - 1 if args.model is not None else None

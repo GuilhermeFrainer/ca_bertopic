@@ -353,7 +353,7 @@ for dataset in "${TARGET_DATASETS[@]}"; do
         fi
 
         # Run command for non-STM
-        run_command="uv run python scripts/experiments/run_optimizer.py --exp ${dataset}/${dataset}_standard_${model}"
+        run_command="uv run python scripts/experiments/run_optimizer.py --exp ${dataset}/${dataset}_standard_${model} --remove-rep-stopwords"
 
         if [ "$DRY_RUN" = true ]; then
             echo "[$JOB_COUNT/$TOTAL_JOBS] [DRY RUN] Job: $job_name | Dataset: $dataset | Model: $model | Mem: $mem | CPUs: $cpus | Time: $time_limit"

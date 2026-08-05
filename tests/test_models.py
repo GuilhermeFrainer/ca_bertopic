@@ -64,3 +64,51 @@ def test_create_bertopic_instance_custom_params():
 
     assert topic_model.nr_topics == 20
     assert topic_model.top_n_words == 10
+
+
+def test_create_bertopic_instance_remove_rep_stopwords():
+    """
+    Tests that remove_rep_stopwords correctly configures CountVectorizer
+    with English stop words on BERTopic topic representations.
+    """
+    from sklearn.feature_extraction.text import CountVectorizer
+
+    model_config = {
+        "dimensionality_reduction": {"type": "umap"},
+        "clustering": {"type": "hdbscan"},
+        "bertopic": {"params": {}},
+    }
+    scaled_metadata = np.random.rand(10, 2)
+
+    # 1. Default (False) -> vectorizer_model is standard BERTopic default
+    model_default = create_bertopic_instance(
+        model_config=model_config, scaled_metadata=scaled_metadata, random_state=42
+    )
+    assert (
+        not isinstance(model_default.vectorizer_model, CountVectorizer)
+        or model_default.vectorizer_model.stop_words is None
+    )
+
+    # 2. Flag set via argument
+    model_flag = create_bertopic_instance(
+        model_config=model_config,
+        scaled_metadata=scaled_metadata,
+        random_state=42,
+        remove_rep_stopwords=True,
+    )
+    assert isinstance(model_flag.vectorizer_model, CountVectorizer)
+    assert model_flag.vectorizer_model.stop_words == "english"
+
+    # 3. Flag set via config dict
+    config_with_stopwords = {
+        "dimensionality_reduction": {"type": "umap"},
+        "clustering": {"type": "hdbscan"},
+        "bertopic": {"params": {"remove_rep_stopwords": True}},
+    }
+    model_cfg = create_bertopic_instance(
+        model_config=config_with_stopwords,
+        scaled_metadata=scaled_metadata,
+        random_state=42,
+    )
+    assert isinstance(model_cfg.vectorizer_model, CountVectorizer)
+    assert model_cfg.vectorizer_model.stop_words == "english"

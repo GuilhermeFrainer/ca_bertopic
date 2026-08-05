@@ -3,6 +3,7 @@ from typing import Optional
 import mvlearn.cluster as mvcluster
 import numpy as np
 from bertopic import BERTopic
+from sklearn.feature_extraction.text import CountVectorizer
 
 from src.mvc_wrapper import MVCWrapper
 
@@ -12,6 +13,7 @@ def create_bertopic_instance(
     scaled_metadata: np.ndarray,
     random_state: int,
     n_clusters: Optional[int] = None,
+    remove_rep_stopwords: bool = False,
 ) -> BERTopic:
     """
     Factory function that builds a BERTopic instance from a configuration dictionary.
@@ -23,6 +25,10 @@ def create_bertopic_instance(
         random_state: Seed for reproducibility.
         n_clusters: Optional integer to force a specific number of topics
             (used for non-baseline models).
+        remove_rep_stopwords: If True, removes English stop words from
+            the c-TF-IDF topic word representations using CountVectorizer.
+            Note: This only filters representation topic words and does NOT
+            modify original document texts or document embeddings.
 
     Returns:
         An unfitted BERTopic instance.
@@ -57,6 +63,13 @@ def create_bertopic_instance(
     bertopic_params = bertopic_params.copy()
     if "top_n_words" not in bertopic_params:
         bertopic_params["top_n_words"] = 50
+
+    # Check if representation stop words flag is in config or explicitly passed
+    config_stop_words = bertopic_params.pop("remove_rep_stopwords", False)
+    should_remove_stop_words = remove_rep_stopwords or config_stop_words
+
+    if should_remove_stop_words and "vectorizer_model" not in bertopic_params:
+        bertopic_params["vectorizer_model"] = CountVectorizer(stop_words="english")
 
     # Return the assembled object
     return BERTopic(

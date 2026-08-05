@@ -123,6 +123,7 @@ class Optimizer:
         experiment_id: str,
         random_state: int,
         file_timestamp: str,
+        remove_rep_stopwords: bool = False,
     ):
         """
         Initializes the Optimizer.
@@ -137,6 +138,8 @@ class Optimizer:
             experiment_id: The identifier for the experiment.
             random_state: The random seed used for the experiment.
             file_timestamp: The timestamp used in the results filename.
+            remove_rep_stopwords: If True, removes English stop words from
+                c-TF-IDF topic representations using CountVectorizer.
         """
         self.texts = texts
         self.embeddings = embeddings
@@ -146,6 +149,7 @@ class Optimizer:
         self.experiment_id = experiment_id
         self.random_state = random_state
         self.file_timestamp = file_timestamp
+        self.remove_rep_stopwords = remove_rep_stopwords
         self.results = []
         self.qualitative_results = []
         self.logger = logging.getLogger("pipeline")
@@ -244,6 +248,7 @@ class Optimizer:
                     model_config=model_config,
                     scaled_metadata=self.scaled_metadata,
                     random_state=seed,
+                    remove_rep_stopwords=self.remove_rep_stopwords,
                 )
 
                 # 2. Train and Evaluate
