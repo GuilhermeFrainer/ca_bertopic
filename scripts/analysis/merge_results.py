@@ -196,6 +196,7 @@ def main():
         help="Optional directory to move original files after merging.",
     )
     parser.add_argument(
+        "-n",
         "--dry-run",
         action="store_true",
         help="Show what would be done without doing it.",
