@@ -64,6 +64,8 @@ Options:
   -x, --exclude PATTERNS              Comma-separated keywords or categories to exclude.
                                       Example: -x pca,k_means (excludes PCA & K-Means models).
 
+  -s, --stemmed                       Run experiments on stemmed dataset versions (e.g. fed_stemmed).
+
   -t, --test                          Run a minimal test set (baseline & stm).
                                       Defaults to 'fed' dataset if -d is not specified.
 
@@ -83,6 +85,7 @@ Options:
 
 Examples:
   ./queue_exp.sh -d fed
+  ./queue_exp.sh -d fed --stemmed
   ./queue_exp.sh -d fed --test
   ./queue_exp.sh -x pca,k_means
   ./queue_exp.sh -d gadarian,anes -m baseline,stm,mv_spectral -n
@@ -95,6 +98,7 @@ EOF
 RAW_DATASETS=""
 RAW_MODELS=""
 RAW_EXCLUDES=""
+USE_STEMMED=false
 IS_TEST=false
 DRY_RUN=false
 LIST_ONLY=false
@@ -117,6 +121,10 @@ while [[ $# -gt 0 ]]; do
         -x|--exclude)
             RAW_EXCLUDES="$2"
             shift 2
+            ;;
+        -s|--stemmed)
+            USE_STEMMED=true
+            shift
             ;;
         -t|--test)
             IS_TEST=true
@@ -296,6 +304,9 @@ echo "================================================================="
 echo " Datasets (${#TARGET_DATASETS[@]}):  ${TARGET_DATASETS[*]}"
 echo " Models (${#FINAL_MODELS[@]}):    ${FINAL_MODELS[*]}"
 echo " Total Jobs:   $TOTAL_JOBS"
+if [ "$USE_STEMMED" = true ]; then
+    echo " Variant:      STEMMED (using clean_text_stemmed)"
+fi
 if [ -n "$RAW_EXCLUDES" ]; then
     echo " Exclusions:   $RAW_EXCLUDES"
 fi
@@ -308,8 +319,10 @@ if [ "$LIST_ONLY" = true ]; then
     echo ""
     echo "Resolved Jobs List:"
     for dataset in "${TARGET_DATASETS[@]}"; do
+        exp_dir="${dataset}"
+        if [ "$USE_STEMMED" = true ]; then exp_dir="${dataset}_stemmed"; fi
         for model in "${FINAL_MODELS[@]}"; do
-            echo " - Dataset: $dataset | Model: $model"
+            echo " - Dataset: $dataset (Config dir: $exp_dir) | Model: $model"
         done
     done
     exit 0
@@ -331,6 +344,13 @@ mkdir -p slurm_log
 JOB_COUNT=0
 
 for dataset in "${TARGET_DATASETS[@]}"; do
+    exp_dir="${dataset}"
+    job_dataset="${dataset}"
+    if [ "$USE_STEMMED" = true ]; then
+        exp_dir="${dataset}_stemmed"
+        job_dataset="${dataset}_stemmed"
+    fi
+
     for model in "${FINAL_MODELS[@]}"; do
         JOB_COUNT=$((JOB_COUNT + 1))
 
@@ -339,7 +359,7 @@ for dataset in "${TARGET_DATASETS[@]}"; do
             continue
         fi
 
-        job_name="${PROJECT_NAME}_${dataset}_${model}"
+        job_name="${PROJECT_NAME}_${job_dataset}_${model}"
         mem="${MEM_OVERRIDE:-$DEFAULT_MEM}"
         cpus="${CPUS_OVERRIDE:-$DEFAULT_CPUS}"
         time_limit="${TIME_OVERRIDE:-$DEFAULT_TIME}"
@@ -353,7 +373,7 @@ for dataset in "${TARGET_DATASETS[@]}"; do
         fi
 
         # Run command for non-STM
-        run_command="uv run python scripts/experiments/run_optimizer.py --exp ${dataset}/${dataset}_standard_${model} --remove-rep-stopwords"
+        run_command="uv run python scripts/experiments/run_optimizer.py --exp ${exp_dir}/${dataset}_standard_${model} --remove-rep-stopwords"
 
         if [ "$DRY_RUN" = true ]; then
             echo "[$JOB_COUNT/$TOTAL_JOBS] [DRY RUN] Job: $job_name | Dataset: $dataset | Model: $model | Mem: $mem | CPUs: $cpus | Time: $time_limit"

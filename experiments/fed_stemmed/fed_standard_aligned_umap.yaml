@@ -1,0 +1,28 @@
+extends: datasets/fed_stemmed.yaml
+experiment:
+  name: fed_stemmed_standard_aligned_umap
+  description: Aligned UMAP model on fed_stemmed with standard topic counts.
+  random_state:
+  - 36201624
+  - 62613654
+  - 57116123
+  decimal_digits: 3
+model:
+  id: aligned_umap
+  description: BERTopic with Aligned UMAP integration.
+  dimensionality_reduction:
+    type: aligned_umap
+    params:
+      min_dist: 0.0
+      metric: cosine
+  clustering:
+    type: hdbscan
+    params: null
+  bertopic:
+    params:
+      nr_topics:
+      - 10
+      - 20
+      - 30
+      - 40
+      - 50

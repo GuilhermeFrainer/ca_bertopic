@@ -1,0 +1,26 @@
+extends: datasets/yelp_stemmed.yaml
+experiment:
+  name: yelp_stemmed_standard_stm
+  random_state:
+  - 36201624
+  - 62613654
+  - 57116123
+  dataset_path: data/processed/yelp_s10000_embeddings.parquet
+  prevalence_formula: ~ date + stars + user_average_stars + yelping_since + business_stars
+    + as.factor(state)
+models:
+- id: stm_k10
+  parameters:
+    k: 10
+- id: stm_k20
+  parameters:
+    k: 20
+- id: stm_k30
+  parameters:
+    k: 30
+- id: stm_k40
+  parameters:
+    k: 40
+- id: stm_k50
+  parameters:
+    k: 50

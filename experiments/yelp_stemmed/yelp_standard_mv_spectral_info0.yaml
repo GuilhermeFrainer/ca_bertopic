@@ -1,0 +1,28 @@
+extends: datasets/yelp_stemmed.yaml
+experiment:
+  name: yelp_stemmed_standard_mv_spectral_info0
+  description: Multi-View Spectral Clustering (info_view=0) on yelp_stemmed with standard
+    topic counts.
+  random_state:
+  - 36201624
+  - 62613654
+  - 57116123
+  decimal_digits: 3
+model:
+  id: mv_spectral_info0
+  description: Multi-View Spectral Clustering (info_view=0)
+  dimensionality_reduction:
+    type: umap
+    params:
+      min_dist: 0.0
+      metric: cosine
+  clustering:
+    type: multi_view_spectral_clustering
+    params:
+      info_view: 0
+      n_clusters:
+      - 10
+      - 20
+      - 30
+      - 40
+      - 50
