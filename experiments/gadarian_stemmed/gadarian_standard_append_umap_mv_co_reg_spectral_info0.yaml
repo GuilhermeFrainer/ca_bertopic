@@ -1,0 +1,28 @@
+extends: datasets/gadarian_stemmed.yaml
+experiment:
+  name: gadarian_stemmed_standard_append_umap_mv_co_reg_spectral_info0
+  description: Append UMAP + Multi-View Co-Regularized Spectral Clustering (info_view=0)
+    on gadarian_stemmed with standard topic counts.
+  random_state:
+  - 36201624
+  - 62613654
+  - 57116123
+  decimal_digits: 3
+model:
+  id: append_umap_mv_co_reg_spectral_info0
+  description: Append UMAP + Multi-View Co-Regularized Spectral Clustering (info_view=0)
+  dimensionality_reduction:
+    type: append_umap
+    params:
+      min_dist: 0.0
+      metric: cosine
+  clustering:
+    type: co_regularized_multi_view_spectral_clustering
+    params:
+      info_view: 0
+      n_clusters:
+      - 10
+      - 20
+      - 30
+      - 40
+      - 50

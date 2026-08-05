@@ -1,0 +1,27 @@
+extends: datasets/yelp_stemmed.yaml
+experiment:
+  name: yelp_stemmed_standard_append_umap_mv_spectral
+  description: Append UMAP + Multi-View Spectral Clustering on yelp_stemmed with standard
+    topic counts.
+  random_state:
+  - 36201624
+  - 62613654
+  - 57116123
+  decimal_digits: 3
+model:
+  id: append_umap_mv_spectral
+  description: Append UMAP + Multi-View Spectral Clustering
+  dimensionality_reduction:
+    type: append_umap
+    params:
+      min_dist: 0.0
+      metric: cosine
+  clustering:
+    type: multi_view_spectral_clustering
+    params:
+      n_clusters:
+      - 10
+      - 20
+      - 30
+      - 40
+      - 50
