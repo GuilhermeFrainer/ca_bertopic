@@ -185,3 +185,105 @@ def find_best_models(
         results[metric] = best_per_type
 
     return results
+
+
+def calculate_hdbscan_noise_coverage(
+    df: pl.DataFrame,
+    dataset: str | None = None,
+    group_by_model_type: bool = True,
+    merge_info0: bool = False,
+) -> pl.DataFrame:
+    """Calculates noise-cluster coverage for models using HDBSCAN clustering.
+
+    Noise-cluster coverage measures the proportion/percentage of documents assigned
+    to the noise cluster (outlier topic -1) relative to total document observations.
+
+    Args:
+        df: Polars DataFrame containing experiment results.
+        dataset: Optional dataset name to filter by.
+        group_by_model_type: If True, aggregates across seeds per model type.
+        merge_info0: If True, treats models with and without _info0 as same type.
+
+    Returns:
+        Polars DataFrame containing noise coverage metrics.
+    """
+    if df.is_empty():
+        return pl.DataFrame()
+
+    # Filter for HDBSCAN clustering algorithm
+    if "clustering_algo" in df.columns:
+        filtered_df = df.filter(pl.col("clustering_algo") == "hdbscan")
+    else:
+        filtered_df = df
+
+    if dataset and "dataset_name" in filtered_df.columns:
+        filtered_df = filtered_df.filter(pl.col("dataset_name") == dataset)
+
+    if filtered_df.is_empty():
+        return pl.DataFrame()
+
+    # Ensure required columns exist
+    if (
+        "outliers" not in filtered_df.columns
+        or "n_observations" not in filtered_df.columns
+    ):
+        raise ValueError(
+            "DataFrame must contain 'outliers' and 'n_observations' columns."
+        )
+
+    # Calculate individual noise coverage ratio and percentage
+    filtered_df = filtered_df.with_columns(
+        (pl.col("outliers") / pl.col("n_observations")).alias("noise_ratio"),
+        ((pl.col("outliers") / pl.col("n_observations")) * 100.0).alias(
+            "noise_coverage_pct"
+        ),
+        ((1.0 - (pl.col("outliers") / pl.col("n_observations"))) * 100.0).alias(
+            "clustered_coverage_pct"
+        ),
+    )
+
+    if not group_by_model_type:
+        return filtered_df
+
+    # Extract model_type if needed
+    if "model_type" not in filtered_df.columns:
+        filtered_df = filtered_df.with_columns(
+            pl.col("model_name")
+            .map_elements(
+                lambda x: extract_model_type(x, merge_info0=merge_info0),
+                return_dtype=pl.String,
+            )
+            .alias("model_type")
+        )
+
+    group_cols = ["model_type"]
+    if "dataset_name" in filtered_df.columns:
+        group_cols.insert(0, "dataset_name")
+
+    aggregated = (
+        filtered_df.group_by(group_cols)
+        .agg(
+            pl.len().alias("n_runs"),
+            pl.col("n_observations").first().alias("n_observations"),
+            pl.col("outliers").mean().round(2).alias("outliers_mean"),
+            pl.col("outliers").std().fill_null(0.0).round(2).alias("outliers_std"),
+            pl.col("noise_coverage_pct")
+            .mean()
+            .round(2)
+            .alias("noise_coverage_pct_mean"),
+            pl.col("noise_coverage_pct")
+            .std()
+            .fill_null(0.0)
+            .round(2)
+            .alias("noise_coverage_pct_std"),
+            pl.col("noise_coverage_pct").min().round(2).alias("noise_coverage_pct_min"),
+            pl.col("noise_coverage_pct").max().round(2).alias("noise_coverage_pct_max"),
+            pl.col("clustered_coverage_pct")
+            .mean()
+            .round(2)
+            .alias("clustered_coverage_pct_mean"),
+        )
+        .sort(group_cols)
+    )
+
+    return aggregated

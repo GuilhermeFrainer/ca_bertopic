@@ -33,6 +33,16 @@ Write-Host "Generating Model Label Table..." -ForegroundColor Yellow
 $labelTablePath = Join-Path $tablesDir "model_labels.tex"
 uv run scripts/analysis/find_best_models.py --label-table @mergeFlags | Out-File -FilePath "$labelTablePath" -Encoding utf8
 
+# 0b. Generate HDBSCAN Noise Coverage Table
+Write-Host "Generating HDBSCAN Noise Coverage Table..." -ForegroundColor Yellow
+$noiseCoverageTablePath = Join-Path $tablesDir "hdbscan_noise_coverage.tex"
+$noiseFlags = @()
+if ($MergeInfo0) { $noiseFlags += "--merge-info0" }
+uv run scripts/analysis/calculate_noise_coverage.py --output-latex "$noiseCoverageTablePath" @noiseFlags
+
+
+
+
 # List of datasets
 $datasets = @("fed", "yelp", "trump", "anes", "gadarian")
 
