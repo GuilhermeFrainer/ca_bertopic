@@ -112,6 +112,7 @@ def generate_best_models_latex_table(
     dump: bool = False,
     average: bool = False,
     highlight_colors: tuple[str, str, str] = ("FFD700", "C0C0C0", "CD7F32"),
+    result_type: str | None = None,
 ) -> str:
     """
     Generates a consolidated LaTeX table from the best models analysis results.
@@ -122,6 +123,7 @@ def generate_best_models_latex_table(
         dump: If True, uses model_name instead of model_type for rows.
         average: If True, indicates that values are averages of model runs.
         highlight_colors: Tuple of hex colors for 1st, 2nd, and 3rd best results.
+        result_type: Optional result type identifier (e.g. 'standard', 'stemmed', 'no_stopword_removal').
 
     Returns:
         A LaTeX table string.
@@ -248,17 +250,39 @@ def generate_best_models_latex_table(
     display_df = format_with_highlights(final_df)
     display_df = display_df.rename(columns=actual_rename)
 
-    # 6. Define caption
+    # 6. Define caption based on result_type and dataset
+    res_descr = ""
+    if result_type:
+        rt = result_type.lower()
+        if rt == "standard":
+            res_descr = " (unstemmed text with representation stopwords removed)"
+        elif rt == "stemmed":
+            res_descr = " (stemmed text with stopwords removed)"
+        elif rt in ("no_stopword", "no_stopword_removal", "with_stopwords"):
+            res_descr = " (unstemmed text without representation stopword removal)"
+
     if dump:
-        caption = f"All model configurations for the {dataset} dataset."
+        caption = f"All model configurations for the {dataset} dataset{res_descr}."
     elif average:
+        if result_type:
+            rt = result_type.lower()
+            if rt == "standard":
+                avg_res_str = " with representation stopwords removed"
+            elif rt == "stemmed":
+                avg_res_str = " with stemmed text and stopwords removed"
+            elif rt in ("no_stopword", "no_stopword_removal", "with_stopwords"):
+                avg_res_str = " without representation stopword removal"
+            else:
+                avg_res_str = ""
+        else:
+            avg_res_str = ""
         caption = (
-            f"Average performance by model type for the {dataset} dataset "
+            f"Average performance by model type for the {dataset} dataset{avg_res_str} "
             "(results are reported as $\\text{mean} \\pm \\text{std}$ "
             "across random seeds)."
         )
     else:
-        caption = f"Best performing models by type for the {dataset} dataset."
+        caption = f"Best performing models by type for the {dataset} dataset{res_descr}."
 
     caption += (
         f" \\textcolor[HTML]{{{highlight_colors[0]}}}{{1st}}, "

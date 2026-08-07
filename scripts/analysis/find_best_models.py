@@ -47,12 +47,39 @@ LABEL_DESCRIPTIONS = {
 }
 
 
-def generate_label_table(only_info0: bool = False):
-    """Generates a LaTeX table for model label descriptions."""
+def generate_label_table(
+    only_info0: bool = False, result_type: str | None = None
+) -> str:
+    """Generates a LaTeX table for model label descriptions.
+
+    Args:
+        only_info0: If True, excludes info0 variants from the table.
+        result_type: Optional result type identifier used to append preprocessing context
+            to the table caption. Valid options:
+            - 'standard': Standard unstemmed text with representation stopwords removed.
+            - 'stemmed': Stemmed text with stopwords removed.
+            - 'no_stopword_removal' (or 'with_stopwords', 'no_stopword'): Unstemmed text
+              without representation stopword removal.
+
+    Returns:
+        A LaTeX table string.
+    """
+    res_descr = ""
+    if result_type:
+        rt = result_type.lower()
+        if rt == "standard":
+            res_descr = (
+                " (Standard Unstemmed Text with Representation Stopwords Removed)"
+            )
+        elif rt == "stemmed":
+            res_descr = " (Stemmed Text with Stopwords Removed)"
+        elif rt in ("no_stopword", "no_stopword_removal", "with_stopwords"):
+            res_descr = " (Unstemmed Text without Representation Stopword Removal)"
+
     lines = [
         "\\begin{table}[h]",
         "\\centering",
-        "\\caption{Model Label Descriptions}",
+        f"\\caption{{Model Label Descriptions{res_descr}}}",
         "\\label{tab:label_descriptions}",
         "\\begin{tabular}{ll}",
         "    \\toprule",
@@ -84,65 +111,42 @@ def generate_label_table(only_info0: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description=(
-            "Find and visualize the best performing models "
-            "from experiment results.\n\n"
-            "This script scans the results/ directory for CSV files, "
-            "filters by dataset, and identifies the best model configuration "
-            "for each metric (or calculates averages).\n"
-            "It can output LaTeX tables and various diagnostic plots "
-            "(Star, Parallel, Cleveland)."
-        ),
+        description="Find best models from experiment results across metrics.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Examples:\n"
-            "  # Find best models for the 'fed' dataset\n"
-            "  python scripts/analysis/find_best_models.py \\\n"
-            "      --dataset fed\n\n"
-            "  # Generate a LaTeX table for 'trump' results\n"
-            "  python scripts/analysis/find_best_models.py \\\n"
-            "      --dataset trump --latex\n\n"
-            "  # Generate a star plot and exclude certain algorithms\n"
-            "  python scripts/analysis/find_best_models.py \\\n"
-            "      --dataset yelp --star-plot yelp_star.pdf \\\n"
-            "      --exclude-clustering k_means --exclude-dim-red pca\n\n"
-            "  # Show average performance across all runs for a dataset\n"
-            "  python scripts/analysis/find_best_models.py \\\n"
-            "      --dataset fed --average"
-        ),
+        epilog=__doc__,
     )
 
-    data_group = parser.add_argument_group("Data & Filtering Options")
-    data_group.add_argument(
+    req_group = parser.add_argument_group("Required / Core Arguments")
+    req_group.add_argument(
         "--dataset",
         type=str,
-        help="Name of the dataset to analyze (e.g., fed, yelp, trump, anes).",
+        help="Name of the dataset (e.g., fed, trump, anes, yelp). Required unless --label-table is provided.",
     )
-    data_group.add_argument(
+
+    proc_group = parser.add_argument_group("Analysis & Processing Options")
+    proc_group.add_argument(
         "--exclude-clustering",
         type=str,
         nargs="+",
-        metavar="ALG",
-        help="Clustering algorithms to exclude (e.g., k_means, spectral).",
+        default=["kmeans", "spherical_kmeans"],
+        help="Clustering algorithms to exclude (default: kmeans spherical_kmeans). Pass 'none' to disable filtering.",
     )
-    data_group.add_argument(
+    proc_group.add_argument(
         "--exclude-dim-red",
         type=str,
         nargs="+",
-        metavar="ALG",
-        help="Dimensionality reduction algorithms to exclude (e.g., umap, pca).",
+        default=["pca"],
+        help="Dimensionality reduction algorithms to exclude (default: pca). Pass 'none' to disable filtering.",
     )
-    data_group.add_argument(
-        "--suppress-nulls",
-        action="store_true",
-        help="Filter out rows that contain NaNs for any of the metric columns.",
-    )
-
-    proc_group = parser.add_argument_group("Processing & Aggregation")
     proc_group.add_argument(
         "--dump",
         action="store_true",
-        help="Show all model configurations instead of only the best one per type.",
+        help="Dump all model configurations instead of selecting best per type.",
+    )
+    proc_group.add_argument(
+        "--suppress-nulls",
+        action="store_true",
+        help="Suppress printing metric standard deviation/value when metric is null.",
     )
     proc_group.add_argument(
         "--average",
@@ -158,6 +162,20 @@ def main():
         "--only-info0",
         action="store_true",
         help="Focus analysis only on multi-view models that use the 'info0' parameter.",
+    )
+    proc_group.add_argument(
+        "--result-type",
+        type=str,
+        choices=[
+            "standard",
+            "stemmed",
+            "no_stopword_removal",
+            "with_stopwords",
+            "no_stopword",
+            "all",
+        ],
+        default="all",
+        help="Filter results by preprocessing result type (default: all).",
     )
 
     output_group = parser.add_argument_group("Output Options (Plots & Tables)")
@@ -196,7 +214,11 @@ def main():
     args = parser.parse_args()
 
     if args.label_table:
-        print(generate_label_table(only_info0=args.only_info0))
+        print(
+            generate_label_table(
+                only_info0=args.only_info0, result_type=args.result_type
+            )
+        )
         return
 
     if not args.dataset:
@@ -212,8 +234,22 @@ def main():
         print(f"No CSV files found in {RESULTS_DIR}")
         return
 
+    target_res_type = args.result_type
+    if target_res_type in ("no_stopword", "with_stopwords"):
+        target_res_type = "no_stopword_removal"
+
     all_dfs = []
     for f in csv_files:
+        filename = f.name.lower()
+        if target_res_type == "stemmed" and "stemmed" not in filename:
+            continue
+        if target_res_type == "no_stopword_removal" and "no_stopword" not in filename:
+            continue
+        if target_res_type == "standard" and (
+            "stemmed" in filename or "no_stopword" in filename
+        ):
+            continue
+
         try:
             df = pl.read_csv(f, infer_schema_length=None)
             # Filter by dataset early if possible
@@ -232,7 +268,10 @@ def main():
             continue
 
     if not all_dfs:
-        print(f"No results found for dataset: {dataset}")
+        print(
+            f"No results found for dataset: {dataset} "
+            f"(result-type: {args.result_type})"
+        )
         return
 
     # Combine all dataframes
@@ -306,6 +345,7 @@ def main():
             dump=args.dump,
             average=args.average,
             highlight_colors=HIGHLIGHT_COLORS,
+            result_type=args.result_type,
         )
         if args.latex == "__STDOUT__":
             print("\n" + latex_table)

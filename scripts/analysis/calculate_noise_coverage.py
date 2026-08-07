@@ -14,12 +14,37 @@ from src.results_analysis import calculate_hdbscan_noise_coverage
 RESULTS_DIR = PROJECT_ROOT / "results"
 
 
-def generate_latex_table(df: pl.DataFrame) -> str:
-    """Generates a LaTeX table string for noise-cluster coverage."""
+def generate_latex_table(df: pl.DataFrame, result_type: str | None = None) -> str:
+    """Generates a LaTeX table string for noise-cluster coverage.
+
+    Args:
+        df: Polars DataFrame containing noise coverage data.
+        result_type: Optional result type identifier used to append preprocessing context
+            to the table caption. Valid options:
+            - 'standard': Standard unstemmed text with representation stopwords removed.
+            - 'stemmed': Stemmed text with stopwords removed.
+            - 'no_stopword_removal' (or 'with_stopwords', 'no_stopword'): Unstemmed text
+              without representation stopword removal.
+
+    Returns:
+        A LaTeX table string.
+    """
+    res_descr = ""
+    if result_type:
+        rt = result_type.lower()
+        if rt == "standard":
+            res_descr = (
+                " for Standard Unstemmed Text with Representation Stopwords Removed"
+            )
+        elif rt == "stemmed":
+            res_descr = " for Stemmed Text with Stopwords Removed"
+        elif rt in ("no_stopword", "no_stopword_removal", "with_stopwords"):
+            res_descr = " for Unstemmed Text without Representation Stopword Removal"
+
     lines = [
         "\\begin{table}[h]",
         "\\centering",
-        "\\caption{HDBSCAN Noise-Cluster Coverage across Random Seeds (Mean $\\pm$ Standard Deviation)}",
+        f"\\caption{{HDBSCAN Noise-Cluster Coverage across Random Seeds{res_descr} (Mean $\\pm$ Standard Deviation)}}",
         "\\label{tab:noise_coverage}",
         "\\begin{tabular}{llrrr}",
         "    \\toprule",
@@ -40,7 +65,7 @@ def generate_latex_table(df: pl.DataFrame) -> str:
         std_pct = row.get("noise_coverage_pct_std", 0.0)
 
         if "noise_coverage_pct_std" in row and std_pct > 0:
-            pct_str = f"{mean_pct:.2f} \\pm {std_pct:.2f}\\%"
+            pct_str = f"${mean_pct:.2f} \\pm {std_pct:.2f}$\\%"
         else:
             pct_str = f"{mean_pct:.2f}\\%"
 
@@ -79,6 +104,20 @@ def main():
         type=str,
         default=None,
         help="Filter results by dataset name (e.g., fed, yelp)",
+    )
+    parser.add_argument(
+        "--result-type",
+        type=str,
+        choices=[
+            "standard",
+            "stemmed",
+            "no_stopword_removal",
+            "with_stopwords",
+            "no_stopword",
+            "all",
+        ],
+        default="all",
+        help="Filter results by preprocessing result type (default: all)",
     )
     parser.add_argument(
         "--detailed",
@@ -128,7 +167,24 @@ def main():
                 print(f"No CSV files found in directory: {args.results_dir}")
             sys.exit(1)
 
+        target_res_type = args.result_type
+        if target_res_type in ("no_stopword", "with_stopwords"):
+            target_res_type = "no_stopword_removal"
+
         for csv_file in csv_files:
+            filename = csv_file.name.lower()
+            if target_res_type == "stemmed" and "stemmed" not in filename:
+                continue
+            if (
+                target_res_type == "no_stopword_removal"
+                and "no_stopword" not in filename
+            ):
+                continue
+            if target_res_type == "standard" and (
+                "stemmed" in filename or "no_stopword" in filename
+            ):
+                continue
+
             try:
                 dfs.append(pl.read_csv(csv_file))
             except Exception as e:
@@ -174,7 +230,7 @@ def main():
             print(f"Saved CSV report to: {output_csv_path}")
 
     if args.output_latex:
-        latex_str = generate_latex_table(coverage_df)
+        latex_str = generate_latex_table(coverage_df, result_type=args.result_type)
         output_latex_path = Path(args.output_latex)
         output_latex_path.parent.mkdir(parents=True, exist_ok=True)
         output_latex_path.write_text(latex_str)
@@ -184,3 +240,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
