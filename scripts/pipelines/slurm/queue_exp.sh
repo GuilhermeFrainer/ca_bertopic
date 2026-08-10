@@ -70,6 +70,8 @@ Options:
 
   -s, --stemmed                       Run experiments on stemmed dataset versions (e.g. fed_stemmed).
 
+      --keep-rep-stopwords            Keep English stop words in topic representations (default: removed).
+
   -t, --test                          Run a minimal test set (baseline & stm).
                                       Defaults to 'fed' dataset if -d is not specified.
 
@@ -103,6 +105,7 @@ RAW_DATASETS=""
 RAW_MODELS=""
 RAW_EXCLUDES=""
 USE_STEMMED=false
+KEEP_REP_STOPWORDS=false
 IS_TEST=false
 DRY_RUN=false
 LIST_ONLY=false
@@ -128,6 +131,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -s|--stemmed)
             USE_STEMMED=true
+            shift
+            ;;
+        --keep-rep-stopwords)
+            KEEP_REP_STOPWORDS=true
             shift
             ;;
         -t|--test)
@@ -377,7 +384,11 @@ for dataset in "${TARGET_DATASETS[@]}"; do
         fi
 
         # Run command for non-STM
-        run_command="uv run python scripts/experiments/run_optimizer.py --exp ${exp_dir}/${dataset}_standard_${model} --remove-rep-stopwords"
+        rep_flag="--remove-rep-stopwords"
+        if [ "$KEEP_REP_STOPWORDS" = true ]; then
+            rep_flag="--keep-rep-stopwords"
+        fi
+        run_command="uv run python scripts/experiments/run_optimizer.py --exp ${exp_dir}/${dataset}_standard_${model} ${rep_flag}"
 
         if [ "$DRY_RUN" = true ]; then
             echo "[$JOB_COUNT/$TOTAL_JOBS] [DRY RUN] Job: $job_name | Dataset: $dataset | Model: $model | Mem: $mem | CPUs: $cpus | Time: $time_limit"

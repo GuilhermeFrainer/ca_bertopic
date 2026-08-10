@@ -46,12 +46,17 @@ def main():
     parser.add_argument(
         "--remove-rep-stopwords",
         action="store_true",
+        default=True,
         help=(
             "Remove English stop words from BERTopic topic representations "
-            "(c-TF-IDF) using CountVectorizer. Note: This only affects "
-            "representation topic word extraction and does NOT modify "
-            "original document texts or document embeddings."
+            "(c-TF-IDF) using CountVectorizer (default: True)."
         ),
+    )
+    parser.add_argument(
+        "--keep-rep-stopwords",
+        action="store_false",
+        dest="remove_rep_stopwords",
+        help="Keep English stop words in BERTopic topic representations.",
     )
     args = parser.parse_args()
 
@@ -192,6 +197,17 @@ def main():
                         embeddings=embeddings,
                         config=config,
                     )
+                    is_stemmed = (
+                        "stemmed" in dataset_name.lower()
+                        or "stemmed" in exp_name.lower()
+                    )
+                    if is_stemmed:
+                        stopword_status = "stemmed"
+                    elif args.remove_rep_stopwords:
+                        stopword_status = "remove_rep_stopwords"
+                    else:
+                        stopword_status = "keep_rep_stopwords"
+
                     run_metadata = {
                         "experiment_id": exp_name,
                         "random_state": seed,
@@ -203,6 +219,7 @@ def main():
                         "timestamp": start_timestamp,
                         "file_timestamp": file_timestamp,
                         "dataset_name": dataset_name,
+                        "stopword_removal": stopword_status,
                     }
                     metrics.update(run_metadata)
                     results.append(metrics)
@@ -231,7 +248,12 @@ def main():
             if len(random_seeds) > 1
             else str(primary_random_state)
         )
-        results_filename = f"{exp_name}-{file_timestamp}-{seeds_str}"
+        tag = stopword_status
+        if tag in exp_name:
+            fn_base = exp_name
+        else:
+            fn_base = f"{exp_name}_{tag}"
+        results_filename = f"{fn_base}-{file_timestamp}-{seeds_str}"
         results_path = RESULTS_DIR / f"{results_filename}.csv"
         results_df.write_csv(results_path)
 

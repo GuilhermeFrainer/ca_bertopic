@@ -49,12 +49,17 @@ def main():
     parser.add_argument(
         "--remove-rep-stopwords",
         action="store_true",
+        default=True,
         help=(
             "Remove English stop words from BERTopic topic representations "
-            "(c-TF-IDF) using CountVectorizer. Note: This only affects "
-            "representation topic word extraction and does NOT modify "
-            "original document texts or document embeddings."
+            "(c-TF-IDF) using CountVectorizer (default: True)."
         ),
+    )
+    parser.add_argument(
+        "--keep-rep-stopwords",
+        action="store_false",
+        dest="remove_rep_stopwords",
+        help="Keep English stop words in BERTopic topic representations.",
     )
     args = parser.parse_args()
 
@@ -144,7 +149,16 @@ def main():
 
         if results_path is None:
             file_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            results_filename = f"{exp_name}-{file_timestamp}-{primary_random_state}"
+            is_stemmed = "stemmed" in exp_name.lower()
+            if is_stemmed:
+                tag = "stemmed"
+            elif args.remove_rep_stopwords:
+                tag = "remove_rep_stopwords"
+            else:
+                tag = "keep_rep_stopwords"
+
+            fn_base = exp_name if tag in exp_name else f"{exp_name}_{tag}"
+            results_filename = f"{fn_base}-{file_timestamp}-{primary_random_state}"
             results_path = RESULTS_DIR / f"{results_filename}.csv"
         else:
             # Extract timestamp from existing filename

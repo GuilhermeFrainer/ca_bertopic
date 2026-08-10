@@ -269,8 +269,7 @@ def main():
 
     if not all_dfs:
         print(
-            f"No results found for dataset: {dataset} "
-            f"(result-type: {args.result_type})"
+            f"No results found for dataset: {dataset} (result-type: {args.result_type})"
         )
         return
 

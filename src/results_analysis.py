@@ -287,3 +287,167 @@ def calculate_hdbscan_noise_coverage(
     )
 
     return aggregated
+
+
+def compute_stopword_impact(
+    df_remove_rep_stopwords: pl.DataFrame,
+    df_keep_rep_stopwords: pl.DataFrame,
+    dataset: str = "fed",
+    exclude_clustering: List[str] | None = None,
+    exclude_dim_red: List[str] | None = None,
+    merge_info0: bool = False,
+) -> Dict[str, pl.DataFrame]:
+    """Computes metric differences between remove_rep_stopwords and keep_rep_stopwords runs.
+
+    Calculates pairwise difference (remove_rep_stopwords - keep_rep_stopwords) for
+    corresponding models (same model configuration and random seed) and aggregates by model_type.
+
+    Args:
+        df_remove_rep_stopwords: Polars DataFrame of results with representation stopwords removed.
+        df_keep_rep_stopwords: Polars DataFrame of results with representation stopwords kept.
+        dataset: Name of dataset to filter by.
+        exclude_clustering: Optional list of clustering algorithms to exclude.
+        exclude_dim_red: Optional list of dim reduction algorithms to exclude.
+        merge_info0: If True, treats _info0 model variants as their base model type.
+
+    Returns:
+        A dictionary mapping each metric to a Polars DataFrame with columns:
+        ["model_type", "mean_delta", "std_delta", "n_pairs"].
+    """
+    df_standard = df_remove_rep_stopwords
+    df_no_stopword = df_keep_rep_stopwords
+
+    if df_standard.is_empty() or df_no_stopword.is_empty():
+        return {}
+
+    # Standardize dataset column if present
+    for df in [df_standard, df_no_stopword]:
+        if "dataset_name" in df.columns:
+            df = df.with_columns(
+                pl.col("dataset_name")
+                .replace("anes_stemmed", "anes")
+                .str.replace(r"_s\d+$", "")
+            )
+
+    if "dataset_name" in df_standard.columns:
+        df_standard = df_standard.filter(pl.col("dataset_name") == dataset)
+    if "dataset_name" in df_no_stopword.columns:
+        df_no_stopword = df_no_stopword.filter(pl.col("dataset_name") == dataset)
+
+    if df_standard.is_empty() or df_no_stopword.is_empty():
+        return {}
+
+    # Strip stemmed_ prefix
+    if "model_name" in df_standard.columns:
+        df_standard = df_standard.with_columns(
+            pl.col("model_name").str.replace("^stemmed_", "")
+        )
+    if "model_name" in df_no_stopword.columns:
+        df_no_stopword = df_no_stopword.with_columns(
+            pl.col("model_name").str.replace("^stemmed_", "")
+        )
+
+    # Filter clustering and dim reduction algorithms
+    if "clustering_algo" in df_standard.columns:
+        if exclude_clustering is not None:
+            df_standard = df_standard.filter(
+                ~pl.col("clustering_algo").is_in(exclude_clustering)
+            )
+        else:
+            df_standard = df_standard.filter(
+                ~pl.col("clustering_algo").str.contains("k_means")
+            )
+    if "clustering_algo" in df_no_stopword.columns:
+        if exclude_clustering is not None:
+            df_no_stopword = df_no_stopword.filter(
+                ~pl.col("clustering_algo").is_in(exclude_clustering)
+            )
+        else:
+            df_no_stopword = df_no_stopword.filter(
+                ~pl.col("clustering_algo").str.contains("k_means")
+            )
+
+    if "dim_red_algo" in df_standard.columns:
+        if exclude_dim_red is not None:
+            df_standard = df_standard.filter(
+                ~pl.col("dim_red_algo").is_in(exclude_dim_red)
+            )
+        else:
+            df_standard = df_standard.filter(pl.col("dim_red_algo") != "pca")
+    if "dim_red_algo" in df_no_stopword.columns:
+        if exclude_dim_red is not None:
+            df_no_stopword = df_no_stopword.filter(
+                ~pl.col("dim_red_algo").is_in(exclude_dim_red)
+            )
+        else:
+            df_no_stopword = df_no_stopword.filter(pl.col("dim_red_algo") != "pca")
+
+    if df_standard.is_empty() or df_no_stopword.is_empty():
+        return {}
+
+    # Join standard and no_stopword dataframes
+    if "model_name" in df_standard.columns and "model_name" in df_no_stopword.columns:
+        # Deduplicate before join to prevent cartesian products
+        std_unique = df_standard.unique(subset=["model_name"])
+        no_unique = df_no_stopword.unique(subset=["model_name"])
+        joined = std_unique.join(no_unique, on="model_name", suffix="_no_stopword")
+    else:
+        # Fallback to join on random_state and n_topics if available
+        join_cols = [
+            c
+            for c in ["random_state", "n_topics", "clustering_algo", "dim_red_algo"]
+            if c in df_standard.columns and c in df_no_stopword.columns
+        ]
+        if not join_cols:
+            return {}
+        joined = df_standard.join(df_no_stopword, on=join_cols, suffix="_no_stopword")
+
+    if joined.is_empty():
+        return {}
+
+    # Map model_type
+    joined = joined.with_columns(
+        pl.col("model_name")
+        .map_elements(
+            lambda x: extract_model_type(x, merge_info0=merge_info0),
+            return_dtype=pl.String,
+        )
+        .alias("model_type")
+    )
+
+    available_metrics = [m for m in METRICS if m in joined.columns]
+    results = {}
+
+    for metric in available_metrics:
+        ns_col = f"{metric}_no_stopword"
+        if ns_col not in joined.columns:
+            continue
+
+        metric_df = joined.filter(
+            pl.col(metric).is_not_null() & pl.col(ns_col).is_not_null()
+        )
+        if metric_df[metric].dtype in [pl.Float32, pl.Float64]:
+            metric_df = metric_df.filter(
+                ~pl.col(metric).is_nan() & ~pl.col(ns_col).is_nan()
+            )
+
+        if metric_df.is_empty():
+            continue
+
+        metric_df = metric_df.with_columns(
+            (pl.col(metric) - pl.col(ns_col)).alias("delta")
+        )
+
+        aggregated = (
+            metric_df.group_by("model_type")
+            .agg(
+                pl.col("delta").mean().alias("mean_delta"),
+                pl.col("delta").std().fill_null(0.0).alias("std_delta"),
+                pl.col("delta").count().alias("n_pairs"),
+                pl.col("model_type").first().alias("best_model_name"),
+            )
+            .sort("mean_delta", descending=True)
+        )
+        results[metric] = aggregated
+
+    return results

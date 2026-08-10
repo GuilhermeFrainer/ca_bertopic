@@ -254,24 +254,34 @@ def generate_best_models_latex_table(
     res_descr = ""
     if result_type:
         rt = result_type.lower()
-        if rt == "standard":
+        if rt in ("standard", "remove_rep_stopwords"):
             res_descr = " (unstemmed text with representation stopwords removed)"
         elif rt == "stemmed":
             res_descr = " (stemmed text with stopwords removed)"
-        elif rt in ("no_stopword", "no_stopword_removal", "with_stopwords"):
-            res_descr = " (unstemmed text without representation stopword removal)"
+        elif rt in (
+            "no_stopword",
+            "no_stopword_removal",
+            "with_stopwords",
+            "keep_rep_stopwords",
+        ):
+            res_descr = " (unstemmed text with representation stopwords kept)"
 
     if dump:
         caption = f"All model configurations for the {dataset} dataset{res_descr}."
     elif average:
         if result_type:
             rt = result_type.lower()
-            if rt == "standard":
+            if rt in ("standard", "remove_rep_stopwords"):
                 avg_res_str = " with representation stopwords removed"
             elif rt == "stemmed":
                 avg_res_str = " with stemmed text and stopwords removed"
-            elif rt in ("no_stopword", "no_stopword_removal", "with_stopwords"):
-                avg_res_str = " without representation stopword removal"
+            elif rt in (
+                "no_stopword",
+                "no_stopword_removal",
+                "with_stopwords",
+                "keep_rep_stopwords",
+            ):
+                avg_res_str = " with representation stopwords kept"
             else:
                 avg_res_str = ""
         else:
@@ -282,7 +292,9 @@ def generate_best_models_latex_table(
             "across random seeds)."
         )
     else:
-        caption = f"Best performing models by type for the {dataset} dataset{res_descr}."
+        caption = (
+            f"Best performing models by type for the {dataset} dataset{res_descr}."
+        )
 
     caption += (
         f" \\textcolor[HTML]{{{highlight_colors[0]}}}{{1st}}, "
@@ -350,6 +362,185 @@ def generate_best_models_latex_table(
             processed_lines.append("            " + stripped)
         else:
             # Other lines (like \toprule outside, or \end{table})
+            if stripped == "\\end{table}":
+                processed_lines.append("\\end{table}")
+            elif stripped:
+                processed_lines.append(stripped)
+
+    return "\n".join(processed_lines)
+
+
+def generate_stopword_impact_latex_table(
+    results: dict[str, pl.DataFrame],
+    dataset: str = "fed",
+    pos_color: str = "D4EDDA",
+    neg_color: str = "F8D7DA",
+) -> str:
+    """Generates a LaTeX table showing the impact of stopword removal.
+
+    Displays mean +- std of metric differences (standard - no_stopword).
+    Cells are colored green for positive change (improvement) and red for negative.
+
+    Args:
+        results: Dictionary mapping metric names to Polars DataFrames containing
+            columns ['model_type', 'mean_delta', 'std_delta', 'n_pairs'].
+        dataset: Dataset identifier string.
+        pos_color: Hex color string for cell background on positive change (green).
+        neg_color: Hex color string for cell background on negative change (red).
+
+    Returns:
+        Formatted LaTeX table string.
+    """
+    import pandas as pd
+
+    if not results:
+        return ""
+
+    MODEL_RENAME_MAP = {
+        "append_umap": "Naive",
+        "mv_co_reg_spectral": "$\\text{\\systemshort}_1$",
+        "mv_co_reg_spectral_info0": "$\\text{\\systemshort}_1\\text{-info0}$",
+        "baseline": "$\\text{BERTopic}_1$",
+        "umap_spectral": "$\\text{BERTopic}_2$",
+        "mv_spectral": "$\\text{\\systemshort}_2$",
+        "mv_spectral_info0": "$\\text{\\systemshort}_2\\text{-info0}$",
+        "aligned_umap": "$\\text{\\systemshort}_3$",
+        "stm": "STM",
+    }
+
+    desired_order = [
+        "mv_co_reg_spectral",
+        "mv_co_reg_spectral_info0",
+        "mv_spectral",
+        "mv_spectral_info0",
+        "aligned_umap",
+        "append_umap",
+        "baseline",
+        "umap_spectral",
+        "stm",
+    ]
+
+    all_ids_present = set()
+    for metric_df in results.values():
+        if "model_type" in metric_df.columns:
+            all_ids_present.update(metric_df["model_type"].to_list())
+
+    all_ids = [i for i in desired_order if i in all_ids_present]
+    all_ids += sorted(list(all_ids_present - set(desired_order)))
+
+    rows = []
+    for identifier in all_ids:
+        display_name = MODEL_RENAME_MAP.get(identifier, identifier.replace("_", " "))
+        row = {"Model Type": display_name}
+        for metric, metric_df in results.items():
+            match = metric_df.filter(pl.col("model_type") == identifier)
+            if not match.is_empty():
+                mean_val = match["mean_delta"][0]
+                std_val = match["std_delta"][0] if "std_delta" in match.columns else 0.0
+                row[metric] = (mean_val, std_val)
+            else:
+                row[metric] = None
+        rows.append(row)
+
+    final_df = pd.DataFrame(rows)
+    metric_cols = [c for c in final_df.columns if c != "Model Type"]
+
+    rename_map = {
+        "u_mass": "$\\Delta C_{\\text{UMass}}$",
+        "c_v": "$\\Delta C_v$",
+        "c_npmi": "$\\Delta C_{npmi}$",
+        "irbo": "$\\Delta \\text{IRBO}$",
+        "topic_diversity": "$\\Delta \\text{Diversity}$",
+    }
+    actual_rename = {k: v for k, v in rename_map.items() if k in final_df.columns}
+
+    def format_impact_cells(df):
+        formatted_df = df.copy()
+        for col in metric_cols:
+            if col in df.columns:
+
+                def apply_color(entry):
+                    if pd.isnull(entry):
+                        return "-"
+                    if isinstance(entry, (tuple, list)):
+                        mean_val, std_val = entry
+                    else:
+                        mean_val, std_val = entry, 0.0
+
+                    if pd.isnull(mean_val):
+                        return "-"
+
+                    sign = "+" if mean_val > 0 else ""
+                    if std_val is not None and std_val > 0.0:
+                        val_str = f"${sign}{mean_val:.3f} \\pm {std_val:.3f}$"
+                    else:
+                        val_str = f"${sign}{mean_val:.3f}$"
+
+                    if mean_val > 0:
+                        return f"\\cellcolor[HTML]{{{pos_color}}}{{{val_str}}}"
+                    elif mean_val < 0:
+                        return f"\\cellcolor[HTML]{{{neg_color}}}{{{val_str}}}"
+                    return val_str
+
+                formatted_df[col] = df[col].apply(apply_color)
+        return formatted_df
+
+    display_df = format_impact_cells(final_df)
+    display_df = display_df.rename(columns=actual_rename)
+
+    caption = (
+        f"Average metric changes ($\\text{{mean}} \\pm \\text{{std}}$) resulting from "
+        f"representation stopword removal for the {dataset} dataset "
+        f"(comparing representation stopwords removed vs. kept). "
+        f"\\cellcolor[HTML]{{{pos_color}}}{{Green}} indicates average improvement ($\\Delta > 0$), "
+        f"and \\cellcolor[HTML]{{{neg_color}}}{{red}} indicates average decrease ($\\Delta < 0$)."
+    )
+    table_label = f"tab:stopword_impact_{dataset}"
+
+    latex = display_df.to_latex(
+        index=False,
+        caption=caption,
+        label=table_label,
+        escape=False,
+        column_format="l" + "r" * len(metric_cols),
+        position="h!",
+    )
+
+    lines = latex.splitlines()
+    processed_lines = []
+    in_tabular = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("\\begin{table}"):
+            processed_lines.append("\\begin{table}")
+            processed_lines.append("\\centering")
+            continue
+
+        if (
+            stripped.startswith("\\centering")
+            or stripped.startswith("\\caption")
+            or stripped.startswith("\\label")
+        ):
+            processed_lines.append(stripped)
+            continue
+
+        if stripped.startswith("\\begin{tabular}"):
+            processed_lines.append("\\resizebox{\\columnwidth}{!}{%")
+            processed_lines.append("    \\begin{tabular}" + stripped[15:])
+            in_tabular = True
+            continue
+
+        if stripped.startswith("\\end{tabular}"):
+            processed_lines.append("    \\end{tabular}%")
+            processed_lines.append("}")
+            in_tabular = False
+            continue
+
+        if in_tabular:
+            processed_lines.append("            " + stripped)
+        else:
             if stripped == "\\end{table}":
                 processed_lines.append("\\end{table}")
             elif stripped:
