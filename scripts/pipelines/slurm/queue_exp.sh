@@ -371,7 +371,7 @@ for dataset in "${TARGET_DATASETS[@]}"; do
             continue
         fi
 
-        job_name="${PROJECT_NAME}_${job_dataset}_${model}"
+        job_name="${job_dataset}_${model}"
         mem="${MEM_OVERRIDE:-$DEFAULT_MEM}"
         cpus="${CPUS_OVERRIDE:-$DEFAULT_CPUS}"
         time_limit="${TIME_OVERRIDE:-$DEFAULT_TIME}"
