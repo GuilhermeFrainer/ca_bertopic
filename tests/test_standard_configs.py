@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.models import create_bertopic_instance
+from src.models import create_topic_model_instance
 from src.optimizer import generate_hyperparameter_combinations
 from src.utils import load_config
 
@@ -28,7 +28,7 @@ def test_standard_config_instantiation(config_path: Path):
     """
     Validates that each standard experiment config:
     1. Loads properly with inheritance.
-    2. Instantiates BERTopic models via optimizer or direct config loading.
+    2. Instantiates topic models via optimizer or direct config loading.
     """
     rel_path = config_path.relative_to(EXPERIMENTS_DIR)
     config = load_config(str(rel_path), EXPERIMENTS_DIR)
@@ -40,19 +40,20 @@ def test_standard_config_instantiation(config_path: Path):
         assert "models" in config
         return
 
-    assert "model" in config
-    model_config = config["model"]
-
-    # If parameters are present for tuning/expanding
-    combinations = generate_hyperparameter_combinations(model_config)
+    models_config = config.get("models") or (
+        [config["model"]] if "model" in config else []
+    )
+    assert len(models_config) > 0, f"No model or models section in {config_path}"
 
     # Mock metadata (e.g. 20 samples, 4 features)
     scaled_metadata = np.random.rand(20, 4)
 
-    for combo_config, _ in combinations:
-        topic_model = create_bertopic_instance(
-            model_config=combo_config,
-            scaled_metadata=scaled_metadata,
-            random_state=36201624,
-        )
-        assert topic_model is not None
+    for m_conf in models_config:
+        combinations = generate_hyperparameter_combinations(m_conf)
+        for combo_config, _ in combinations:
+            topic_model = create_topic_model_instance(
+                model_config=combo_config,
+                scaled_metadata=scaled_metadata,
+                random_state=36201624,
+            )
+            assert topic_model is not None

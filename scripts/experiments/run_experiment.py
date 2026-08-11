@@ -110,7 +110,7 @@ def main():
         for m_conf in models_config:
             m_id = m_conf.get("id", "Unknown")
             try:
-                _ = models.create_bertopic_instance(
+                _ = models.create_topic_model_instance(
                     m_conf,
                     scaled_metadata,
                     primary_random_state,
@@ -138,7 +138,7 @@ def main():
                 b_id: str = baseline_config.get("id", "")
                 logger.info(f"Running Baseline Model: {b_id} (seed {seed})")
 
-                baseline_model = models.create_bertopic_instance(
+                baseline_model = models.create_topic_model_instance(
                     baseline_config,
                     scaled_metadata,
                     seed,
@@ -151,13 +151,21 @@ def main():
                     text=text,
                     embeddings=embeddings,
                     config=config,
+                    scaled_metadata=scaled_metadata,
+                )
+
+                clustering_algo = baseline_config.get("clustering", {}).get(
+                    "type", baseline_config.get("type", "baseline")
+                )
+                dim_red_algo = baseline_config.get("dimensionality_reduction", {}).get(
+                    "type", "umap"
                 )
 
                 run_metadata = {
                     "experiment_id": exp_name,
                     "random_state": seed,
-                    "clustering_algo": baseline_config["clustering"]["type"],
-                    "dim_red_algo": baseline_config["dimensionality_reduction"]["type"],
+                    "clustering_algo": clustering_algo,
+                    "dim_red_algo": dim_red_algo,
                     "n_observations": n_observations,
                     "timestamp": start_timestamp,
                     "file_timestamp": file_timestamp,
@@ -182,7 +190,7 @@ def main():
             ):
                 m_id = model_config.get("id", "")
                 try:
-                    model_instance = models.create_bertopic_instance(
+                    model_instance = models.create_topic_model_instance(
                         model_config,
                         scaled_metadata,
                         seed,
@@ -196,6 +204,7 @@ def main():
                         text=text,
                         embeddings=embeddings,
                         config=config,
+                        scaled_metadata=scaled_metadata,
                     )
                     is_stemmed = (
                         "stemmed" in dataset_name.lower()
@@ -208,13 +217,18 @@ def main():
                     else:
                         stopword_status = "keep_rep_stopwords"
 
+                    clustering_algo = model_config.get("clustering", {}).get(
+                        "type", model_config.get("type", "tritopic")
+                    )
+                    dim_red_algo = model_config.get("dimensionality_reduction", {}).get(
+                        "type", "tritopic_internal"
+                    )
+
                     run_metadata = {
                         "experiment_id": exp_name,
                         "random_state": seed,
-                        "clustering_algo": model_config["clustering"]["type"],
-                        "dim_red_algo": model_config["dimensionality_reduction"][
-                            "type"
-                        ],
+                        "clustering_algo": clustering_algo,
+                        "dim_red_algo": dim_red_algo,
                         "n_observations": n_observations,
                         "timestamp": start_timestamp,
                         "file_timestamp": file_timestamp,

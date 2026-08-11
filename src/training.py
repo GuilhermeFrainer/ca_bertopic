@@ -1,54 +1,76 @@
 import logging
 import time
+from typing import Any, Optional
 
 import numpy as np
-from bertopic import BERTopic
 
 import src.evaluation as evaluation
 
 
 def train_and_evaluate(
-    topic_model: BERTopic,
+    topic_model: Any,
     model_id: str,
     text: list[str],
     embeddings: np.ndarray,
     config: dict,
-) -> tuple[dict, BERTopic]:
+    scaled_metadata: Optional[np.ndarray] = None,
+) -> tuple[dict, Any]:
     """
-    Fits a pre-instantiated BERTopic model and calculates evaluation metrics.
+    Fits a pre-instantiated topic model (BERTopic or TriTopic) and calculates evaluation metrics.
 
     Args:
-        topic_model: The instantiated BERTopic object.
+        topic_model: The instantiated BERTopic or TriTopic object.
         model_id: String identifier for logging/results.
         text: List of document strings.
         embeddings: Pre-computed document embeddings.
         config: The global experiment configuration (for metric settings).
+        scaled_metadata: Optional pre-processed metadata matrix for multi-view / tritopic models.
 
     Returns:
         A tuple containing the metrics dictionary and the fitted model.
     """
     logger = logging.getLogger("pipeline")
 
-    # 1. Fit & Transform
     start_time = time.time()
-    topics, _ = topic_model.fit_transform(documents=text, embeddings=embeddings)
+    is_tritopic = type(topic_model).__name__ == "TriTopic" or hasattr(
+        topic_model, "topics_"
+    )
+
+    if is_tritopic:
+        # Check if metadata should be used
+        if scaled_metadata is not None:
+            topic_model.fit(
+                documents=text, embeddings=embeddings, metadata=scaled_metadata
+            )
+        else:
+            topic_model.fit(documents=text, embeddings=embeddings)
+
+        labels = getattr(topic_model, "labels_", [])
+        outlier_count = int((np.array(labels) == -1).sum()) if len(labels) > 0 else 0
+        n_topics = len([t for t in topic_model.topics_ if t.topic_id != -1])
+    else:
+        topics, _ = topic_model.fit_transform(documents=text, embeddings=embeddings)
+        outlier_count = topics.count(-1) if -1 in topics else 0
+        n_topics = len([t for t in topic_model.get_topics() if t != -1])
+
     duration = time.time() - start_time
     logger.info(f"[{model_id}] Training finished in {duration:.2f} seconds.")
 
-    # 2. Basic Metrics
-    outlier_count = topics.count(-1) if -1 in topics else 0
-    # Count topics >= 0
-    n_topics = len([t for t in topic_model.get_topics() if t != -1])
+    # Build tokenized texts for OCTIS metrics
+    if hasattr(topic_model, "vectorizer_model") and hasattr(
+        topic_model.vectorizer_model, "build_analyzer"
+    ):
+        analyzer = topic_model.vectorizer_model.build_analyzer()
+        tokenized_texts = [analyzer(t) for t in text]
+    else:
+        tokenized_texts = [t.lower().split() for t in text]
 
-    # 3. Advanced Metrics (Coherence & Diversity)
-    # Optimization: Re-use vectorizer analyzer
-    analyzer = topic_model.vectorizer_model.build_analyzer()
-    tokenized_texts = [analyzer(t) for t in text]
-
-    # Filter out empty tokenized documents as they can break some coherence metrics
     tokenized_texts = [t for t in tokenized_texts if len(t) > 0]
 
-    octis_output = evaluation.bertopic_output_to_octis(topic_model)
+    if is_tritopic:
+        octis_output = evaluation.tritopic_output_to_octis(topic_model)
+    else:
+        octis_output = evaluation.bertopic_output_to_octis(topic_model)
 
     metrics = {
         "model_name": model_id,

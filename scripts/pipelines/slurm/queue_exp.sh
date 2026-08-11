@@ -46,6 +46,7 @@ ALL_MODELS=(
     "pca_mv_spectral"
     "pca_mv_spherical_k_means"
     "stm"
+    "tritopic"
     "umap_spectral"
 )
 

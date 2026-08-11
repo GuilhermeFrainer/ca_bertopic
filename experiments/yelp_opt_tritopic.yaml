@@ -1,0 +1,18 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_opt_tritopic"
+  description: "Hyperparameter optimization for TriTopic model on Yelp dataset."
+  random_state: 36201624
+  decimal_digits: 3
+
+model:
+  id: "tritopic"
+  description: "TriTopic tri-modal graph topic model"
+  type: "tritopic"
+  params:
+    n_neighbors:
+      - 10
+      - 15
+      - 30
+    verbose: false

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import mvlearn.cluster as mvcluster
 import numpy as np
@@ -6,6 +6,71 @@ from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer
 
 from src.mvc_wrapper import MVCWrapper
+
+
+def create_topic_model_instance(
+    model_config: dict,
+    scaled_metadata: np.ndarray,
+    random_state: int,
+    n_clusters: Optional[int] = None,
+    remove_rep_stopwords: bool = False,
+) -> Any:
+    """
+    Factory function that creates a topic model instance (BERTopic or TriTopic)
+    based on the provided configuration dictionary.
+    """
+    model_type = model_config.get("type") or model_config.get("model_type")
+    if model_type == "tritopic":
+        return create_tritopic_instance(
+            model_config=model_config,
+            random_state=random_state,
+            n_clusters=n_clusters,
+            remove_rep_stopwords=remove_rep_stopwords,
+        )
+
+    return create_bertopic_instance(
+        model_config=model_config,
+        scaled_metadata=scaled_metadata,
+        random_state=random_state,
+        n_clusters=n_clusters,
+        remove_rep_stopwords=remove_rep_stopwords,
+    )
+
+
+def create_tritopic_instance(
+    model_config: dict,
+    random_state: int,
+    n_clusters: Optional[int] = None,
+    remove_rep_stopwords: bool = False,
+) -> Any:
+    """
+    Factory function that builds a TriTopic instance from a configuration dictionary.
+    """
+    from tritopic import TriTopic, TriTopicConfig
+
+    params = model_config.get("params") or {}
+    params = params.copy()
+
+    if "random_state" not in params:
+        params["random_state"] = random_state
+
+    # Standardize topic count across models
+    if n_clusters is not None:
+        n_topics = n_clusters
+        params.pop("n_clusters", None)
+        params.pop("n_topics", None)
+    elif "n_clusters" in params:
+        n_topics = params.pop("n_clusters")
+        params.pop("n_topics", None)
+    else:
+        n_topics = params.pop("n_topics", "auto")
+
+    # Default use_metadata_view to True so metadata is incorporated into the tri-modal graph
+    if "use_metadata_view" not in params:
+        params["use_metadata_view"] = True
+
+    config_obj = TriTopicConfig(**params)
+    return TriTopic(config=config_obj, n_topics=n_topics)
 
 
 def create_bertopic_instance(

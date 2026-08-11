@@ -112,3 +112,72 @@ def test_create_bertopic_instance_remove_rep_stopwords():
     )
     assert isinstance(model_cfg.vectorizer_model, CountVectorizer)
     assert model_cfg.vectorizer_model.stop_words == "english"
+
+
+def test_create_tritopic_instance_defaults():
+    """
+    Tests that create_tritopic_instance sets expected default parameters
+    such as use_metadata_view=True and random_state.
+    """
+    from tritopic import TriTopic
+
+    from src.models import create_topic_model_instance, create_tritopic_instance
+
+    model_config = {"type": "tritopic", "params": {}}
+    model = create_tritopic_instance(model_config=model_config, random_state=42)
+
+    assert isinstance(model, TriTopic)
+    assert model.config.use_metadata_view is True
+    assert model.config.random_state == 42
+    assert model.n_topics == "auto"
+
+    # Test via factory function routing
+    factory_model = create_topic_model_instance(
+        model_config=model_config, scaled_metadata=None, random_state=123
+    )
+    assert isinstance(factory_model, TriTopic)
+    assert factory_model.config.random_state == 123
+
+
+def test_create_tritopic_instance_custom_params():
+    """
+    Tests that custom parameters passed in YAML model config (e.g. n_neighbors,
+    n_topics, use_metadata_view) are correctly set on TriTopic and TriTopicConfig.
+    """
+    from src.models import create_tritopic_instance
+
+    model_config = {
+        "type": "tritopic",
+        "params": {
+            "n_neighbors": 25,
+            "n_topics": 15,
+            "use_metadata_view": False,
+            "verbose": True,
+        },
+    }
+    model = create_tritopic_instance(model_config=model_config, random_state=42)
+
+    assert model.config.n_neighbors == 25
+    assert model.n_topics == 15
+    assert model.config.use_metadata_view is False
+    assert model.config.verbose is True
+
+
+def test_create_tritopic_instance_n_clusters_override():
+    """
+    Tests that n_clusters passed as argument (e.g. from baseline) or in params
+    is properly mapped to TriTopic's n_topics parameter.
+    """
+    from src.models import create_tritopic_instance
+
+    # 1. Explicit n_clusters argument (e.g. from run_experiment matching baseline)
+    model_config_1 = {"type": "tritopic", "params": {}}
+    model_1 = create_tritopic_instance(
+        model_config=model_config_1, random_state=42, n_clusters=20
+    )
+    assert model_1.n_topics == 20
+
+    # 2. n_clusters in config params (e.g. from standard grid sweep)
+    model_config_2 = {"type": "tritopic", "params": {"n_clusters": 30}}
+    model_2 = create_tritopic_instance(model_config=model_config_2, random_state=42)
+    assert model_2.n_topics == 30

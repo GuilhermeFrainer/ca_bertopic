@@ -63,6 +63,16 @@ def collect_hyperparameters(
     collect_from_component("dimensionality_reduction")
     collect_from_component("clustering")
     collect_from_component("bertopic")
+    collect_from_component("tritopic")
+
+    # Also collect from top-level params if present
+    params = model_config.get("params") or {}
+    for key in sorted(params.keys()):
+        value = params[key]
+        path = ["params", key]
+        if isinstance(value, list) and len(value) > 1:
+            param_paths.append(path)
+            param_values.append(value)
 
     return param_paths, param_values
 
@@ -86,7 +96,10 @@ def generate_hyperparameter_combinations(
         varied_params = {}
         for path, value in zip(param_paths, value_combination):
             # Set the specific hyperparameter value in the new config copy
-            new_config[path[0]][path[1]][path[2]] = value
+            curr = new_config
+            for p in path[:-1]:
+                curr = curr[p]
+            curr[path[-1]] = value
             # Keep track of the parameters that were varied for this run
             varied_params[".".join(path)] = value
         combinations.append((new_config, varied_params))
@@ -101,7 +114,9 @@ def clean_varied_params(varied_params: Dict[str, Any]) -> Dict[str, Any]:
     return {
         key.replace("clustering.params.", "")
         .replace("dimensionality_reduction.params.", "")
-        .replace("bertopic.params.", ""): value
+        .replace("bertopic.params.", "")
+        .replace("tritopic.params.", "")
+        .replace("params.", ""): value
         for key, value in varied_params.items()
     }
 
@@ -244,7 +259,7 @@ class Optimizer:
                 self.logger.info(f"Varied Parameters: {cleaned_varied_params}")
 
                 # 1. Create Model Instance
-                topic_model = models.create_bertopic_instance(
+                topic_model = models.create_topic_model_instance(
                     model_config=model_config,
                     scaled_metadata=self.scaled_metadata,
                     random_state=seed,
@@ -259,17 +274,24 @@ class Optimizer:
                         text=self.texts,
                         embeddings=self.embeddings,
                         config=self.experiment_config,
+                        scaled_metadata=self.scaled_metadata,
                     )
 
                     # 3. Store results, including the varied hyperparameters
                     # and metadata
+                    clustering_algo = model_config.get("clustering", {}).get(
+                        "type"
+                    ) or model_config.get("type", "tritopic")
+                    dim_red_algo = (
+                        model_config.get("dimensionality_reduction", {}).get("type")
+                        or "tritopic_internal"
+                    )
+
                     run_metadata = {
                         "experiment_id": self.experiment_id,
                         "random_state": seed,
-                        "clustering_algo": model_config["clustering"]["type"],
-                        "dim_red_algo": model_config["dimensionality_reduction"][
-                            "type"
-                        ],
+                        "clustering_algo": clustering_algo,
+                        "dim_red_algo": dim_red_algo,
                         "n_observations": n_observations,
                         "timestamp": start_timestamp,
                         "file_timestamp": self.file_timestamp,

@@ -1,5 +1,6 @@
 import logging
 import random
+from typing import Any
 
 import numpy as np
 from bertopic import BERTopic
@@ -64,6 +65,31 @@ def bertopic_output_to_octis(m: BERTopic, topk: int = 10) -> dict[str, list[list
 
             topic_words.append(words)
 
+    return {"topics": topic_words}
+
+
+def tritopic_output_to_octis(m: Any, topk: int = 10) -> dict[str, list[list[str]]]:
+    """
+    Reshapes TriTopic output so that it can be readily passed to OCTIS
+    for evaluation.
+    """
+    topic_words: list[list[str]] = []
+    if hasattr(m, "topics_"):
+        for t in m.topics_:
+            t_id = getattr(t, "topic_id", None)
+            if t_id == -1:
+                continue
+            raw_keywords = getattr(t, "keywords", [])
+            words = [
+                str(word).strip()
+                for word in raw_keywords
+                if str(word).strip() != "" and not str(word).strip().isdigit()
+            ]
+            words = words[:topk]
+            if 0 < len(words) < topk:
+                words.extend(random.choices(words, k=topk - len(words)))
+            if words:
+                topic_words.append(words)
     return {"topics": topic_words}
 
 

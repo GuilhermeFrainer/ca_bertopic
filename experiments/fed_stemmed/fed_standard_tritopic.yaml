@@ -1,0 +1,23 @@
+extends: datasets/fed_stemmed.yaml
+
+experiment:
+  name: fed_stemmed_standard_tritopic
+  description: Standard TriTopic model (tri-modal graph topic modeling) on fed_stemmed with standard topic counts.
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
+  decimal_digits: 3
+
+model:
+  id: tritopic
+  description: TriTopic multi-view graph topic model with consensus Leiden clustering.
+  type: tritopic
+  params:
+    verbose: false
+    n_topics:
+      - 10
+      - 20
+      - 30
+      - 40
+      - 50

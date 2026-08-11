@@ -163,7 +163,10 @@ def extract_qualitative_data(
     rename_dict = {
         "Topic": "topic_id",
         "Count": "count",
+        "Size": "count",
         "Name": "name",
+        "Label": "name",
+        "Keywords": "representation",
         "Representation": "representation",
         "Representative_Docs": "representative_docs",
     }

@@ -25,6 +25,18 @@ def load_and_prep_data(
     logger.info(f"Target Text Column: '{text_col}'")
     logger.info(f"Target Embedding Column: '{embedding_col}'")
 
+    from pathlib import Path
+
+    if not Path(data_path).exists():
+        if "yelp_embeddings" in data_path:
+            fallback = Path("data/processed/yelp_s10000_embeddings.parquet")
+            if fallback.exists():
+                logger.info(
+                    f"Primary dataset '{data_path}' not found. "
+                    f"Falling back to '{fallback}'."
+                )
+                data_path = str(fallback)
+
     # Lazy load
     full_lf = pl.scan_parquet(data_path)
 
