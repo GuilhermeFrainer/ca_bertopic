@@ -1,7 +1,9 @@
 import argparse
+import datetime
 import os
 import pathlib
 import re
+import zipfile
 from typing import Dict, List, Tuple
 
 import polars as pl
@@ -158,24 +160,22 @@ def group_files(
 
 def merge_files(
     files: List[pathlib.Path], output_path: pathlib.Path, dry_run: bool, force: bool
-):
+) -> bool:
     """
-    Merges multiple files into one.
+    Merges multiple files into one. Returns True if successful, False otherwise.
     """
     if not files:
-        return
+        return False
 
     print(f"Merging {len(files)} files into {output_path}...")
     if dry_run:
-        for f in files:
-            print(f"  - {f.name}")
-        return
+        return True
 
     if output_path.exists() and not force:
         confirm = input(f"File {output_path} already exists. Overwrite? [y/N]: ")
         if confirm.lower() != "y":
             print(f"Skipping {output_path}")
-            return
+            return False
 
     try:
         dfs = []
@@ -186,7 +186,7 @@ def merge_files(
                 dfs.append(pl.read_json(f, infer_schema_length=None))
 
         if not dfs:
-            return
+            return False
 
         merged_df = pl.concat(dfs, how="diagonal")
 
@@ -206,19 +206,10 @@ def merge_files(
                 json.dump(parsed_json, f, indent=4)
 
         print(f"Successfully merged into {output_path}")
+        return True
     except Exception as e:
         print(f"Error merging files into {output_path}: {e}")
-
-
-import argparse
-import datetime
-import os
-import pathlib
-import re
-import zipfile
-from typing import Dict, List, Tuple
-
-import polars as pl
+        return False
 
 
 def move_files(files: List[pathlib.Path], move_to_dir: pathlib.Path, dry_run: bool):
@@ -306,7 +297,8 @@ def archive_files(
         if not keep_originals:
             for f in files:
                 try:
-                    os.remove(f)
+                    if f.exists():
+                        f.unlink()
                 except Exception as e:
                     print(f"Error removing {f.name}: {e}")
     except Exception as e:
@@ -370,8 +362,8 @@ def main():
         all_csv_to_move = []
         for (dataset, dataset_type), files in grouped_csv.items():
             output_path = results_dir / f"{dataset}_{dataset_type}{args.suffix}.csv"
-            merge_files(files, output_path, args.dry_run, args.force)
-            if not args.no_archive:
+            merged_ok = merge_files(files, output_path, args.dry_run, args.force)
+            if merged_ok and not args.no_archive:
                 csv_archive_dir = (
                     pathlib.Path(args.archive_dir)
                     if args.archive_dir
@@ -386,7 +378,8 @@ def main():
                     args.dry_run,
                     keep_originals=args.keep_originals,
                 )
-            all_csv_to_move.extend(files)
+            if merged_ok:
+                all_csv_to_move.extend(files)
 
         if args.move_to and all_csv_to_move and args.no_archive:
             move_files(all_csv_to_move, pathlib.Path(args.move_to), args.dry_run)
@@ -400,8 +393,8 @@ def main():
         all_json_to_move = []
         for (dataset, dataset_type), files in grouped_json.items():
             output_path = output_dir / f"{dataset}_{dataset_type}{args.suffix}.json"
-            merge_files(files, output_path, args.dry_run, args.force)
-            if not args.no_archive:
+            merged_ok = merge_files(files, output_path, args.dry_run, args.force)
+            if merged_ok and not args.no_archive:
                 json_archive_dir = (
                     pathlib.Path(args.archive_dir)
                     if args.archive_dir
@@ -416,7 +409,8 @@ def main():
                     args.dry_run,
                     keep_originals=args.keep_originals,
                 )
-            all_json_to_move.extend(files)
+            if merged_ok:
+                all_json_to_move.extend(files)
 
         if args.move_to and all_json_to_move and args.no_archive:
             move_files(all_json_to_move, pathlib.Path(args.move_to), args.dry_run)
