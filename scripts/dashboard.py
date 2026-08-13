@@ -23,6 +23,8 @@ import altair as alt
 import polars as pl
 import streamlit as st
 
+from src.experiment_tracker import build_coverage_matrix, scan_experiment_configs
+
 # Default metrics for the visualization
 DEFAULT_X_AXIS = "u_mass"
 DEFAULT_Y_AXIS = "irbo"
@@ -152,6 +154,42 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
             else:
                 df = df.with_columns(pl.lit("unknown").alias("model_type"))
 
+            # Standardize complex columns across files to prevent schema mismatches
+            if "representation" in df.columns:
+                dtype = df["representation"].dtype
+                if dtype == pl.String or dtype == pl.Utf8:
+
+                    def parse_repr(x):
+                        if not isinstance(x, str) or not x.strip():
+                            return []
+                        if x.startswith("["):
+                            try:
+                                return [str(w) for w in json.loads(x)]
+                            except Exception:
+                                pass
+                        return [w.strip() for w in x.split(",")]
+
+                    df = df.with_columns(
+                        pl.col("representation").map_elements(
+                            parse_repr, return_dtype=pl.List(pl.String)
+                        )
+                    )
+
+            if "representative_docs" in df.columns:
+                dtype = df["representative_docs"].dtype
+                if dtype != pl.List(pl.String):
+                    if isinstance(dtype, pl.List):
+                        df = df.with_columns(
+                            pl.col("representative_docs").cast(pl.List(pl.String))
+                        )
+                    else:
+                        df = df.with_columns(
+                            pl.col("representative_docs").map_elements(
+                                lambda x: [str(x)] if x is not None else [],
+                                return_dtype=pl.List(pl.String),
+                            )
+                        )
+
             dfs.append(df)
         except Exception as e:
             st.error(f"Error loading {file}: {e}")
@@ -159,7 +197,7 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
     if not dfs:
         return pl.DataFrame()
 
-    return pl.concat(dfs, how="diagonal")
+    return pl.concat(dfs, how="diagonal_relaxed")
 
 
 def main():
@@ -358,8 +396,12 @@ def main():
         return
 
     # 3. Main Tabs
-    tab_metrics, tab_qualitative = st.tabs(
-        ["📊 Quantitative Metrics", "🔍 Qualitative Analysis"]
+    tab_metrics, tab_qualitative, tab_coverage = st.tabs(
+        [
+            "📊 Quantitative Metrics",
+            "🔍 Qualitative Analysis",
+            "📋 Experiment Coverage",
+        ]
     )
 
     with tab_metrics:
@@ -393,11 +435,14 @@ def main():
         m_col1.metric("Experiments", len(filtered_df))
         m_col2.metric("Datasets", filtered_df["dataset_label"].n_unique())
         m_col3.metric("Model Types", filtered_df["model_type"].n_unique())
+        avg_dur = (
+            filtered_df["duration_seconds"].mean()
+            if "duration_seconds" in filtered_df.columns
+            else 0
+        )
         m_col4.metric(
             "Avg Duration (s)",
-            round(filtered_df["duration_seconds"].mean(), 2)
-            if "duration_seconds" in filtered_df.columns
-            else 0,
+            round(avg_dur, 2) if avg_dur is not None else 0,
         )
 
         # Table with highlighting (Reverted to Pandas Style as requested)
@@ -408,12 +453,18 @@ def main():
                 pl.col("n_clusters").cast(pl.Int64, strict=False)
             )
 
+        import pandas as pd
+
         pdf = display_df.to_pandas()
 
         def highlight_best(s):
             if s.name in METRIC_CONFIG:
+                numeric_s = pd.to_numeric(s, errors="coerce")
+                if numeric_s.dropna().empty:
+                    return [""] * len(s)
                 direction = METRIC_CONFIG[s.name]
-                is_best = (s == s.max()) if direction == "max" else (s == s.min())
+                best_val = numeric_s.max() if direction == "max" else numeric_s.min()
+                is_best = numeric_s == best_val
                 return [
                     "background-color: #2E7D32; color: white" if v else ""
                     for v in is_best
@@ -633,6 +684,200 @@ def main():
                                 st.write(doc)
                     except Exception:
                         st.write(topic_data["representative_docs"])
+
+    with tab_coverage:
+        st.header("📋 Experiment Execution Coverage")
+        st.write(
+            "Track which experiments defined in `experiments/` have been executed "
+            "and saved in `results/` across representation and dataset conditions."
+        )
+
+        cov_col1, cov_col2, cov_col3, cov_col4 = st.columns([2, 2, 2, 2])
+
+        with cov_col1:
+            all_cov_datasets = ["fed", "anes", "yelp", "trump", "gadarian"]
+            selected_cov_datasets = st.multiselect(
+                "Filter Datasets:",
+                options=all_cov_datasets,
+                default=[],
+                key="cov_datasets",
+                help="Leave empty to show all datasets.",
+            )
+
+        with cov_col2:
+            status_filter = st.selectbox(
+                "Filter Status:",
+                options=[
+                    "All",
+                    "Fully Completed (3/3)",
+                    "Partially Completed (1-2/3)",
+                    "Not Run (0/3)",
+                ],
+                index=0,
+                key="cov_status_filter",
+            )
+
+        with cov_col3:
+            cov_search = st.text_input(
+                "Search Experiment:",
+                placeholder="e.g. aligned_umap",
+                key="cov_search",
+            )
+
+        with cov_col4:
+            st.write("")
+            st.write("")
+            include_archived = st.checkbox(
+                "Include Archived",
+                value=False,
+                key="cov_include_archived",
+                help="Include YAML files from experiments/archive/",
+            )
+
+        # Scan experiments & build coverage matrix
+        discovered_exps = scan_experiment_configs(
+            exp_dir=PROJECT_ROOT / "experiments",
+            include_archived=include_archived,
+        )
+
+        cov_matrix = build_coverage_matrix(discovered_exps, df)
+
+        if cov_matrix.is_empty():
+            st.info("No experiment configurations found.")
+        else:
+            # Apply coverage filters
+            filtered_matrix = cov_matrix
+
+            if selected_cov_datasets:
+                filtered_matrix = filtered_matrix.filter(
+                    pl.col("dataset_label").is_in(selected_cov_datasets)
+                )
+
+            if status_filter == "Fully Completed (3/3)":
+                filtered_matrix = filtered_matrix.filter(
+                    pl.col("coverage_status") == "Fully Completed"
+                )
+            elif status_filter == "Partially Completed (1-2/3)":
+                filtered_matrix = filtered_matrix.filter(
+                    pl.col("coverage_status") == "Partially Completed"
+                )
+            elif status_filter == "Not Run (0/3)":
+                filtered_matrix = filtered_matrix.filter(
+                    pl.col("coverage_status") == "Not Run"
+                )
+
+            if cov_search:
+                filtered_matrix = filtered_matrix.filter(
+                    pl.col("experiment_name").str.contains(cov_search, literal=False)
+                )
+
+            # Summary Metrics
+            total_exps = len(filtered_matrix)
+            full_completed = len(
+                filtered_matrix.filter(pl.col("coverage_status") == "Fully Completed")
+            )
+            total_cell_runs = (
+                filtered_matrix["completed_count"].sum() if total_exps > 0 else 0
+            )
+            total_possible_cells = total_exps * 3
+            overall_pct = (
+                round((total_cell_runs / total_possible_cells) * 100, 1)
+                if total_possible_cells > 0
+                else 0.0
+            )
+            missing_cells = total_possible_cells - total_cell_runs
+
+            s_col1, s_col2, s_col3, s_col4 = st.columns(4)
+            s_col1.metric("Experiments Listed", total_exps)
+            s_col2.metric("Fully Completed (3/3)", full_completed)
+            s_col3.metric("Coverage Rate", f"{overall_pct}%")
+            s_col4.metric("Missing Condition Runs", missing_cells)
+
+            st.divider()
+
+            # Prepare Display Table
+            display_cols = [
+                "dataset_label",
+                "experiment_name",
+                "keep_rep_stopwords",
+                "remove_rep_stopwords",
+                "stemmed",
+                "coverage_score",
+            ]
+            pdf_cov = filtered_matrix.select(display_cols).to_pandas()
+            pdf_cov = pdf_cov.rename(
+                columns={
+                    "dataset_label": "Dataset",
+                    "experiment_name": "Experiment Name",
+                    "keep_rep_stopwords": "Keep Stopwords",
+                    "remove_rep_stopwords": "Remove Stopwords",
+                    "stemmed": "Stemmed",
+                    "coverage_score": "Score",
+                }
+            )
+
+            # Cell styling helper
+            def style_cell(val):
+                if isinstance(val, str):
+                    if val.startswith("✅"):
+                        return (
+                            "background-color: #D4EDDA; "
+                            "color: #155724; font-weight: bold;"
+                        )
+                    elif val.startswith("⚠️"):
+                        return "background-color: #FFF3CD; color: #856404;"
+                    elif val.startswith("❌"):
+                        return "background-color: #F8D7DA; color: #721C24;"
+                return ""
+
+            style_fn = getattr(pdf_cov.style, "map", None) or getattr(
+                pdf_cov.style, "applymap"
+            )
+            styled_cov_df = style_fn(style_cell)
+            st.dataframe(styled_cov_df, width="stretch", hide_index=True)
+
+            # Detail Expander
+            st.divider()
+            st.subheader("🔍 Experiment Details Inspector")
+            exp_names = filtered_matrix["experiment_name"].to_list()
+            if exp_names:
+                selected_exp_name = st.selectbox(
+                    "Select Experiment to Inspect Details:", options=exp_names
+                )
+                exp_detail_row = filtered_matrix.filter(
+                    pl.col("experiment_name") == selected_exp_name
+                ).to_dicts()[0]
+
+                d_col1, d_col2 = st.columns(2)
+                with d_col1:
+                    st.write("**Configuration Files:**")
+                    std_path = exp_detail_row.get("yaml_standard") or "N/A"
+                    stem_path = exp_detail_row.get("yaml_stemmed") or "N/A"
+                    st.write(f"- Standard YAML: `{std_path}`")
+                    st.write(f"- Stemmed YAML: `{stem_path}`")
+                    st.write(f"- Dataset: `{exp_detail_row['dataset_label']}`")
+                    st.write(
+                        f"- Is Archived: `{exp_detail_row.get('is_archived', False)}`"
+                    )
+
+                with d_col2:
+                    st.write("**Condition Details:**")
+                    run_details = json.loads(
+                        exp_detail_row.get("run_details_json", "{}")
+                    )
+                    for cond_key, cond_title in [
+                        ("keep_rep_stopwords", "Keep Stopwords"),
+                        ("remove_rep_stopwords", "Remove Stopwords"),
+                        ("stemmed", "Stemmed"),
+                    ]:
+                        c_info = run_details.get(cond_key, {})
+                        status = c_info.get("status", "Not Run")
+                        cnt = c_info.get("count", 0)
+                        dry_cnt = c_info.get("dry_run_count", 0)
+                        st.write(
+                            f"- **{cond_title}**: {status} "
+                            f"({cnt} full runs, {dry_cnt} dry runs)"
+                        )
 
 
 if __name__ == "__main__":
