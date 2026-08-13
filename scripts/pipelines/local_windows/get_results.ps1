@@ -3,6 +3,7 @@ param (
     [switch]$MergeInfo0,
     [switch]$OnlyInfo0,
     [switch]$Release,
+    [switch]$Best,
     [ValidateSet("all", "standard", "stemmed", "no_stopword_removal", "with_stopwords", "no_stopword")]
     [string]$ResultType = "all"
 )
@@ -64,9 +65,11 @@ foreach ($resType in $resultTypesToProcess) {
 
         if ($Figures) {
             # 1. Cleveland Dot Plots
-            Write-Host "Generating Cleveland Dot Plot (Best)..."
-            $clevelandBestPath = Join-Path $typeFiguresDir "${dataset}_cleveland.pdf"
-            uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --cleveland "$clevelandBestPath" --suppress-nulls @mergeFlags
+            if ($Best) {
+                Write-Host "Generating Cleveland Dot Plot (Best)..."
+                $clevelandBestPath = Join-Path $typeFiguresDir "${dataset}_cleveland.pdf"
+                uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --cleveland "$clevelandBestPath" --suppress-nulls @mergeFlags
+            }
 
             Write-Host "Generating Cleveland Dot Plot (Average)..."
             $clevelandAvgPath = Join-Path $typeFiguresDir "${dataset}_cleveland_avg.pdf"
@@ -78,9 +81,11 @@ foreach ($resType in $resultTypesToProcess) {
             uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --parallel "$parallelPath" --dump --suppress-nulls @mergeFlags
 
             # 3. Star Plots
-            Write-Host "Generating Star Plot (Best)..."
-            $starBestPath = Join-Path $typeFiguresDir "${dataset}_star_best.pdf"
-            uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --star-plot "$starBestPath" --suppress-nulls @mergeFlags  
+            if ($Best) {
+                Write-Host "Generating Star Plot (Best)..."
+                $starBestPath = Join-Path $typeFiguresDir "${dataset}_star_best.pdf"
+                uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --star-plot "$starBestPath" --suppress-nulls @mergeFlags
+            }
 
             Write-Host "Generating Star Plot (Average)..."
             $starAvgPath = Join-Path $typeFiguresDir "${dataset}_star_avg.pdf"
@@ -88,13 +93,15 @@ foreach ($resType in $resultTypesToProcess) {
         }
 
         # 4. LaTeX Tables
-        Write-Host "Generating LaTeX Table (Best)..."
-        $tableBestPath = Join-Path $typeTablesDir "${dataset}_table_best.tex"
-        uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --latex "$tableBestPath" --suppress-nulls @mergeFlags     
+        if ($Best) {
+            Write-Host "Generating LaTeX Table (Best)..."
+            $tableBestPath = Join-Path $typeTablesDir "${dataset}_table_best.tex"
+            uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --latex "$tableBestPath" --suppress-nulls @mergeFlags
 
-        Write-Host "Generating LaTeX Table (Best - Full with PCA & K-Means)..."
-        $tableBestFullPath = Join-Path $typeTablesDir "${dataset}_table_best_full.tex"
-        uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --latex "$tableBestFullPath" --suppress-nulls --exclude-clustering none --exclude-dim-red none @mergeFlags
+            Write-Host "Generating LaTeX Table (Best - Full with PCA & K-Means)..."
+            $tableBestFullPath = Join-Path $typeTablesDir "${dataset}_table_best_full.tex"
+            uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --latex "$tableBestFullPath" --suppress-nulls --exclude-clustering none --exclude-dim-red none @mergeFlags
+        }
 
         Write-Host "Generating LaTeX Table (Average)..."
         $tableAvgPath = Join-Path $typeTablesDir "${dataset}_table_avg.tex"

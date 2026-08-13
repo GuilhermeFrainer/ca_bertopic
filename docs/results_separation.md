@@ -42,17 +42,17 @@ CA-BERTopic-Results/ (or Dissertation release directory)
 │   ├── standard/
 │   │   ├── model_labels.tex
 │   │   ├── hdbscan_noise_coverage.tex
-│   │   ├── fed_table_best.tex
+│   │   ├── fed_table_avg.tex
 │   │   └── ...
 │   ├── stemmed/
 │   │   ├── model_labels.tex
 │   │   ├── hdbscan_noise_coverage.tex
-│   │   ├── fed_table_best.tex
+│   │   ├── fed_table_avg.tex
 │   │   └── ...
 │   └── no_stopword_removal/
 │       ├── model_labels.tex
 │       ├── hdbscan_noise_coverage.tex
-│       ├── fed_table_best.tex
+│       ├── fed_table_avg.tex
 │       └── ...
 └── figures/
     ├── standard/
