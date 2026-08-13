@@ -282,16 +282,16 @@ def archive_files(
         "- Identical duplicate rows across all columns were deduplicated in the final merged file.\n"
     )
 
-    print(f"Archiving {len(files)} files into {zip_path}...")
     if dry_run:
-        print(
-            f"  [Dry Run] Would create {zip_path} containing README.txt and {len(files)} files."
+        cleanup_msg = (
+            "originals will be kept" if keep_originals else "originals will be removed"
         )
-        if not keep_originals:
-            for f in files:
-                print(f"  [Dry Run] Would remove original file: {f.name}")
+        print(
+            f"  [Dry Run] Archive ZIP: {zip_path} (contains README.txt + {len(files)} files; {cleanup_msg})"
+        )
         return
 
+    print(f"Archiving {len(files)} files into {zip_path}...")
     if not archive_dir.exists():
         archive_dir.mkdir(parents=True, exist_ok=True)
 
