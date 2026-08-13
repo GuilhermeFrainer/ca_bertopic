@@ -8,6 +8,8 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import zipfile
+
 from scripts.analysis.merge_results import (  # noqa: E402
     archive_files,
     get_dataset_info,
@@ -15,7 +17,6 @@ from scripts.analysis.merge_results import (  # noqa: E402
     merge_files,
     normalize_dataset_name,
 )
-import zipfile
 
 
 def test_normalize_dataset_name():

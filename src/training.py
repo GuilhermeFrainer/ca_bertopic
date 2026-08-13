@@ -3,6 +3,7 @@ import time
 from typing import Any, Optional
 
 import numpy as np
+from tritopic import TriTopic
 
 import src.evaluation as evaluation
 
@@ -32,9 +33,7 @@ def train_and_evaluate(
     logger = logging.getLogger("pipeline")
 
     start_time = time.time()
-    is_tritopic = type(topic_model).__name__ == "TriTopic" or hasattr(
-        topic_model, "topics_"
-    )
+    is_tritopic = isinstance(topic_model, TriTopic)
 
     if is_tritopic:
         # Check if metadata should be used

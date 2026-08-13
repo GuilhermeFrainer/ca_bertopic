@@ -181,3 +181,43 @@ def test_create_tritopic_instance_n_clusters_override():
     model_config_2 = {"type": "tritopic", "params": {"n_clusters": 30}}
     model_2 = create_tritopic_instance(model_config=model_config_2, random_state=42)
     assert model_2.n_topics == 30
+
+
+def test_train_and_evaluate_bertopic_with_scaled_metadata():
+    """
+    Tests that train_and_evaluate correctly fits a BERTopic model without
+    passing metadata to BERTopic.fit when scaled_metadata is provided.
+    """
+    from bertopic import BERTopic
+
+    import src.training as training
+
+    model_config = {
+        "dimensionality_reduction": {"type": "umap"},
+        "clustering": {"type": "hdbscan"},
+    }
+    scaled_metadata = np.random.rand(20, 2)
+    topic_model = create_bertopic_instance(
+        model_config=model_config, scaled_metadata=scaled_metadata, random_state=42
+    )
+
+    texts = [f"This is document number {i}" for i in range(20)]
+    embeddings = np.random.rand(20, 10)
+    config = {
+        "experiment": {
+            "coherence_metrics": [],
+            "diversity_metrics": [],
+        }
+    }
+
+    metrics, trained = training.train_and_evaluate(
+        topic_model=topic_model,
+        model_id="test_bertopic",
+        text=texts,
+        embeddings=embeddings,
+        config=config,
+        scaled_metadata=scaled_metadata,
+    )
+
+    assert isinstance(trained, BERTopic)
+    assert "n_topics" in metrics
