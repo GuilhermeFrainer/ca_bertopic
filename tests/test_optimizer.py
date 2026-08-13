@@ -239,3 +239,65 @@ def test_bertopic_hyperparameter():
     assert combinations[0][1] == {"bertopic.params.nr_topics": 10}
     assert combinations[1][1] == {"bertopic.params.nr_topics": 20}
     assert combinations[2][1] == {"bertopic.params.nr_topics": 30}
+
+
+def test_optimizer_run_baseline_with_scaled_metadata():
+    """
+    Tests that Optimizer.run() successfully trains a standard BERTopic baseline
+    model without failing when scaled_metadata is provided.
+    """
+    import numpy as np
+    from src.optimizer import Optimizer
+
+    model_config = {
+        "id": "baseline",
+        "is_baseline": True,
+        "dimensionality_reduction": {
+            "type": "umap",
+            "params": {"min_dist": 0.0, "metric": "cosine"},
+        },
+        "clustering": {
+            "type": "hdbscan",
+            "params": {"min_cluster_size": 2},
+        },
+        "bertopic": {
+            "params": {"nr_topics": [2, 3]},
+        },
+    }
+
+    experiment_config = {
+        "experiment": {
+            "dataset_path": "data/mock_dataset.parquet",
+            "coherence_metrics": [],
+            "diversity_metrics": [],
+        }
+    }
+
+    texts = [
+        "apple banana orange fruit salad",
+        "pear apple grape fruit smoothie",
+        "car truck vehicle engine motor",
+        "bus train vehicle diesel motor",
+        "python code software programming test",
+        "java script software developer coding",
+    ]
+    embeddings = np.random.rand(len(texts), 10)
+    scaled_metadata = np.random.rand(len(texts), 4)
+
+    optimizer = Optimizer(
+        texts=texts,
+        embeddings=embeddings,
+        scaled_metadata=scaled_metadata,
+        model_config=model_config,
+        experiment_config=experiment_config,
+        experiment_id="test_baseline_opt",
+        random_state=42,
+        file_timestamp="20260101-000000",
+    )
+
+    optimizer.run()
+
+    assert len(optimizer.results) == 2
+    assert optimizer.results[0]["model_name"] == "baseline_1"
+    assert optimizer.results[1]["model_name"] == "baseline_2"
+    assert "n_topics" in optimizer.results[0]

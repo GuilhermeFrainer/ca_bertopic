@@ -221,3 +221,40 @@ def test_train_and_evaluate_bertopic_with_scaled_metadata():
 
     assert isinstance(trained, BERTopic)
     assert "n_topics" in metrics
+
+
+def test_train_and_evaluate_tritopic_dispatches_metadata():
+    """
+    Tests that train_and_evaluate correctly calls TriTopic.fit with
+    the metadata keyword argument when scaled_metadata is provided.
+    """
+    from unittest.mock import MagicMock
+    from tritopic import TriTopic
+    import src.training as training
+
+    mock_tritopic = MagicMock(spec=TriTopic)
+    mock_tritopic.topics_ = []
+    mock_tritopic.labels_ = []
+
+    texts = ["doc a", "doc b"]
+    embeddings = np.random.rand(2, 5)
+    scaled_metadata = np.random.rand(2, 3)
+    config = {
+        "experiment": {
+            "coherence_metrics": [],
+            "diversity_metrics": [],
+        }
+    }
+
+    training.train_and_evaluate(
+        topic_model=mock_tritopic,
+        model_id="test_tritopic",
+        text=texts,
+        embeddings=embeddings,
+        config=config,
+        scaled_metadata=scaled_metadata,
+    )
+
+    mock_tritopic.fit.assert_called_once_with(
+        documents=texts, embeddings=embeddings, metadata=scaled_metadata
+    )
