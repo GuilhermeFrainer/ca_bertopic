@@ -1,12 +1,21 @@
 import argparse
 import datetime
+import json
 import os
 import pathlib
 import re
+import sys
 import zipfile
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import polars as pl
+
+# Add project root to sys.path
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.verification import verify_dataset_completeness
 
 
 def normalize_dataset_name(name: str) -> str:
@@ -18,6 +27,14 @@ def normalize_dataset_name(name: str) -> str:
     name = re.sub(r"_s\d+$", "", name)
     name = re.sub(r"_stemmed$", "", name)
     return name
+
+
+def normalize_timestamp(ts: Any) -> str:
+    """Normalizes a timestamp into a comparable 14-character string YYYYMMDDHHMMSS."""
+    if ts is None:
+        return ""
+    digits = re.sub(r"\D", "", str(ts))
+    return digits[:14].ljust(14, "0")
 
 
 def parse_filename(filename: str) -> Tuple[str, str, str]:
@@ -63,6 +80,13 @@ def get_dataset_info(file_path: pathlib.Path) -> Tuple[str | None, str | None]:
         exp_id, _, _ = parse_filename(file_path.name)
         if exp_id:
             dataset_name = exp_id.split("_")[0]
+        else:
+            stem = file_path.stem
+            if stem.endswith("_merged"):
+                stem = stem[:-7]
+            parts = stem.split("_")
+            if parts and parts[0]:
+                dataset_name = parts[0]
 
     if not dataset_name:
         return None, None
@@ -111,10 +135,7 @@ def get_dataset_name(file_path: pathlib.Path) -> str | None:
 def group_files(
     directory: pathlib.Path, extension: str, ignore_suffix: str = None
 ) -> Dict[Tuple[str, str], List[pathlib.Path]]:
-    """
-    Groups files by (dataset_name, dataset_type) and keeps only the latest run for each experiment.
-    Also includes files that don't match the experiment pattern but have a dataset_name.
-    """
+    """Groups files by (dataset_name, dataset_type) and keeps latest run."""
     latest_runs: Dict[Tuple[str, str, str, str], Tuple[str, pathlib.Path]] = {}
     base_files: Dict[Tuple[str, str], List[pathlib.Path]] = {}
 
@@ -131,8 +152,9 @@ def group_files(
 
         if exp_id:
             key = (dataset_name, dataset_type, exp_id, random_state)
-            if key not in latest_runs or timestamp > latest_runs[key][0]:
-                latest_runs[key] = (timestamp, file_path)
+            norm_ts = normalize_timestamp(timestamp)
+            if key not in latest_runs or norm_ts > latest_runs[key][0]:
+                latest_runs[key] = (norm_ts, file_path)
         else:
             group_key = (dataset_name, dataset_type)
             if group_key not in base_files:
@@ -150,7 +172,7 @@ def group_files(
     for group_key, files in base_files.items():
         if group_key not in grouped:
             grouped[group_key] = []
-        # Add base files, but avoid duplicates if they were somehow already in latest_runs
+        # Add base files, avoiding duplicates
         for bf in files:
             if bf not in grouped[group_key]:
                 grouped[group_key].append(bf)
@@ -158,54 +180,173 @@ def group_files(
     return grouped
 
 
+def deduplicate_dataframe(df: pl.DataFrame, is_json: bool = False) -> pl.DataFrame:
+    """Conservative deduplication: keeps the newer entry for each trial/model run.
+
+    For CSV: keeps latest row for (dataset_name, model_name/id, random_state).
+    For JSON: keeps all topics for latest (dataset_name, model_id, random_state).
+    Also removes duplicate rows across all columns.
+    """
+    if df.is_empty():
+        return df
+
+    # Build standardized timestamp expression for comparisons
+    ts_expr = pl.lit("")
+    if "file_timestamp" in df.columns:
+        ts_expr = pl.col("file_timestamp").fill_null("")
+    elif "timestamp" in df.columns:
+        ts_expr = pl.col("timestamp").fill_null("")
+
+    df_with_ts = df.with_columns(
+        ts_expr.map_elements(normalize_timestamp, return_dtype=pl.Utf8).alias(
+            "__norm_ts"
+        )
+    )
+
+    # Determine grouping key for unique runs
+    run_key_cols = []
+    if "dataset_name" in df.columns:
+        run_key_cols.append("dataset_name")
+    for c in ["model_name", "model_id", "experiment_id"]:
+        if c in df.columns and c not in run_key_cols:
+            run_key_cols.append(c)
+            break
+    if "random_state" in df.columns:
+        run_key_cols.append("random_state")
+
+    if not run_key_cols:
+        return df.unique(maintain_order=True)
+
+    if not is_json:
+        # Sort ascending by norm_ts, then pick the last (latest) per run_key_cols
+        deduped = (
+            df_with_ts.sort("__norm_ts", descending=False, nulls_last=False)
+            .unique(subset=run_key_cols, keep="last", maintain_order=True)
+            .drop("__norm_ts")
+        )
+        return deduped
+    else:
+        # For JSON: multiple topic rows per run. Find max __norm_ts per run_key_cols
+        max_ts_df = df_with_ts.group_by(run_key_cols).agg(
+            pl.col("__norm_ts").max().alias("__max_norm_ts")
+        )
+        joined = df_with_ts.join(max_ts_df, on=run_key_cols, how="inner")
+        filtered = joined.filter(pl.col("__norm_ts") == pl.col("__max_norm_ts"))
+        deduped = filtered.drop(["__norm_ts", "__max_norm_ts"]).unique(
+            maintain_order=True
+        )
+        return deduped
+
+
 def merge_files(
-    files: List[pathlib.Path], output_path: pathlib.Path, dry_run: bool, force: bool
+    files: List[pathlib.Path],
+    output_path: pathlib.Path,
+    dry_run: bool,
+    force: bool,
+    allow_partial: bool = False,
 ) -> bool:
+    """Merges existing merged data and new incoming files with deduplication.
+
+    Always keeps the newer entry when duplicates or re-runs are detected.
+    Returns True if successful, False otherwise.
     """
-    Merges multiple files into one. Returns True if successful, False otherwise.
-    """
-    if not files:
+    if not files and not output_path.exists():
         return False
 
-    print(f"Merging {len(files)} files into {output_path}...")
-    if dry_run:
-        return True
+    is_json = output_path.suffix == ".json"
+    dfs: List[pl.DataFrame] = []
+    existing_rows = 0
 
-    if output_path.exists() and not force:
-        confirm = input(f"File {output_path} already exists. Overwrite? [y/N]: ")
-        if confirm.lower() != "y":
-            print(f"Skipping {output_path}")
-            return False
+    # 1. Load existing merged file if present
+    if output_path.exists():
+        try:
+            if output_path.suffix == ".csv":
+                existing_df = pl.read_csv(output_path, infer_schema_length=None)
+            elif output_path.suffix == ".json":
+                existing_df = pl.read_json(output_path, infer_schema_length=None)
+            else:
+                existing_df = None
+
+            if existing_df is not None and not existing_df.is_empty():
+                existing_rows = len(existing_df)
+                dfs.append(existing_df)
+        except Exception as e:
+            print(f"Warning: Could not read existing merged file {output_path}: {e}")
+
+    # 2. Load incoming individual files
+    incoming_rows = 0
+    for f in files:
+        try:
+            if f.suffix == ".csv":
+                df = pl.read_csv(f, infer_schema_length=None)
+            elif f.suffix == ".json":
+                df = pl.read_json(f, infer_schema_length=None)
+            else:
+                continue
+
+            if df is not None and not df.is_empty():
+                # Ensure file_timestamp is populated if missing
+                if "file_timestamp" not in df.columns:
+                    _, parsed_ts, _ = parse_filename(f.name)
+                    if parsed_ts:
+                        df = df.with_columns(pl.lit(parsed_ts).alias("file_timestamp"))
+                incoming_rows += len(df)
+                dfs.append(df)
+        except Exception as e:
+            print(f"Warning: Could not read file {f}: {e}")
+
+    if not dfs:
+        return False
 
     try:
-        dfs = []
-        for f in files:
-            if f.suffix == ".csv":
-                dfs.append(pl.read_csv(f, infer_schema_length=None))
-            elif f.suffix == ".json":
-                dfs.append(pl.read_json(f, infer_schema_length=None))
+        combined_df = pl.concat(dfs, how="diagonal")
+        deduped_df = deduplicate_dataframe(combined_df, is_json=is_json)
+        final_rows = len(deduped_df)
 
-        if not dfs:
-            return False
+        # 3. Check for partial models on CSV merges
+        if not is_json:
+            d_name, d_type = get_dataset_info(output_path)
+            if d_name and d_type:
+                report = verify_dataset_completeness(d_name, d_type, df=deduped_df)
+                if report.has_partial_models:
+                    print(
+                        f"\n[WARNING] Partial models detected for {output_path.name}:"
+                    )
+                    for pm in report.partial_models:
+                        missing_str = ", ".join(str(s) for s in pm.missing_seeds)
+                        print(
+                            f"  - {pm.model_name}: {pm.found_runs}/{pm.expected_runs} "
+                            f"runs. Missing seeds: [{missing_str}]"
+                        )
+                    slurm_cmd = report.slurm_rerun_command()
+                    if slurm_cmd:
+                        print(f"  Slurm re-run command: {slurm_cmd}")
+                    if not allow_partial:
+                        print(
+                            f"Aborting merge for {output_path.name} to protect "
+                            "raw files. Use --allow-partial to override.\n"
+                        )
+                        return False
 
-        merged_df = pl.concat(dfs, how="diagonal")
+        print(
+            f"Merging {output_path.name}: {existing_rows} existing + "
+            f"{incoming_rows} incoming ({len(files)} files) -> "
+            f"{final_rows} deduplicated rows (newer entries kept)."
+        )
 
-        # Deduplicate: only remove rows that are 100% identical across all columns
+        if dry_run:
+            print(f"  [Dry Run] Would write {final_rows} rows to {output_path}")
+            return True
+
         if output_path.suffix == ".csv":
-            merged_df = merged_df.unique(maintain_order=True)
-
-        if output_path.suffix == ".csv":
-            merged_df.write_csv(output_path)
+            deduped_df.write_csv(output_path)
         elif output_path.suffix == ".json":
-            # For JSON, we use the same pretty-print logic as in the main scripts
-            import json
-
-            json_str = merged_df.write_json()
+            json_str = deduped_df.write_json()
             parsed_json = json.loads(json_str)
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(parsed_json, f, indent=4)
+            with open(output_path, "w", encoding="utf-8") as out_f:
+                json.dump(parsed_json, out_f, indent=4)
 
-        print(f"Successfully merged into {output_path}")
+        print(f"Successfully saved merged results to {output_path}")
         return True
     except Exception as e:
         print(f"Error merging files into {output_path}: {e}")
@@ -238,10 +379,7 @@ def archive_files(
     dry_run: bool,
     keep_originals: bool = False,
 ):
-    """
-    Packages original raw files into a timestamped ZIP archive containing a README.txt,
-    and removes the original files from the source directory unless keep_originals is True.
-    """
+    """Packages original raw files into a timestamped ZIP archive with README.txt."""
     if not files:
         return
 
@@ -264,13 +402,13 @@ def archive_files(
         f"Total Raw Files Merged: {len(files)}\n\n"
         "Archived Files:\n"
         "---------------\n"
-        f"This archive contains the {len(files)} original raw experiment result files that were\n"
+        f"This archive contains {len(files)} original raw result files that were\n"
         f"consolidated into '{output_path.name}':\n\n"
         f"{file_list_str}\n\n"
         "Notes:\n"
         "------\n"
-        "- Only the latest run for each (experiment_id, random_state) pair was kept during merge.\n"
-        "- Identical duplicate rows across all columns were deduplicated in the final merged file.\n"
+        "- Only latest run per (experiment_id, random_state) kept during merge.\n"
+        "- Identical duplicate rows deduplicated in final merged file.\n"
     )
 
     if dry_run:
@@ -278,7 +416,8 @@ def archive_files(
             "originals will be kept" if keep_originals else "originals will be removed"
         )
         print(
-            f"  [Dry Run] Archive ZIP: {zip_path} (contains README.txt + {len(files)} files; {cleanup_msg})"
+            f"  [Dry Run] Archive ZIP: {zip_path} "
+            f"(contains README.txt + {len(files)} files; {cleanup_msg})"
         )
         return
 
@@ -326,7 +465,7 @@ def main():
     parser.add_argument(
         "--move-to",
         type=str,
-        help="Optional directory to move original files after merging (when --no-archive is set).",
+        help="Optional directory to move files after merging.",
     )
     parser.add_argument(
         "--keep-originals",
@@ -349,6 +488,11 @@ def main():
         action="store_true",
         help="Overwrite existing files without prompting.",
     )
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="Allow merging even if partial model runs are detected.",
+    )
 
     args = parser.parse_args()
 
@@ -362,8 +506,14 @@ def main():
         all_csv_to_move = []
         for (dataset, dataset_type), files in grouped_csv.items():
             output_path = results_dir / f"{dataset}_{dataset_type}{args.suffix}.csv"
-            merged_ok = merge_files(files, output_path, args.dry_run, args.force)
-            if merged_ok and not args.no_archive:
+            merged_ok = merge_files(
+                files,
+                output_path,
+                args.dry_run,
+                args.force,
+                allow_partial=args.allow_partial,
+            )
+            if merged_ok and not args.no_archive and files:
                 csv_archive_dir = (
                     pathlib.Path(args.archive_dir)
                     if args.archive_dir
@@ -393,8 +543,14 @@ def main():
         all_json_to_move = []
         for (dataset, dataset_type), files in grouped_json.items():
             output_path = output_dir / f"{dataset}_{dataset_type}{args.suffix}.json"
-            merged_ok = merge_files(files, output_path, args.dry_run, args.force)
-            if merged_ok and not args.no_archive:
+            merged_ok = merge_files(
+                files,
+                output_path,
+                args.dry_run,
+                args.force,
+                allow_partial=args.allow_partial,
+            )
+            if merged_ok and not args.no_archive and files:
                 json_archive_dir = (
                     pathlib.Path(args.archive_dir)
                     if args.archive_dir

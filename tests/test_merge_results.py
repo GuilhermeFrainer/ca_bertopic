@@ -1,5 +1,6 @@
 import pathlib
 import sys
+import zipfile
 
 import polars as pl
 
@@ -7,8 +8,6 @@ import polars as pl
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-import zipfile
 
 from scripts.analysis.merge_results import (  # noqa: E402
     archive_files,
@@ -89,7 +88,13 @@ def test_group_files_and_merge(tmp_path):
 
     # Test merge_files
     out_std = tmp_path / "fed_standard_merged.csv"
-    merge_files(grouped[("fed", "standard")], out_std, dry_run=False, force=True)
+    merge_files(
+        grouped[("fed", "standard")],
+        out_std,
+        dry_run=False,
+        force=True,
+        allow_partial=True,
+    )
     assert out_std.exists()
 
     res_df = pl.read_csv(out_std)
@@ -136,3 +141,108 @@ def test_archive_files(tmp_path):
     # Originals should be cleaned up
     assert not f_std_1.exists()
     assert not f_std_2.exists()
+
+
+def test_merge_files_keeps_newer_individual_over_older_merged(tmp_path):
+    out_std = tmp_path / "fed_standard_merged.csv"
+    pl.DataFrame(
+        {
+            "dataset_name": ["fed"],
+            "model_name": ["baseline"],
+            "random_state": [1234],
+            "file_timestamp": ["20260801-100000"],
+            "c_v": [0.5],
+        }
+    ).write_csv(out_std)
+
+    f_newer = tmp_path / "fed_standard_baseline-20260805-100000-1234.csv"
+    pl.DataFrame(
+        {
+            "dataset_name": ["fed"],
+            "model_name": ["baseline"],
+            "random_state": [1234],
+            "file_timestamp": ["20260805-100000"],
+            "c_v": [0.65],
+        }
+    ).write_csv(f_newer)
+
+    merge_files([f_newer], out_std, dry_run=False, force=True, allow_partial=True)
+    res_df = pl.read_csv(out_std)
+    assert len(res_df) == 1
+    assert res_df["c_v"][0] == 0.65
+    assert res_df["file_timestamp"][0] == "20260805-100000"
+
+
+def test_merge_files_keeps_newer_merged_over_older_individual(tmp_path):
+    out_std = tmp_path / "fed_standard_merged.csv"
+    pl.DataFrame(
+        {
+            "dataset_name": ["fed"],
+            "model_name": ["baseline"],
+            "random_state": [1234],
+            "file_timestamp": ["20260810-100000"],
+            "c_v": [0.85],
+        }
+    ).write_csv(out_std)
+
+    f_older = tmp_path / "fed_standard_baseline-20260802-100000-1234.csv"
+    pl.DataFrame(
+        {
+            "dataset_name": ["fed"],
+            "model_name": ["baseline"],
+            "random_state": [1234],
+            "file_timestamp": ["20260802-100000"],
+            "c_v": [0.45],
+        }
+    ).write_csv(f_older)
+
+    merge_files([f_older], out_std, dry_run=False, force=True, allow_partial=True)
+    res_df = pl.read_csv(out_std)
+    assert len(res_df) == 1
+    assert res_df["c_v"][0] == 0.85
+    assert res_df["file_timestamp"][0] == "20260810-100000"
+
+
+def test_merge_files_json_topic_deduplication(tmp_path):
+    out_json = tmp_path / "fed_standard_merged.json"
+    # Older run with 2 topics
+    j_old = pl.DataFrame(
+        {
+            "dataset_name": ["fed", "fed"],
+            "model_id": ["baseline", "baseline"],
+            "topic_id": [0, 1],
+            "random_state": [1234, 1234],
+            "file_timestamp": ["20260801-100000", "20260801-100000"],
+            "count": [10, 20],
+        }
+    )
+    import json
+
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump(json.loads(j_old.write_json()), f)
+
+    # Newer run with 2 updated topics and a new model
+    f_new = tmp_path / "fed_standard_baseline-20260805-100000-1234.json"
+    j_new = pl.DataFrame(
+        {
+            "dataset_name": ["fed", "fed", "fed"],
+            "model_id": ["baseline", "baseline", "model_b"],
+            "topic_id": [0, 1, 0],
+            "random_state": [1234, 1234, 1234],
+            "file_timestamp": [
+                "20260805-100000",
+                "20260805-100000",
+                "20260805-100000",
+            ],
+            "count": [15, 25, 30],
+        }
+    )
+    with open(f_new, "w", encoding="utf-8") as f:
+        json.dump(json.loads(j_new.write_json()), f)
+
+    merge_files([f_new], out_json, dry_run=False, force=True)
+    res_df = pl.read_json(out_json)
+    assert len(res_df) == 3
+    # Baseline count should be 15 and 25 (from newer run)
+    baseline_counts = res_df.filter(pl.col("model_id") == "baseline")["count"].to_list()
+    assert sorted(baseline_counts) == [15, 25]
