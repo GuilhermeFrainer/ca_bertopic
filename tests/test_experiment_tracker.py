@@ -4,8 +4,13 @@ import polars as pl
 import pytest
 
 from src.experiment_tracker import (
+    DEFAULT_SLURM_SCRIPT_CLUSTER,
+    DEFAULT_SLURM_SCRIPT_LOCAL,
     build_coverage_matrix,
     classify_result_condition,
+    extract_model_name,
+    generate_grouped_slurm_commands,
+    generate_slurm_command,
     scan_experiment_configs,
 )
 
@@ -204,3 +209,79 @@ def test_build_coverage_matrix_with_partial_nan_metrics(mock_exp_dir: Path):
     assert "1 valid" in aligned_row["remove_rep_stopwords"]
     assert "1 with NaNs" in aligned_row["remove_rep_stopwords"]
     assert aligned_row["coverage_score"] == "1/3"
+
+
+def test_extract_model_name():
+    assert extract_model_name("anes_standard_aligned_umap", "anes") == "aligned_umap"
+    assert extract_model_name("fed_standard_baseline", "fed") == "baseline"
+    assert extract_model_name("yelp_standard_mv_spectral", "yelp") == "mv_spectral"
+    assert extract_model_name("trump_stemmed_mv_k_means", "trump") == "mv_k_means"
+    # Autodetection without dataset label
+    assert extract_model_name("gadarian_standard_stm") == "stm"
+    assert extract_model_name("anes_standard_tritopic") == "tritopic"
+
+
+def test_generate_slurm_command():
+    # Local path default
+    cmd1 = generate_slurm_command(
+        dataset="anes",
+        model="aligned_umap",
+        condition="keep_rep_stopwords",
+    )
+    assert (
+        cmd1
+        == f"{DEFAULT_SLURM_SCRIPT_LOCAL} -d anes -m aligned_umap --keep-rep-stopwords"
+    )
+
+    # Cluster path
+    cmd2 = generate_slurm_command(
+        dataset="fed",
+        model="baseline",
+        condition="remove_rep_stopwords",
+        script_path=DEFAULT_SLURM_SCRIPT_CLUSTER,
+    )
+    assert cmd2 == f"{DEFAULT_SLURM_SCRIPT_CLUSTER} -d fed -m baseline"
+
+    # Stemmed condition
+    cmd3 = generate_slurm_command(
+        dataset=["anes", "fed"],
+        model=["aligned_umap", "mv_spectral"],
+        condition="stemmed",
+        dry_run=True,
+        auto_yes=True,
+    )
+    assert cmd3 == (
+        f"{DEFAULT_SLURM_SCRIPT_LOCAL} -d anes,fed -m aligned_umap,mv_spectral"
+        " --stemmed -n -y"
+    )
+
+
+def test_generate_grouped_slurm_commands(mock_exp_dir: Path):
+    experiments = scan_experiment_configs(mock_exp_dir, include_archived=False)
+
+    # Empty results -> all 3 conditions for both models are 'Not Run'
+    results_df = pl.DataFrame()
+    matrix = build_coverage_matrix(experiments, results_df)
+
+    grouped = generate_grouped_slurm_commands(
+        matrix,
+        script_path=DEFAULT_SLURM_SCRIPT_CLUSTER,
+        include_not_run=True,
+    )
+
+    assert "keep_rep_stopwords" in grouped
+    assert "remove_rep_stopwords" in grouped
+    assert "stemmed" in grouped
+
+    # fed dataset has aligned_umap and baseline
+    keep_cmds = grouped["keep_rep_stopwords"]
+    assert len(keep_cmds) == 1
+    assert "-d fed" in keep_cmds[0]
+    assert "aligned_umap" in keep_cmds[0]
+    assert "baseline" in keep_cmds[0]
+    assert "--keep-rep-stopwords" in keep_cmds[0]
+    assert keep_cmds[0].startswith(DEFAULT_SLURM_SCRIPT_CLUSTER)
+
+    stemmed_cmds = grouped["stemmed"]
+    assert len(stemmed_cmds) == 1
+    assert "--stemmed" in stemmed_cmds[0]

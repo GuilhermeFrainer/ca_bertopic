@@ -383,3 +383,195 @@ def build_coverage_matrix(
         return pl.DataFrame()
 
     return pl.DataFrame(matrix_data)
+
+
+CONDITION_LABELS: dict[str, str] = {
+    "keep_rep_stopwords": "Keep Stopwords",
+    "remove_rep_stopwords": "Remove Stopwords",
+    "stemmed": "Stemmed",
+}
+
+DEFAULT_SLURM_SCRIPT_LOCAL: str = "./scripts/pipelines/slurm/queue_exp.sh"
+DEFAULT_SLURM_SCRIPT_CLUSTER: str = "./scripts/queue_exp.sh"
+
+
+def extract_model_name(canonical_name: str, dataset_label: str = "") -> str:
+    """Extracts the base model name from a canonical experiment identifier.
+
+    Examples:
+        anes_standard_aligned_umap -> aligned_umap
+        fed_standard_baseline -> baseline
+        yelp_standard_mv_spectral -> mv_spectral
+
+    Args:
+        canonical_name: Canonical experiment identifier.
+        dataset_label: Optional dataset prefix if known.
+
+    Returns:
+        Clean model name matching queue_exp.sh models.
+    """
+    clean_name = canonical_name
+    if dataset_label:
+        prefixes = [
+            f"{dataset_label}_standard_",
+            f"{dataset_label}_stemmed_",
+            f"{dataset_label}_",
+        ]
+        for p in prefixes:
+            if clean_name.startswith(p):
+                clean_name = clean_name[len(p) :]
+                break
+    else:
+        for ds in ["anes", "fed", "gadarian", "yelp", "trump"]:
+            prefixes = [f"{ds}_standard_", f"{ds}_stemmed_", f"{ds}_"]
+            for p in prefixes:
+                if clean_name.startswith(p):
+                    clean_name = clean_name[len(p) :]
+                    break
+
+    # Also strip any leftover 'standard_' if present
+    if clean_name.startswith("standard_"):
+        clean_name = clean_name[len("standard_") :]
+
+    return clean_name
+
+
+def generate_slurm_command(
+    dataset: str | list[str],
+    model: str | list[str],
+    condition: str,
+    script_path: str = DEFAULT_SLURM_SCRIPT_LOCAL,
+    dry_run: bool = False,
+    auto_yes: bool = False,
+    extra_flags: list[str] | None = None,
+) -> str:
+    """Generates a queue_exp.sh command to execute experiment(s) on SLURM.
+
+    Args:
+        dataset: Dataset label or list of dataset labels.
+        model: Model identifier or list of model identifiers.
+        condition: Condition key ('keep_rep_stopwords', 'remove_rep_stopwords',
+            or 'stemmed').
+        script_path: Script path (e.g. './scripts/pipelines/slurm/queue_exp.sh'
+            or './scripts/queue_exp.sh').
+        dry_run: If True, appends -n (--dry-run).
+        auto_yes: If True, appends -y (--yes).
+        extra_flags: Optional list of additional flags.
+
+    Returns:
+        Formatted SLURM queue command string.
+    """
+    if isinstance(dataset, str):
+        ds_list = [d.strip() for d in dataset.split(",") if d.strip()]
+    else:
+        ds_list = list(dataset)
+
+    if isinstance(model, str):
+        m_list = [m.strip() for m in model.split(",") if m.strip()]
+    else:
+        m_list = list(model)
+
+    ds_str = ",".join(dict.fromkeys(ds_list))
+    m_str = ",".join(dict.fromkeys(m_list))
+
+    parts = [script_path]
+    if ds_str:
+        parts.extend(["-d", ds_str])
+    if m_str:
+        parts.extend(["-m", m_str])
+
+    if condition == "stemmed":
+        parts.append("--stemmed")
+    elif condition == "keep_rep_stopwords":
+        parts.append("--keep-rep-stopwords")
+
+    if dry_run:
+        parts.append("-n")
+    if auto_yes:
+        parts.append("-y")
+    if extra_flags:
+        parts.extend(extra_flags)
+
+    return " ".join(parts)
+
+
+def generate_grouped_slurm_commands(
+    coverage_df: pl.DataFrame,
+    script_path: str = DEFAULT_SLURM_SCRIPT_LOCAL,
+    include_not_run: bool = True,
+    include_errors: bool = True,
+    include_dry_runs: bool = False,
+    target_conditions: list[str] | None = None,
+    dry_run: bool = False,
+    auto_yes: bool = False,
+) -> dict[str, list[str]]:
+    """Generates batched queue_exp.sh commands for missing/incomplete runs.
+
+    Groups missing models per dataset for each condition to produce minimal, safe
+    commands.
+
+    Args:
+        coverage_df: Polars DataFrame returned by build_coverage_matrix (or filtered
+            slice).
+        script_path: Path to queue_exp.sh.
+        include_not_run: Include '❌ Not Run' conditions (default: True).
+        include_errors: Include '❌ Error' and '⚠️ Partial Error' (default: True).
+        include_dry_runs: Include '⚠️ Dry Run' (default: False).
+        target_conditions: Conditions to inspect (default: all 3 conditions).
+        dry_run: Append -n to generated commands.
+        auto_yes: Append -y to generated commands.
+
+    Returns:
+        Dictionary mapping condition key to a list of executable queue_exp.sh
+        command strings.
+    """
+    if coverage_df.is_empty():
+        return {}
+
+    if target_conditions is None:
+        target_conditions = ["keep_rep_stopwords", "remove_rep_stopwords", "stemmed"]
+
+    grouped_commands: dict[str, list[str]] = {cond: [] for cond in target_conditions}
+    rows = coverage_df.to_dicts()
+
+    for cond in target_conditions:
+        # Map dataset -> list of missing model names (preserving order, no duplicates)
+        ds_to_models: dict[str, list[str]] = {}
+
+        for row in rows:
+            if cond not in row:
+                continue
+
+            val = str(row.get(cond, ""))
+            matched = False
+            if val.startswith("❌ Not Run"):
+                matched = include_not_run
+            elif "Error" in val:
+                matched = include_errors
+            elif val.startswith("⚠️ Dry Run"):
+                matched = include_dry_runs
+
+            if matched:
+                ds = str(row.get("dataset_label", "")).strip()
+                canonical_name = str(row.get("experiment_name", "")).strip()
+                model_name = extract_model_name(canonical_name, ds)
+
+                if ds not in ds_to_models:
+                    ds_to_models[ds] = []
+                if model_name not in ds_to_models[ds]:
+                    ds_to_models[ds].append(model_name)
+
+        # Generate command for each dataset
+        for ds, models in sorted(ds_to_models.items()):
+            if models:
+                cmd = generate_slurm_command(
+                    dataset=ds,
+                    model=models,
+                    condition=cond,
+                    script_path=script_path,
+                    dry_run=dry_run,
+                    auto_yes=auto_yes,
+                )
+                grouped_commands[cond].append(cmd)
+
+    return grouped_commands

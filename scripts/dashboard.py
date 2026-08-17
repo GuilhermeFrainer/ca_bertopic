@@ -23,7 +23,15 @@ import altair as alt
 import polars as pl
 import streamlit as st
 
-from src.experiment_tracker import build_coverage_matrix, scan_experiment_configs
+from src.experiment_tracker import (
+    DEFAULT_SLURM_SCRIPT_CLUSTER,
+    DEFAULT_SLURM_SCRIPT_LOCAL,
+    build_coverage_matrix,
+    extract_model_name,
+    generate_grouped_slurm_commands,
+    generate_slurm_command,
+    scan_experiment_configs,
+)
 
 # Default metrics for the visualization
 DEFAULT_X_AXIS = "u_mass"
@@ -851,6 +859,153 @@ def main():
 
             st.divider()
 
+            # Target Environment Selection for SLURM runner
+            env_choice = st.radio(
+                "**Target Script Execution Location:**",
+                options=[
+                    "🖥️ Cluster (`./scripts/queue_exp.sh`)",
+                    "💻 Local (`./scripts/pipelines/slurm/queue_exp.sh`)",
+                ],
+                index=0,
+                horizontal=True,
+                key="cov_env_choice",
+                help=(
+                    "Select whether commands should reference the cluster "
+                    "script path or local pipeline path."
+                ),
+            )
+            selected_script_path = (
+                DEFAULT_SLURM_SCRIPT_CLUSTER
+                if "Cluster" in env_choice
+                else DEFAULT_SLURM_SCRIPT_LOCAL
+            )
+
+            # Batch Command Generator Expander
+            expander_title = (
+                f"⚡ Batch SLURM Commands for Missing Experiments "
+                f"({missing_cells} missing in view)"
+            )
+            with st.expander(
+                expander_title,
+                expanded=(missing_cells > 0 and missing_cells <= 50),
+            ):
+                st.markdown(
+                    "Generate batched commands for `queue_exp.sh` "
+                    "to submit all missing or failed runs in the current view."
+                )
+
+                bg_col1, bg_col2, bg_col3 = st.columns(3)
+                with bg_col1:
+                    inc_not_run = st.checkbox(
+                        "Include Not Run (❌)",
+                        value=True,
+                        key="cov_batch_not_run",
+                    )
+                    inc_errors = st.checkbox(
+                        "Include Errors / NaNs (❌)",
+                        value=True,
+                        key="cov_batch_errors",
+                    )
+                with bg_col2:
+                    inc_dry_runs = st.checkbox(
+                        "Include Dry Runs (⚠️)",
+                        value=False,
+                        key="cov_batch_dry_runs",
+                    )
+                    batch_dry_run = st.checkbox(
+                        "SLURM Preview / Dry Run (`-n`)",
+                        value=False,
+                        key="cov_batch_slurm_dry",
+                    )
+                with bg_col3:
+                    batch_auto_yes = st.checkbox(
+                        "Auto-Confirm Jobs (`-y`)",
+                        value=False,
+                        key="cov_batch_slurm_yes",
+                    )
+
+                grouped_slurm = generate_grouped_slurm_commands(
+                    coverage_df=filtered_matrix,
+                    script_path=selected_script_path,
+                    include_not_run=inc_not_run,
+                    include_errors=inc_errors,
+                    include_dry_runs=inc_dry_runs,
+                    dry_run=batch_dry_run,
+                    auto_yes=batch_auto_yes,
+                )
+
+                all_cmds = []
+                for cond_k in [
+                    "keep_rep_stopwords",
+                    "remove_rep_stopwords",
+                    "stemmed",
+                ]:
+                    all_cmds.extend(grouped_slurm.get(cond_k, []))
+
+                if not all_cmds:
+                    st.success(
+                        "🎉 No missing experiments match the selected "
+                        "criteria in this view!"
+                    )
+                else:
+                    st.write(
+                        f"**Total SLURM Dispatch Commands:** `{len(all_cmds)}`"
+                    )
+
+                    n_keep = len(grouped_slurm.get("keep_rep_stopwords", []))
+                    n_remove = len(
+                        grouped_slurm.get("remove_rep_stopwords", [])
+                    )
+                    n_stem = len(grouped_slurm.get("stemmed", []))
+
+                    # Display categorized tabs
+                    tab_keep, tab_remove, tab_stem, tab_all = st.tabs(
+                        [
+                            f"Keep Stopwords ({n_keep})",
+                            f"Remove Stopwords ({n_remove})",
+                            f"Stemmed ({n_stem})",
+                            f"All Commands Combined ({len(all_cmds)})",
+                        ]
+                    )
+
+                    with tab_keep:
+                        keep_cmds = grouped_slurm.get("keep_rep_stopwords", [])
+                        if keep_cmds:
+                            st.code("\n".join(keep_cmds), language="bash")
+                        else:
+                            st.info("No missing experiments for Keep Stopwords.")
+
+                    with tab_remove:
+                        remove_cmds = grouped_slurm.get(
+                            "remove_rep_stopwords", []
+                        )
+                        if remove_cmds:
+                            st.code("\n".join(remove_cmds), language="bash")
+                        else:
+                            st.info(
+                                "No missing experiments for Remove Stopwords."
+                            )
+
+                    with tab_stem:
+                        stem_cmds = grouped_slurm.get("stemmed", [])
+                        if stem_cmds:
+                            st.code("\n".join(stem_cmds), language="bash")
+                        else:
+                            st.info("No missing experiments for Stemmed.")
+
+                    with tab_all:
+                        all_text = "\n".join(all_cmds)
+                        st.code(all_text, language="bash")
+                        st.download_button(
+                            label="📥 Download Commands Script (`run_missing.sh`)",
+                            data=all_text,
+                            file_name="run_missing.sh",
+                            mime="text/x-sh",
+                            key="cov_download_sh",
+                        )
+
+            st.divider()
+
             # Prepare Display Table
             display_cols = [
                 "dataset_label",
@@ -953,6 +1108,42 @@ def main():
                                 f"- **{cond_title}**: {status} "
                                 f"({cnt} full runs, {dry_cnt} dry runs)"
                             )
+
+                # Individual Experiment SLURM Run Commands
+                st.markdown(
+                    "##### ⚡ Run Commands for this Experiment (`queue_exp.sh`)"
+                )
+                st.caption(
+                    "Click the copy icon on the top right of each command block "
+                    "to copy to your clipboard:"
+                )
+
+                model_name = extract_model_name(
+                    selected_exp_name, exp_detail_row["dataset_label"]
+                )
+
+                for cond_key, cond_title in [
+                    ("keep_rep_stopwords", "Keep Stopwords (Unstemmed)"),
+                    ("remove_rep_stopwords", "Remove Stopwords (Unstemmed)"),
+                    ("stemmed", "Stemmed Dataset"),
+                ]:
+                    status_text = exp_detail_row.get(cond_key, "❌ Not Run")
+                    cmd_str = generate_slurm_command(
+                        dataset=exp_detail_row["dataset_label"],
+                        model=model_name,
+                        condition=cond_key,
+                        script_path=selected_script_path,
+                    )
+
+                    cond_badge = (
+                        "✅"
+                        if status_text.startswith("✅")
+                        else "⚠️"
+                        if status_text.startswith("⚠️")
+                        else "❌"
+                    )
+                    st.write(f"**{cond_badge} {cond_title}** — Status: `{status_text}`")
+                    st.code(cmd_str, language="bash")
 
 
 if __name__ == "__main__":
