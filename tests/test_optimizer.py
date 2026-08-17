@@ -247,6 +247,7 @@ def test_optimizer_run_baseline_with_scaled_metadata():
     model without failing when scaled_metadata is provided.
     """
     import numpy as np
+
     from src.optimizer import Optimizer
 
     model_config = {

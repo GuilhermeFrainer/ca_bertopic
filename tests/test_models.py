@@ -229,7 +229,9 @@ def test_train_and_evaluate_tritopic_dispatches_metadata():
     the metadata keyword argument when scaled_metadata is provided.
     """
     from unittest.mock import MagicMock
+
     from tritopic import TriTopic
+
     import src.training as training
 
     mock_tritopic = MagicMock(spec=TriTopic)

@@ -8,10 +8,21 @@ which experiments have been executed across representation/dataset conditions.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 import polars as pl
+
+CORE_EVAL_METRICS = [
+    "u_mass",
+    "c_v",
+    "c_npmi",
+    "c_uci",
+    "irbo",
+    "topic_diversity",
+    "diversity",
+]
 
 
 def scan_experiment_configs(
@@ -209,12 +220,33 @@ def build_coverage_matrix(
                 except ValueError:
                     sample_size = None
 
+            # Check for NaN or None in evaluation metric columns if present
+            nan_metrics = []
+            present_metrics = [m for m in CORE_EVAL_METRICS if m in r]
+            for m in present_metrics:
+                val = r.get(m)
+                if val is None:
+                    nan_metrics.append(m)
+                elif isinstance(val, float) and math.isnan(val):
+                    nan_metrics.append(m)
+                elif isinstance(val, str) and val.strip().lower() in (
+                    "nan",
+                    "none",
+                    "null",
+                    "",
+                ):
+                    nan_metrics.append(m)
+
+            has_nan = len(nan_metrics) > 0
+
             res_entry = {
                 "source_file": src_file,
                 "experiment_date": r.get("experiment_date"),
                 "timestamp": r.get("timestamp"),
                 "is_dry_run": is_dry_run,
                 "sample_size": sample_size,
+                "has_nan": has_nan,
+                "nan_metrics": nan_metrics,
             }
 
             key = (ds_clean, canonical_name, cond)
@@ -237,6 +269,7 @@ def build_coverage_matrix(
 
         completed_conds = 0
         details_map: dict[str, Any] = {}
+        has_condition_error = False
 
         for cond in conditions:
             res_list = matched_results.get((ds, c_name, cond), [])
@@ -245,33 +278,101 @@ def build_coverage_matrix(
                 row[cond] = "❌ Not Run"
                 details_map[cond] = {"status": "Not Run", "count": 0}
             else:
-                completed_conds += 1
                 full_runs = [r for r in res_list if not r["is_dry_run"]]
                 dry_runs = [r for r in res_list if r["is_dry_run"]]
 
                 if full_runs:
-                    row[cond] = f"✅ Done ({len(full_runs)} runs)"
-                    details_map[cond] = {
-                        "status": "Completed",
-                        "count": len(full_runs),
-                        "dry_run_count": len(dry_runs),
-                        "files": [r["source_file"] for r in res_list],
-                    }
+                    valid_runs = [r for r in full_runs if not r.get("has_nan", False)]
+                    nan_runs = [r for r in full_runs if r.get("has_nan", False)]
+
+                    if nan_runs and not valid_runs:
+                        has_condition_error = True
+                        row[cond] = f"❌ Error (NaNs in {len(nan_runs)} runs)"
+                        details_map[cond] = {
+                            "status": "Error",
+                            "count": 0,
+                            "error_count": len(nan_runs),
+                            "dry_run_count": len(dry_runs),
+                            "files": [r["source_file"] for r in res_list],
+                            "nan_metrics": sorted(
+                                list(
+                                    {
+                                        m
+                                        for r in nan_runs
+                                        for m in r.get("nan_metrics", [])
+                                    }
+                                )
+                            ),
+                        }
+                    elif nan_runs and valid_runs:
+                        completed_conds += 1
+                        has_condition_error = True
+                        row[cond] = (
+                            f"⚠️ Partial Error ({len(valid_runs)} valid, "
+                            f"{len(nan_runs)} with NaNs)"
+                        )
+                        details_map[cond] = {
+                            "status": "Partial Error",
+                            "count": len(valid_runs),
+                            "error_count": len(nan_runs),
+                            "dry_run_count": len(dry_runs),
+                            "files": [r["source_file"] for r in res_list],
+                            "nan_metrics": sorted(
+                                list(
+                                    {
+                                        m
+                                        for r in nan_runs
+                                        for m in r.get("nan_metrics", [])
+                                    }
+                                )
+                            ),
+                        }
+                    else:
+                        completed_conds += 1
+                        row[cond] = f"✅ Done ({len(full_runs)} runs)"
+                        details_map[cond] = {
+                            "status": "Completed",
+                            "count": len(full_runs),
+                            "dry_run_count": len(dry_runs),
+                            "files": [r["source_file"] for r in res_list],
+                        }
                 else:
-                    row[cond] = f"⚠️ Dry Run ({len(dry_runs)})"
+                    dry_valid = [r for r in dry_runs if not r.get("has_nan", False)]
+                    dry_nan = [r for r in dry_runs if r.get("has_nan", False)]
+                    if dry_nan and not dry_valid:
+                        has_condition_error = True
+                        row[cond] = f"❌ Error (NaNs in {len(dry_nan)} dry runs)"
+                    elif dry_nan and dry_valid:
+                        completed_conds += 1
+                        has_condition_error = True
+                        row[cond] = (
+                            f"⚠️ Dry Run ({len(dry_valid)} valid, "
+                            f"{len(dry_nan)} with NaNs)"
+                        )
+                    else:
+                        completed_conds += 1
+                        row[cond] = f"⚠️ Dry Run ({len(dry_runs)})"
                     details_map[cond] = {
                         "status": "Dry Run",
                         "count": 0,
+                        "error_count": len(dry_nan),
                         "dry_run_count": len(dry_runs),
                         "files": [r["source_file"] for r in res_list],
+                        "nan_metrics": sorted(
+                            list({m for r in dry_nan for m in r.get("nan_metrics", [])})
+                        ),
                     }
 
         row["completed_count"] = completed_conds
         row["coverage_score"] = f"{completed_conds}/3"
-        if completed_conds == 3:
+        if completed_conds == 3 and not has_condition_error:
             row["coverage_status"] = "Fully Completed"
+        elif completed_conds == 3 and has_condition_error:
+            row["coverage_status"] = "Completed with Errors"
         elif completed_conds > 0:
             row["coverage_status"] = "Partially Completed"
+        elif has_condition_error:
+            row["coverage_status"] = "Has Errors"
         else:
             row["coverage_status"] = "Not Run"
 

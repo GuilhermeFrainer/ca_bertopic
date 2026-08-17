@@ -133,3 +133,74 @@ def test_build_coverage_matrix(mock_exp_dir: Path):
     ).to_dicts()[0]
     assert baseline_row["coverage_score"] == "0/3"
     assert baseline_row["coverage_status"] == "Not Run"
+
+
+def test_build_coverage_matrix_with_nan_metrics(mock_exp_dir: Path):
+    experiments = scan_experiment_configs(mock_exp_dir, include_archived=False)
+
+    # Mock results dataframe where remove_rep_stopwords has NaN metrics
+    results_df = pl.DataFrame(
+        {
+            "source_file": [
+                "fed_standard_aligned_umap-20260803-120000-123.csv",
+                "fed_stemmed_standard_aligned_umap-20260805-120000-123.csv",
+            ],
+            "experiment_id": [
+                "fed_standard_aligned_umap",
+                "fed_stemmed_standard_aligned_umap",
+            ],
+            "dataset_label": ["fed", "fed"],
+            "stopword_removal": [
+                "remove_rep_stopwords",
+                "stemmed",
+            ],
+            "u_mass": [float("nan"), -2.5],
+            "c_v": [None, 0.65],
+        }
+    )
+
+    matrix = build_coverage_matrix(experiments, results_df)
+    aligned_row = matrix.filter(
+        pl.col("experiment_name") == "fed_standard_aligned_umap"
+    ).to_dicts()[0]
+
+    assert aligned_row["remove_rep_stopwords"].startswith("❌ Error")
+    assert "NaNs" in aligned_row["remove_rep_stopwords"]
+    assert aligned_row["stemmed"].startswith("✅ Done")
+    assert aligned_row["coverage_status"] == "Partially Completed"
+    assert aligned_row["coverage_score"] == "1/3"
+
+
+def test_build_coverage_matrix_with_partial_nan_metrics(mock_exp_dir: Path):
+    experiments = scan_experiment_configs(mock_exp_dir, include_archived=False)
+
+    # 2 runs for remove_rep_stopwords: one valid, one with NaN
+    results_df = pl.DataFrame(
+        {
+            "source_file": [
+                "fed_standard_aligned_umap-20260803-120000-123.csv",
+                "fed_standard_aligned_umap-20260804-120000-456.csv",
+            ],
+            "experiment_id": [
+                "fed_standard_aligned_umap",
+                "fed_standard_aligned_umap",
+            ],
+            "dataset_label": ["fed", "fed"],
+            "stopword_removal": [
+                "remove_rep_stopwords",
+                "remove_rep_stopwords",
+            ],
+            "u_mass": [-1.2, float("nan")],
+            "c_v": [0.55, 0.40],
+        }
+    )
+
+    matrix = build_coverage_matrix(experiments, results_df)
+    aligned_row = matrix.filter(
+        pl.col("experiment_name") == "fed_standard_aligned_umap"
+    ).to_dicts()[0]
+
+    assert aligned_row["remove_rep_stopwords"].startswith("⚠️ Partial Error")
+    assert "1 valid" in aligned_row["remove_rep_stopwords"]
+    assert "1 with NaNs" in aligned_row["remove_rep_stopwords"]
+    assert aligned_row["coverage_score"] == "1/3"

@@ -445,6 +445,27 @@ def main():
             round(avg_dur, 2) if avg_dur is not None else 0,
         )
 
+        # Check for NaN / None metrics in filtered_df
+        nan_info = []
+        for col in numeric_cols:
+            null_c = filtered_df[col].null_count()
+            nan_c = (
+                filtered_df.filter(pl.col(col).is_nan()).shape[0]
+                if filtered_df[col].dtype in [pl.Float32, pl.Float64]
+                else 0
+            )
+            total_invalid = null_c + nan_c
+            if total_invalid > 0:
+                nan_info.append(f"`{col}` ({total_invalid} NaN/missing)")
+
+        if nan_info:
+            cols_str = ", ".join(nan_info)
+            st.error(
+                f"🚨 **Metric Errors Detected:** Found invalid values in "
+                f"{len(nan_info)} column(s): {cols_str}. "
+                "Cells with NaNs/errors are styled in red below."
+            )
+
         # Table with highlighting (Reverted to Pandas Style as requested)
         # 1. Cast n_clusters to integer if it exists
         display_df = filtered_df.clone()
@@ -457,24 +478,49 @@ def main():
 
         pdf = display_df.to_pandas()
 
-        def highlight_best(s):
-            if s.name in METRIC_CONFIG:
+        def highlight_metrics(s):
+            styles = [""] * len(s)
+            is_metric = s.name in METRIC_CONFIG
+            is_numeric = s.name in numeric_cols
+
+            if is_metric or is_numeric:
                 numeric_s = pd.to_numeric(s, errors="coerce")
-                if numeric_s.dropna().empty:
-                    return [""] * len(s)
-                direction = METRIC_CONFIG[s.name]
-                best_val = numeric_s.max() if direction == "max" else numeric_s.min()
-                is_best = numeric_s == best_val
-                return [
-                    "background-color: #2E7D32; color: white" if v else ""
-                    for v in is_best
-                ]
-            return [""] * len(s)
+
+                for i, val in enumerate(s):
+                    num_val = numeric_s.iloc[i]
+                    if pd.isna(val) or pd.isna(num_val):
+                        styles[i] = (
+                            "background-color: #F8D7DA; color: #721C24; "
+                            "font-weight: bold; border: 1px solid #F5C6CB;"
+                        )
+
+                if is_metric:
+                    valid_s = numeric_s.dropna()
+                    if not valid_s.empty:
+                        direction = METRIC_CONFIG[s.name]
+                        best_val = (
+                            valid_s.max() if direction == "max" else valid_s.min()
+                        )
+                        for i, num_val in enumerate(numeric_s):
+                            if (
+                                pd.notna(num_val)
+                                and num_val == best_val
+                                and styles[i] == ""
+                            ):
+                                styles[i] = (
+                                    "background-color: #2E7D32; "
+                                    "color: white; font-weight: bold;"
+                                )
+
+            return styles
 
         # Filter pdf to selected columns for display, while keeping original
         # pdf for backend/plotting
         pdf_display = pdf[selected_columns] if selected_columns else pdf
-        st.dataframe(pdf_display.style.apply(highlight_best), width="stretch")
+        styled_table = pdf_display.style.apply(highlight_metrics).format(
+            na_rep="⚠️ NaN (Error)"
+        )
+        st.dataframe(styled_table, width="stretch")
 
         # 4. Dynamic Plotting
         st.divider()
@@ -711,6 +757,7 @@ def main():
                     "All",
                     "Fully Completed (3/3)",
                     "Partially Completed (1-2/3)",
+                    "Has Errors",
                     "Not Run (0/3)",
                 ],
                 index=0,
@@ -760,6 +807,15 @@ def main():
             elif status_filter == "Partially Completed (1-2/3)":
                 filtered_matrix = filtered_matrix.filter(
                     pl.col("coverage_status") == "Partially Completed"
+                )
+            elif status_filter == "Has Errors":
+                filtered_matrix = filtered_matrix.filter(
+                    pl.col("coverage_status").is_in(
+                        ["Has Errors", "Completed with Errors"]
+                    )
+                    | pl.col("keep_rep_stopwords").str.contains("Error")
+                    | pl.col("remove_rep_stopwords").str.contains("Error")
+                    | pl.col("stemmed").str.contains("Error")
                 )
             elif status_filter == "Not Run (0/3)":
                 filtered_matrix = filtered_matrix.filter(
@@ -824,8 +880,16 @@ def main():
                             "background-color: #D4EDDA; "
                             "color: #155724; font-weight: bold;"
                         )
+                    elif "Error" in val:
+                        return (
+                            "background-color: #F8D7DA; "
+                            "color: #721C24; font-weight: bold;"
+                        )
                     elif val.startswith("⚠️"):
-                        return "background-color: #FFF3CD; color: #856404;"
+                        return (
+                            "background-color: #FFF3CD; "
+                            "color: #856404; font-weight: bold;"
+                        )
                     elif val.startswith("❌"):
                         return "background-color: #F8D7DA; color: #721C24;"
                 return ""
@@ -873,11 +937,22 @@ def main():
                         c_info = run_details.get(cond_key, {})
                         status = c_info.get("status", "Not Run")
                         cnt = c_info.get("count", 0)
+                        err_cnt = c_info.get("error_count", 0)
                         dry_cnt = c_info.get("dry_run_count", 0)
-                        st.write(
-                            f"- **{cond_title}**: {status} "
-                            f"({cnt} full runs, {dry_cnt} dry runs)"
-                        )
+                        if err_cnt > 0:
+                            nan_list = ", ".join(c_info.get("nan_metrics", []))
+                            st.write(
+                                f"- **{cond_title}**: {status} "
+                                f"({cnt} valid runs, :red[{err_cnt} with NaNs/Errors], "
+                                f"{dry_cnt} dry runs)"
+                            )
+                            if nan_list:
+                                st.write(f"  - *Metrics with NaNs*: `{nan_list}`")
+                        else:
+                            st.write(
+                                f"- **{cond_title}**: {status} "
+                                f"({cnt} full runs, {dry_cnt} dry runs)"
+                            )
 
 
 if __name__ == "__main__":
