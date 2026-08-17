@@ -7,7 +7,7 @@ import polars as pl
 
 def load_and_prep_data(
     config: dict, random_state: int
-) -> tuple[list[str], np.ndarray, np.ndarray]:
+) -> tuple[list[str], np.ndarray, pl.DataFrame]:
     """
     Loads parquet, samples data, and processes metadata.
     """
@@ -96,10 +96,11 @@ def load_and_prep_data(
 
 def process_metadata(
     df: pl.DataFrame, covariates_config: Union[dict, list]
-) -> np.ndarray:
+) -> pl.DataFrame:
     """
     Parses the covariates config and applies specific scaling/encoding
-    strategies for Numerical, Categorical, and Binary variables.
+    strategies for Numerical, Categorical, and Binary variables, returning
+    a Polars DataFrame of processed features.
     """
     logger = logging.getLogger("pipeline")
 
@@ -138,10 +139,11 @@ def process_metadata(
                 pl.when(c_max != c_min)
                 .then((pl.col(c) - c_min) / (c_max - c_min))
                 .otherwise(0.0)
+                .alias(c)
             )
 
-        scaled_num = num_df.with_columns(exprs).fill_nan(0.0).to_numpy()
-        processed_features.append(scaled_num)
+        scaled_num_df = num_df.select(exprs).fill_nan(0.0)
+        processed_features.append(scaled_num_df)
 
     # One-hot encoding for categorical values
     if cat_cols:
@@ -150,8 +152,12 @@ def process_metadata(
         if missing:
             raise ValueError(f"Missing categorical columns: {missing}")
 
-        dummies_df = df.select(cat_cols).to_dummies(drop_first=False)
-        processed_features.append(dummies_df.to_numpy())
+        dummies_df = (
+            df.select(cat_cols)
+            .to_dummies(drop_first=False)
+            .select(pl.all().cast(pl.Float64))
+        )
+        processed_features.append(dummies_df)
 
     # Binary variables are simply cast to float
     if bin_cols:
@@ -160,16 +166,16 @@ def process_metadata(
         if missing:
             raise ValueError(f"Missing binary columns: {missing}")
 
-        bin_matrix = df.select(bin_cols).select(pl.all().cast(pl.Float64)).to_numpy()
-        processed_features.append(bin_matrix)
+        bin_df = df.select(bin_cols).select(pl.all().cast(pl.Float64))
+        processed_features.append(bin_df)
 
     if processed_features:
-        final_metadata = np.hstack(processed_features)
+        final_metadata = pl.concat(processed_features, how="horizontal")
         logger.info(f"Metadata processing complete. Shape: {final_metadata.shape}")
         return final_metadata
     else:
-        logger.warning("No covariates found in config. Returning empty array.")
-        return np.array([])
+        logger.warning("No covariates found in config. Returning empty DataFrame.")
+        return pl.DataFrame()
 
 
 def sample_from_lf(

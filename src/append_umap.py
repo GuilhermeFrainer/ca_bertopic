@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 import polars as pl
@@ -12,8 +12,8 @@ class AppendUMAP(UMAP):
     dimensionality reduction.
 
     Args:
-        metadata (np.ndarray):
-            An array containing metadata dimensions to be concatenated
+        metadata (Union[np.ndarray, pl.DataFrame, Any], optional):
+            An array or DataFrame containing metadata dimensions to be concatenated
             to the input document embeddings.
         **kwargs:
             Any additional keyword arguments to be passed to the
@@ -21,12 +21,27 @@ class AppendUMAP(UMAP):
             n_neighbors, min_dist, etc.
     """
 
-    def __init__(self, metadata: Optional[np.ndarray] = None, **kwargs):
+    def __init__(
+        self,
+        metadata: Optional[Union[np.ndarray, pl.DataFrame, Any]] = None,
+        **kwargs,
+    ):
         # Call the constructor of the parent UMAP class, passing all other kwargs.
         super().__init__(**kwargs)
 
         # Store the metadata for later use in concatenation.
-        self.metadata = metadata
+        if metadata is not None:
+            if isinstance(metadata, pl.DataFrame):
+                self.metadata = metadata.to_numpy()
+            elif hasattr(metadata, "to_numpy"):
+                self.metadata = metadata.to_numpy()
+            elif hasattr(metadata, "values"):
+                self.metadata = metadata.values
+            else:
+                arr = np.asarray(metadata)
+                self.metadata = arr.reshape(-1, 1) if arr.ndim == 1 else arr
+        else:
+            self.metadata = None
 
     def _concatenate_metadata(self, X: np.ndarray) -> np.ndarray:
         """

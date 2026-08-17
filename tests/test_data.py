@@ -16,8 +16,9 @@ def test_no_cols_produces_empty_array():
 
     result = process_metadata(df, covariates_config)
 
-    assert isinstance(result, np.ndarray)
-    assert result.shape == (0,)
+    assert isinstance(result, pl.DataFrame)
+    assert result.is_empty()
+    assert result.shape == (0, 0)
 
 
 def test_numerical_scaling():
@@ -31,9 +32,12 @@ def test_numerical_scaling():
 
     result = process_metadata(df, covariates_config)
 
+    assert isinstance(result, pl.DataFrame)
     assert result.shape == (5, 2)
+    assert result.columns == ["num1", "num2"]
+    arr = result.to_numpy()
     # Min-max scaling should result in values between 0 and 1
-    assert np.all((result >= 0) & (result <= 1))
+    assert np.all((arr >= 0) & (arr <= 1))
 
     # Check if scaling is correct
     expected = np.array(
@@ -45,7 +49,7 @@ def test_numerical_scaling():
             [1.0, 1.0],
         ]
     )
-    assert np.allclose(result, expected)
+    assert np.allclose(arr, expected)
 
 
 def test_categorical_encoding():
@@ -59,10 +63,19 @@ def test_categorical_encoding():
 
     result = process_metadata(df, covariates_config)
 
+    assert isinstance(result, pl.DataFrame)
     # "a", "b", "c" -> 3 columns, "x", "y" -> 2 columns. Total 5
     assert result.shape == (4, 5)
+    assert result.columns == [
+        "cat1_a",
+        "cat1_b",
+        "cat1_c",
+        "cat2_x",
+        "cat2_y",
+    ]
+    arr = result.to_numpy()
     # One-hot encoding should result in 0s and 1s
-    assert np.all(np.isin(result, [0, 1]))
+    assert np.all(np.isin(arr, [0, 1]))
 
     # Expected: cat1_a, cat1_b, cat1_c, cat2_x, cat2_y
     expected = np.array(
@@ -73,7 +86,7 @@ def test_categorical_encoding():
             [0, 0, 1, 1, 0],
         ]
     )
-    assert np.allclose(result, expected)
+    assert np.allclose(arr, expected)
 
 
 def test_binary_casting():
@@ -87,9 +100,13 @@ def test_binary_casting():
 
     result = process_metadata(df, covariates_config)
 
+    assert isinstance(result, pl.DataFrame)
     assert result.shape == (4, 2)
-    assert result.dtype == np.float64
+    assert result.columns == ["bin1", "bin2"]
+    for col in result.columns:
+        assert result[col].dtype == pl.Float64
 
+    arr = result.to_numpy()
     expected = np.array(
         [
             [1.0, 0.0],
@@ -98,7 +115,7 @@ def test_binary_casting():
             [1.0, 0.0],
         ]
     )
-    assert np.allclose(result, expected)
+    assert np.allclose(arr, expected)
 
 
 def test_mixed_types():
@@ -117,9 +134,12 @@ def test_mixed_types():
 
     result = process_metadata(df, covariates_config)
 
+    assert isinstance(result, pl.DataFrame)
     # num (1) + cat_a, cat_b (2) + bin (1) = 4 columns
     assert result.shape == (2, 4)
+    assert result.columns == ["num", "cat_a", "cat_b", "bin"]
 
+    arr = result.to_numpy()
     expected = np.array(
         [
             # num, cat_a, cat_b, bin
@@ -127,7 +147,7 @@ def test_mixed_types():
             [1.0, 0.0, 1.0, 0.0],
         ]
     )
-    assert np.allclose(result, expected)
+    assert np.allclose(arr, expected)
 
 
 def test_missing_column_raises_error():
@@ -149,10 +169,12 @@ def test_numerical_zero_division():
 
     result = process_metadata(df, covariates_config)
 
-    # Should not produce NaNs and be all zeros
+    assert isinstance(result, pl.DataFrame)
     assert result.shape == (4, 1)
-    assert not np.isnan(result).any()
-    assert np.all(result == 0)
+    arr = result.to_numpy()
+    # Should not produce NaNs and be all zeros
+    assert not np.isnan(arr).any()
+    assert np.all(arr == 0)
 
 
 def test_legacy_config():
@@ -162,8 +184,10 @@ def test_legacy_config():
 
     result = process_metadata(df, covariates_config)
 
+    assert isinstance(result, pl.DataFrame)
     assert result.shape == (3, 2)
-    assert np.all((result >= 0) & (result <= 1))
+    arr = result.to_numpy()
+    assert np.all((arr >= 0) & (arr <= 1))
 
 
 # --- Tests for sample_from_lf ---

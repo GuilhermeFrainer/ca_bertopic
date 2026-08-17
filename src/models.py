@@ -1,7 +1,8 @@
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import mvlearn.cluster as mvcluster
 import numpy as np
+import polars as pl
 from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer
 
@@ -10,7 +11,7 @@ from src.mvc_wrapper import MVCWrapper
 
 def create_topic_model_instance(
     model_config: dict,
-    scaled_metadata: np.ndarray,
+    scaled_metadata: Optional[Union[pl.DataFrame, np.ndarray]],
     random_state: int,
     n_clusters: Optional[int] = None,
     remove_rep_stopwords: bool = False,
@@ -65,7 +66,8 @@ def create_tritopic_instance(
     else:
         n_topics = params.pop("n_topics", "auto")
 
-    # Default use_metadata_view to True so metadata is incorporated into the tri-modal graph
+    # Default use_metadata_view to True so metadata is incorporated
+    # into the tri-modal graph
     if "use_metadata_view" not in params:
         params["use_metadata_view"] = True
 
@@ -75,7 +77,7 @@ def create_tritopic_instance(
 
 def create_bertopic_instance(
     model_config: dict,
-    scaled_metadata: np.ndarray,
+    scaled_metadata: Optional[Union[pl.DataFrame, np.ndarray]],
     random_state: int,
     n_clusters: Optional[int] = None,
     remove_rep_stopwords: bool = False,
@@ -86,7 +88,7 @@ def create_bertopic_instance(
     Args:
         model_config: Dictionary containing model hyperparameters
             (clustering, dim reduction).
-        scaled_metadata: Metadata array required by the custom algorithms.
+        scaled_metadata: Metadata DataFrame or array required by the custom algorithms.
         random_state: Seed for reproducibility.
         n_clusters: Optional integer to force a specific number of topics
             (used for non-baseline models).
@@ -146,7 +148,7 @@ def create_bertopic_instance(
 
 def get_algorithm(
     config: dict,
-    metadata: Optional[np.ndarray],
+    metadata: Optional[Union[pl.DataFrame, np.ndarray, Any]],
     random_state: int,
     n_clusters: Optional[int] = None,
 ):

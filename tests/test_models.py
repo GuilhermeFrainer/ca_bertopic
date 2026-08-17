@@ -223,13 +223,57 @@ def test_train_and_evaluate_bertopic_with_scaled_metadata():
     assert "n_topics" in metrics
 
 
-def test_train_and_evaluate_tritopic_dispatches_metadata():
+def test_train_and_evaluate_tritopic_dispatches_metadata_polars_df():
     """
-    Tests that train_and_evaluate correctly calls TriTopic.fit with
-    the metadata keyword argument when scaled_metadata is provided.
+    Tests that train_and_evaluate correctly converts a Polars DataFrame
+    metadata to pandas DataFrame when calling TriTopic.fit.
     """
     from unittest.mock import MagicMock
 
+    import pandas as pd
+    import polars as pl
+    from tritopic import TriTopic
+
+    import src.training as training
+
+    mock_tritopic = MagicMock(spec=TriTopic)
+    mock_tritopic.topics_ = []
+    mock_tritopic.labels_ = []
+
+    texts = ["doc a", "doc b"]
+    embeddings = np.random.rand(2, 5)
+    scaled_metadata = pl.DataFrame({"feature1": [0.1, 0.2], "feature2": [1.0, 0.0]})
+    config = {
+        "experiment": {
+            "coherence_metrics": [],
+            "diversity_metrics": [],
+        }
+    }
+
+    training.train_and_evaluate(
+        topic_model=mock_tritopic,
+        model_id="test_tritopic",
+        text=texts,
+        embeddings=embeddings,
+        config=config,
+        scaled_metadata=scaled_metadata,
+    )
+
+    mock_tritopic.fit.assert_called_once()
+    call_kwargs = mock_tritopic.fit.call_args.kwargs
+    assert "metadata" in call_kwargs
+    assert isinstance(call_kwargs["metadata"], pd.DataFrame)
+    assert list(call_kwargs["metadata"].columns) == ["feature1", "feature2"]
+
+
+def test_train_and_evaluate_tritopic_dispatches_metadata_numpy_array():
+    """
+    Tests that train_and_evaluate converts a NumPy array metadata
+    to a pandas DataFrame with columns when calling TriTopic.fit.
+    """
+    from unittest.mock import MagicMock
+
+    import pandas as pd
     from tritopic import TriTopic
 
     import src.training as training
@@ -257,6 +301,91 @@ def test_train_and_evaluate_tritopic_dispatches_metadata():
         scaled_metadata=scaled_metadata,
     )
 
-    mock_tritopic.fit.assert_called_once_with(
-        documents=texts, embeddings=embeddings, metadata=scaled_metadata
+    mock_tritopic.fit.assert_called_once()
+    call_kwargs = mock_tritopic.fit.call_args.kwargs
+    assert "metadata" in call_kwargs
+    assert isinstance(call_kwargs["metadata"], pd.DataFrame)
+    assert call_kwargs["metadata"].shape == (2, 3)
+    assert hasattr(call_kwargs["metadata"], "columns")
+
+
+def test_train_and_evaluate_tritopic_empty_metadata():
+    """
+    Tests that train_and_evaluate passes metadata=None when scaled_metadata is empty.
+    """
+    from unittest.mock import MagicMock
+
+    import polars as pl
+    from tritopic import TriTopic
+
+    import src.training as training
+
+    mock_tritopic = MagicMock(spec=TriTopic)
+    mock_tritopic.topics_ = []
+    mock_tritopic.labels_ = []
+
+    texts = ["doc a", "doc b"]
+    embeddings = np.random.rand(2, 5)
+    empty_metadata = pl.DataFrame()
+    config = {
+        "experiment": {
+            "coherence_metrics": [],
+            "diversity_metrics": [],
+        }
+    }
+
+    training.train_and_evaluate(
+        topic_model=mock_tritopic,
+        model_id="test_tritopic_empty",
+        text=texts,
+        embeddings=embeddings,
+        config=config,
+        scaled_metadata=empty_metadata,
     )
+
+    mock_tritopic.fit.assert_called_once_with(documents=texts, embeddings=embeddings)
+
+
+def test_train_and_evaluate_tritopic_real_execution():
+    """
+    Integration test verifying real TriTopic model fitting with Polars metadata
+    without throwing AttributeError or crashing OCTIS metrics computation.
+    """
+    import polars as pl
+    from tritopic import TriTopic, TriTopicConfig
+
+    import src.training as training
+
+    vocab = ["apple", "banana", "orange", "grape", "car", "train", "plane", "boat"]
+    rng = np.random.default_rng(42)
+    texts = [" ".join(rng.choice(vocab, size=8)) for _ in range(50)]
+    embeddings = rng.random((50, 16))
+    scaled_metadata = pl.DataFrame(
+        {
+            "meta_num1": rng.random(50),
+            "meta_num2": rng.random(50),
+        }
+    )
+
+    config_obj = TriTopicConfig(verbose=False, random_state=42)
+    model = TriTopic(config=config_obj, n_topics=2)
+
+    config = {
+        "experiment": {
+            "coherence_metrics": [],
+            "diversity_metrics": [],
+        }
+    }
+
+    metrics, fitted_model = training.train_and_evaluate(
+        topic_model=model,
+        model_id="real_tritopic",
+        text=texts,
+        embeddings=embeddings,
+        config=config,
+        scaled_metadata=scaled_metadata,
+    )
+
+    assert "n_topics" in metrics
+    assert metrics["n_topics"] > 0
+    assert hasattr(fitted_model, "topics_")

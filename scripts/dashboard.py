@@ -948,14 +948,10 @@ def main():
                         "criteria in this view!"
                     )
                 else:
-                    st.write(
-                        f"**Total SLURM Dispatch Commands:** `{len(all_cmds)}`"
-                    )
+                    st.write(f"**Total SLURM Dispatch Commands:** `{len(all_cmds)}`")
 
                     n_keep = len(grouped_slurm.get("keep_rep_stopwords", []))
-                    n_remove = len(
-                        grouped_slurm.get("remove_rep_stopwords", [])
-                    )
+                    n_remove = len(grouped_slurm.get("remove_rep_stopwords", []))
                     n_stem = len(grouped_slurm.get("stemmed", []))
 
                     # Display categorized tabs
@@ -976,15 +972,11 @@ def main():
                             st.info("No missing experiments for Keep Stopwords.")
 
                     with tab_remove:
-                        remove_cmds = grouped_slurm.get(
-                            "remove_rep_stopwords", []
-                        )
+                        remove_cmds = grouped_slurm.get("remove_rep_stopwords", [])
                         if remove_cmds:
                             st.code("\n".join(remove_cmds), language="bash")
                         else:
-                            st.info(
-                                "No missing experiments for Remove Stopwords."
-                            )
+                            st.info("No missing experiments for Remove Stopwords.")
 
                     with tab_stem:
                         stem_cmds = grouped_slurm.get("stemmed", [])

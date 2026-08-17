@@ -99,13 +99,23 @@ def main():
         )
 
         # Check for NaNs and warn if found
-        if np.isnan(scaled_metadata).any():
-            # Identifying columns with NaNs in the final metadata matrix
-            nan_indices = np.where(np.isnan(scaled_metadata).any(axis=0))[0]
-            logger.warning(
-                f"Metadata contains NaN values in {len(nan_indices)} feature columns."
-            )
-            logger.warning(f"NaN indices: {nan_indices.tolist()}")
+        if isinstance(scaled_metadata, pl.DataFrame):
+            if scaled_metadata.width > 0:
+                null_counts = scaled_metadata.null_count()
+                nan_cols = [
+                    col for col in scaled_metadata.columns if null_counts[col][0] > 0
+                ]
+                if nan_cols:
+                    logger.warning(
+                        f"Metadata contains null/NaN values in {len(nan_cols)} feature columns: {nan_cols}"
+                    )
+        elif scaled_metadata is not None and getattr(scaled_metadata, "size", 0) > 0:
+            if np.isnan(scaled_metadata).any():
+                nan_indices = np.where(np.isnan(scaled_metadata).any(axis=0))[0]
+                logger.warning(
+                    f"Metadata contains NaN values in {len(nan_indices)} feature columns."
+                )
+                logger.warning(f"NaN indices: {nan_indices.tolist()}")
 
         # Model configuration
         logger.info("Loading model configuration for optimization...")

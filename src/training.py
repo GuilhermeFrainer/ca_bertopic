@@ -1,8 +1,10 @@
 import logging
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
+import pandas as pd
+import polars as pl
 from tritopic import TriTopic
 
 import src.evaluation as evaluation
@@ -14,10 +16,11 @@ def train_and_evaluate(
     text: list[str],
     embeddings: np.ndarray,
     config: dict,
-    scaled_metadata: Optional[np.ndarray] = None,
+    scaled_metadata: Optional[Union[pl.DataFrame, pd.DataFrame, np.ndarray]] = None,
 ) -> tuple[dict, Any]:
     """
-    Fits a pre-instantiated topic model (BERTopic or TriTopic) and calculates evaluation metrics.
+    Fits a pre-instantiated topic model (BERTopic or TriTopic) and calculates
+    evaluation metrics.
 
     Args:
         topic_model: The instantiated BERTopic or TriTopic object.
@@ -25,7 +28,8 @@ def train_and_evaluate(
         text: List of document strings.
         embeddings: Pre-computed document embeddings.
         config: The global experiment configuration (for metric settings).
-        scaled_metadata: Optional pre-processed metadata matrix for multi-view / tritopic models.
+        scaled_metadata: Optional pre-processed metadata (Polars DataFrame,
+            Pandas DataFrame, or NumPy array) for multi-view / tritopic models.
 
     Returns:
         A tuple containing the metrics dictionary and the fitted model.
@@ -36,11 +40,33 @@ def train_and_evaluate(
     is_tritopic = isinstance(topic_model, TriTopic)
 
     if is_tritopic:
-        # Check if metadata should be used
+        # TriTopic expects metadata as a pandas DataFrame with columns
+        metadata_df = None
         if scaled_metadata is not None:
-            topic_model.fit(
-                documents=text, embeddings=embeddings, metadata=scaled_metadata
-            )
+            if isinstance(scaled_metadata, pl.DataFrame):
+                if scaled_metadata.width > 0 and scaled_metadata.height > 0:
+                    metadata_df = scaled_metadata.to_pandas()
+            elif hasattr(scaled_metadata, "to_pandas"):
+                metadata_df = scaled_metadata.to_pandas()
+            elif isinstance(scaled_metadata, pd.DataFrame):
+                if not scaled_metadata.empty:
+                    metadata_df = scaled_metadata
+            elif isinstance(scaled_metadata, np.ndarray):
+                if scaled_metadata.size > 0:
+                    if scaled_metadata.ndim == 1:
+                        metadata_df = pd.DataFrame(
+                            scaled_metadata.reshape(-1, 1), columns=["meta_0"]
+                        )
+                    else:
+                        metadata_df = pd.DataFrame(
+                            scaled_metadata,
+                            columns=[
+                                f"meta_{i}" for i in range(scaled_metadata.shape[1])
+                            ],
+                        )
+
+        if metadata_df is not None:
+            topic_model.fit(documents=text, embeddings=embeddings, metadata=metadata_df)
         else:
             topic_model.fit(documents=text, embeddings=embeddings)
 

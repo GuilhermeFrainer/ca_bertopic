@@ -1,16 +1,31 @@
-from typing import Optional
+from typing import Any, Optional, Union
 
 import numpy as np
+import polars as pl
 from sklearn.base import BaseEstimator, ClusterMixin
+
+
+def _to_numpy_matrix(data: Any) -> np.ndarray:
+    """Converts a DataFrame, Series, or array-like object into a 2D numpy ndarray."""
+    if isinstance(data, pl.DataFrame):
+        return data.to_numpy()
+    if hasattr(data, "to_numpy"):
+        return data.to_numpy()
+    if hasattr(data, "values"):
+        return data.values
+    arr = np.asarray(data)
+    if arr.ndim == 1:
+        return arr.reshape(-1, 1)
+    return arr
 
 
 class MVCWrapper(BaseEstimator, ClusterMixin):
     metadata: np.ndarray
     labels_: Optional[np.ndarray]
 
-    def __init__(self, model, metadata: np.ndarray):
+    def __init__(self, model, metadata: Union[np.ndarray, pl.DataFrame, Any]):
         self.model = model
-        self.metadata = metadata
+        self.metadata = _to_numpy_matrix(metadata)
         self.labels_ = None
 
     def fit(self, X, y=None):
@@ -41,9 +56,9 @@ class AlignedUMAPWrapper(BaseEstimator):
     metadata: np.ndarray
     training_embeddings: Optional[np.ndarray]
 
-    def __init__(self, model, metadata: np.ndarray):
+    def __init__(self, model, metadata: Union[np.ndarray, pl.DataFrame, Any]):
         self.model = model
-        self.metadata = metadata
+        self.metadata = _to_numpy_matrix(metadata)
         self.training_embeddings = None
 
     def fit(self, X, y=None):
