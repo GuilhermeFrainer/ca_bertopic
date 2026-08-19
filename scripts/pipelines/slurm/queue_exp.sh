@@ -69,6 +69,13 @@ Options:
   -x, --exclude PATTERNS              Comma-separated keywords or categories to exclude.
                                       Example: -x pca,k_means (excludes PCA & K-Means models).
 
+  -b, --split, --breakdown            Split each experiment into separate Slurm jobs for each
+                                      topic-count and seed combination (default: 15 runs per model).
+
+      --runs, --model-idx RUNS        Comma-separated list or range of model configuration
+                                      indices to run when split is active (default: 1-15).
+                                      Examples: --runs 1..15, --runs 1,2,5, --runs 1-5.
+
   -s, --stemmed                       Run experiments on stemmed dataset versions (e.g. fed_stemmed).
 
       --keep-rep-stopwords            Keep English stop words in topic representations (default: removed).
@@ -92,10 +99,12 @@ Options:
 
 Examples:
   ./queue_exp.sh -d fed
+  ./queue_exp.sh -d yelp -m mv_spectral -b
+  ./queue_exp.sh -d fed --split --runs 1..5
   ./queue_exp.sh -d fed --stemmed
   ./queue_exp.sh -d fed --test
   ./queue_exp.sh -x pca,k_means
-  ./queue_exp.sh -d gadarian,anes -m baseline,stm,mv_spectral -n
+  ./queue_exp.sh -d gadarian,anes -m baseline,stm,mv_spectral -b -n
 EOF
 }
 
@@ -105,6 +114,9 @@ EOF
 RAW_DATASETS=""
 RAW_MODELS=""
 RAW_EXCLUDES=""
+RAW_RUNS=""
+SPLIT_EXPERIMENTS=false
+DEFAULT_MODEL_INDICES=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
 USE_STEMMED=false
 KEEP_REP_STOPWORDS=false
 IS_TEST=false
@@ -128,6 +140,15 @@ while [[ $# -gt 0 ]]; do
             ;;
         -x|--exclude)
             RAW_EXCLUDES="$2"
+            shift 2
+            ;;
+        -b|--split|--breakdown)
+            SPLIT_EXPERIMENTS=true
+            shift
+            ;;
+        --runs|--model-idx)
+            SPLIT_EXPERIMENTS=true
+            RAW_RUNS="$2"
             shift 2
             ;;
         -s|--stemmed)
@@ -177,6 +198,29 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# ------------------------------------------------------------------------------
+# Resolve Model Indices for Split Mode
+# ------------------------------------------------------------------------------
+MODEL_INDICES=("${DEFAULT_MODEL_INDICES[@]}")
+if [ -n "$RAW_RUNS" ]; then
+    MODEL_INDICES=()
+    IFS=',' read -ra RUN_PARTS <<< "$RAW_RUNS"
+    for part in "${RUN_PARTS[@]}"; do
+        part_clean=$(echo "$part" | xargs)
+        if [[ "$part_clean" =~ ^([0-9]+)\.\.([0-9]+)$ ]] || [[ "$part_clean" =~ ^([0-9]+)\-([0-9]+)$ ]]; then
+            start_idx="${BASH_REMATCH[1]}"
+            end_idx="${BASH_REMATCH[2]}"
+            for ((idx=start_idx; idx<=end_idx; idx++)); do
+                MODEL_INDICES+=("$idx")
+            done
+        elif [[ "$part_clean" =~ ^[0-9]+$ ]]; then
+            MODEL_INDICES+=("$part_clean")
+        else
+            echo "Warning: Unrecognized run index or range '$part_clean'. Ignoring."
+        fi
+    done
+fi
 
 # ------------------------------------------------------------------------------
 # Resolve Datasets
@@ -308,13 +352,29 @@ fi
 # ------------------------------------------------------------------------------
 # Calculate & Print Summary
 # ------------------------------------------------------------------------------
-TOTAL_JOBS=$(( ${#TARGET_DATASETS[@]} * ${#FINAL_MODELS[@]} ))
+NUM_NON_STM_MODELS=0
+for m in "${FINAL_MODELS[@]}"; do
+    if [ "$m" != "stm" ]; then
+        NUM_NON_STM_MODELS=$((NUM_NON_STM_MODELS + 1))
+    fi
+done
+
+if [ "$SPLIT_EXPERIMENTS" = true ]; then
+    TOTAL_JOBS=$(( ${#TARGET_DATASETS[@]} * NUM_NON_STM_MODELS * ${#MODEL_INDICES[@]} ))
+else
+    TOTAL_JOBS=$(( ${#TARGET_DATASETS[@]} * NUM_NON_STM_MODELS ))
+fi
 
 echo "================================================================="
 echo " Experiment Submission Plan"
 echo "================================================================="
 echo " Datasets (${#TARGET_DATASETS[@]}):  ${TARGET_DATASETS[*]}"
 echo " Models (${#FINAL_MODELS[@]}):    ${FINAL_MODELS[*]}"
+if [ "$SPLIT_EXPERIMENTS" = true ]; then
+    echo " Mode:         SPLIT / BREAKDOWN (${#MODEL_INDICES[@]} runs per model: ${MODEL_INDICES[*]})"
+else
+    echo " Mode:         STANDARD (1 job per model)"
+fi
 echo " Total Jobs:   $TOTAL_JOBS"
 if [ "$USE_STEMMED" = true ]; then
     echo " Variant:      STEMMED (using clean_text_stemmed)"
@@ -323,7 +383,7 @@ if [ -n "$RAW_EXCLUDES" ]; then
     echo " Exclusions:   $RAW_EXCLUDES"
 fi
 if [ "$DRY_RUN" = true ]; then
-    echo " Mode:         DRY RUN (no jobs will be submitted)"
+    echo " Dry Run:      YES (no jobs will be submitted)"
 fi
 echo "================================================================="
 
@@ -334,7 +394,14 @@ if [ "$LIST_ONLY" = true ]; then
         exp_dir="${dataset}"
         if [ "$USE_STEMMED" = true ]; then exp_dir="${dataset}_stemmed"; fi
         for model in "${FINAL_MODELS[@]}"; do
-            echo " - Dataset: $dataset (Config dir: $exp_dir) | Model: $model"
+            if [ "$model" = "stm" ]; then continue; fi
+            if [ "$SPLIT_EXPERIMENTS" = true ]; then
+                for model_idx in "${MODEL_INDICES[@]}"; do
+                    echo " - Dataset: $dataset (Config dir: $exp_dir) | Model: $model | Run: #$model_idx"
+                done
+            else
+                echo " - Dataset: $dataset (Config dir: $exp_dir) | Model: $model (All runs)"
+            fi
         done
     done
     exit 0
@@ -364,14 +431,11 @@ for dataset in "${TARGET_DATASETS[@]}"; do
     fi
 
     for model in "${FINAL_MODELS[@]}"; do
-        JOB_COUNT=$((JOB_COUNT + 1))
-
         if [ "$model" = "stm" ]; then
-            echo "[$JOB_COUNT/$TOTAL_JOBS] Warning: Model 'stm' requested for dataset '$dataset', but STM jobs are currently disabled. Skipping."
+            echo "Warning: Model 'stm' requested for dataset '$dataset', but STM jobs are currently disabled. Skipping."
             continue
         fi
 
-        job_name="${job_dataset}_${model}"
         mem="${MEM_OVERRIDE:-$DEFAULT_MEM}"
         cpus="${CPUS_OVERRIDE:-$DEFAULT_CPUS}"
         time_limit="${TIME_OVERRIDE:-$DEFAULT_TIME}"
@@ -384,20 +448,89 @@ for dataset in "${TARGET_DATASETS[@]}"; do
             copy_commands="rsync -a \$HOME/${PROJECT_NAME}/data/processed/${dataset}_embeddings.parquet data/processed/"
         fi
 
-        # Run command for non-STM
+        # Common representation stopwords flag
         rep_flag="--remove-rep-stopwords"
         if [ "$KEEP_REP_STOPWORDS" = true ]; then
             rep_flag="--keep-rep-stopwords"
         fi
-        run_command="uv run python scripts/experiments/run_optimizer.py --exp ${exp_dir}/${dataset}_standard_${model} ${rep_flag}"
 
-        if [ "$DRY_RUN" = true ]; then
-            echo "[$JOB_COUNT/$TOTAL_JOBS] [DRY RUN] Job: $job_name | Dataset: $dataset | Model: $model | Mem: $mem | CPUs: $cpus | Time: $time_limit"
+        if [ "$SPLIT_EXPERIMENTS" = true ]; then
+            for model_idx in "${MODEL_INDICES[@]}"; do
+                JOB_COUNT=$((JOB_COUNT + 1))
+                job_name="${job_dataset}_${model}_m${model_idx}"
+                run_command="uv run python scripts/experiments/run_optimizer.py --exp ${exp_dir}/${dataset}_standard_${model} --model ${model_idx} ${rep_flag}"
+
+                if [ "$DRY_RUN" = true ]; then
+                    echo "[$JOB_COUNT/$TOTAL_JOBS] [DRY RUN] Job: $job_name | Dataset: $dataset | Model: $model (Run #$model_idx) | Mem: $mem | CPUs: $cpus | Time: $time_limit"
+                else
+                    echo "[$JOB_COUNT/$TOTAL_JOBS] Queuing job for Dataset: $dataset | Model: $model | Run: #$model_idx"
+
+                    # Submit to SLURM using a here-doc
+                    sbatch <<EOF
+#!/bin/bash
+#SBATCH --job-name=${job_name}
+#SBATCH --partition=cidia
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=${mem}
+#SBATCH --cpus-per-task=${cpus}
+#SBATCH --time=${time_limit}
+#SBATCH --output=slurm_log/%x_%j.out
+#SBATCH --error=slurm_log/%x_%j.err
+
+echo "Job started at \$(date) on \$(hostname)"
+
+# 1. Setup Job-Isolated SCRATCH Workspace & Cleanup Trap
+JOB_SCRATCH="\$SCRATCH/${PROJECT_NAME}_\${SLURM_JOB_ID}"
+
+cleanup() {
+    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
+    rm -rf "\${JOB_SCRATCH}"
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "\${JOB_SCRATCH}"/{data/processed,results,models,logs,output,tables}
+
+# 2. Sync Code base
+rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \\
+    --exclude='output/' --exclude='tables/' --exclude='.venv/' --exclude='.git/' \\
+    \$HOME/${PROJECT_NAME}/ "\${JOB_SCRATCH}/"
+
+cd "\${JOB_SCRATCH}"
+
+# 3. Sync specific data files needed for this job
+${copy_commands}
+
+# 4. Export UV path so that it may be used
+export PATH="\$HOME/.local/bin:\$PATH"
+
+# 5. Run training and evaluation for single model run
+${run_command}
+
+# 6. Sync results back to HOME/slurm
+mkdir -p \$HOME/slurm/{results,logs,output,tables,models}
+rsync -a "\${JOB_SCRATCH}/results/" \$HOME/slurm/results/
+rsync -a "\${JOB_SCRATCH}/logs/" \$HOME/slurm/logs/
+rsync -a "\${JOB_SCRATCH}/output/" \$HOME/slurm/output/
+rsync -a "\${JOB_SCRATCH}/tables/" \$HOME/slurm/tables/
+rsync -a "\${JOB_SCRATCH}/models/" \$HOME/slurm/models/
+
+echo "Job finished at \$(date)"
+EOF
+                fi
+            done
         else
-            echo "[$JOB_COUNT/$TOTAL_JOBS] Queuing job for Dataset: $dataset | Model: $model"
+            JOB_COUNT=$((JOB_COUNT + 1))
+            job_name="${job_dataset}_${model}"
+            run_command="uv run python scripts/experiments/run_optimizer.py --exp ${exp_dir}/${dataset}_standard_${model} ${rep_flag}"
 
-            # Submit to SLURM using a here-doc
-            sbatch <<EOF
+            if [ "$DRY_RUN" = true ]; then
+                echo "[$JOB_COUNT/$TOTAL_JOBS] [DRY RUN] Job: $job_name | Dataset: $dataset | Model: $model | Mem: $mem | CPUs: $cpus | Time: $time_limit"
+            else
+                echo "[$JOB_COUNT/$TOTAL_JOBS] Queuing job for Dataset: $dataset | Model: $model"
+
+                # Submit to SLURM using a here-doc
+                sbatch <<EOF
 #!/bin/bash
 #SBATCH --job-name=${job_name}
 #SBATCH --partition=cidia
@@ -448,6 +581,7 @@ rsync -a "\${JOB_SCRATCH}/models/" \$HOME/slurm/models/
 
 echo "Job finished at \$(date)"
 EOF
+            fi
         fi
     done
 done

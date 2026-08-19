@@ -107,13 +107,15 @@ def main():
                 ]
                 if nan_cols:
                     logger.warning(
-                        f"Metadata contains null/NaN values in {len(nan_cols)} feature columns: {nan_cols}"
+                        f"Metadata contains null/NaN values in "
+                        f"{len(nan_cols)} feature columns: {nan_cols}"
                     )
         elif scaled_metadata is not None and getattr(scaled_metadata, "size", 0) > 0:
             if np.isnan(scaled_metadata).any():
                 nan_indices = np.where(np.isnan(scaled_metadata).any(axis=0))[0]
                 logger.warning(
-                    f"Metadata contains NaN values in {len(nan_indices)} feature columns."
+                    f"Metadata contains NaN values in "
+                    f"{len(nan_indices)} feature columns."
                 )
                 logger.warning(f"NaN indices: {nan_indices.tolist()}")
 
@@ -168,6 +170,8 @@ def main():
                 tag = "keep_rep_stopwords"
 
             fn_base = exp_name if tag in exp_name else f"{exp_name}_{tag}"
+            if args.model is not None:
+                fn_base = f"{fn_base}_m{args.model}"
             results_filename = f"{fn_base}-{file_timestamp}-{primary_random_state}"
             results_path = RESULTS_DIR / f"{results_filename}.csv"
         else:
