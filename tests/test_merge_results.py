@@ -246,3 +246,65 @@ def test_merge_files_json_topic_deduplication(tmp_path):
     # Baseline count should be 15 and 25 (from newer run)
     baseline_counts = res_df.filter(pl.col("model_id") == "baseline")["count"].to_list()
     assert sorted(baseline_counts) == [15, 25]
+
+
+def test_group_files_return_superseded(tmp_path):
+    f_std_1 = tmp_path / "fed_standard_baseline-20260801-100000-1234.csv"
+    f_std_2 = tmp_path / "fed_standard_baseline-20260805-100000-1234.csv"  # Latest std
+    f_std_3 = (
+        tmp_path / "fed_standard_baseline-20260803-100000-1234.csv"
+    )  # Intermediate
+    f_stemmed = tmp_path / "fed_stemmed_baseline-20260801-100000-1234.csv"
+
+    pl.DataFrame({"dataset_name": ["fed"], "val": [1]}).write_csv(f_std_1)
+    pl.DataFrame({"dataset_name": ["fed"], "val": [2]}).write_csv(f_std_2)
+    pl.DataFrame({"dataset_name": ["fed"], "val": [3]}).write_csv(f_std_3)
+    pl.DataFrame({"dataset_name": ["fed_stemmed"], "val": [4]}).write_csv(f_stemmed)
+
+    grouped, superseded = group_files(
+        tmp_path, ".csv", ignore_suffix="_merged", return_superseded=True
+    )
+
+    assert ("fed", "standard") in grouped
+    assert len(grouped[("fed", "standard")]) == 1
+    assert grouped[("fed", "standard")][0] == f_std_2
+
+    assert ("fed", "standard") in superseded
+    superseded_names = [f.name for f in superseded[("fed", "standard")]]
+    assert f_std_1.name in superseded_names
+    assert f_std_3.name in superseded_names
+    assert len(superseded[("fed", "standard")]) == 2
+
+    assert ("fed", "stemmed") not in superseded
+
+
+def test_archive_files_including_superseded(tmp_path):
+    f_std_older = tmp_path / "fed_standard_baseline-20260801-100000-1234.csv"
+    f_std_newer = tmp_path / "fed_standard_baseline-20260805-100000-1234.csv"
+
+    pl.DataFrame({"dataset_name": ["fed"], "val": [1]}).write_csv(f_std_older)
+    pl.DataFrame({"dataset_name": ["fed"], "val": [2]}).write_csv(f_std_newer)
+
+    archive_dir = tmp_path / "archive"
+    out_std = tmp_path / "fed_standard_merged.csv"
+
+    all_raw = [f_std_newer, f_std_older]
+    archive_files(
+        all_raw,
+        archive_dir,
+        "fed",
+        "standard",
+        out_std,
+        dry_run=False,
+        keep_originals=False,
+    )
+
+    zip_files = list(archive_dir.glob("*.zip"))
+    assert len(zip_files) == 1
+    with zipfile.ZipFile(zip_files[0], "r") as zf:
+        names = zf.namelist()
+        assert f_std_older.name in names
+        assert f_std_newer.name in names
+
+    assert not f_std_older.exists()
+    assert not f_std_newer.exists()

@@ -133,10 +133,31 @@ def get_dataset_name(file_path: pathlib.Path) -> str | None:
 
 
 def group_files(
-    directory: pathlib.Path, extension: str, ignore_suffix: str = None
-) -> Dict[Tuple[str, str], List[pathlib.Path]]:
-    """Groups files by (dataset_name, dataset_type) and keeps latest run."""
+    directory: pathlib.Path,
+    extension: str,
+    ignore_suffix: str = None,
+    return_superseded: bool = False,
+) -> (
+    Dict[Tuple[str, str], List[pathlib.Path]]
+    | Tuple[
+        Dict[Tuple[str, str], List[pathlib.Path]],
+        Dict[Tuple[str, str], List[pathlib.Path]],
+    ]
+):
+    """Groups files by (dataset_name, dataset_type) and keeps latest run.
+
+    Args:
+        directory: Path to directory containing result files.
+        extension: File extension to scan for (e.g. '.csv', '.json').
+        ignore_suffix: Filename suffix to ignore (e.g. '_merged').
+        return_superseded: If True, returns a tuple of (latest_runs_dict,
+            superseded_runs_dict). Otherwise, returns only latest_runs_dict.
+
+    Returns:
+        Dict or (Dict, Dict) mapping (dataset_name, dataset_type) to file lists.
+    """
     latest_runs: Dict[Tuple[str, str, str, str], Tuple[str, pathlib.Path]] = {}
+    superseded_runs: Dict[Tuple[str, str], List[pathlib.Path]] = {}
     base_files: Dict[Tuple[str, str], List[pathlib.Path]] = {}
 
     for file_path in directory.glob(f"*{extension}"):
@@ -150,16 +171,21 @@ def group_files(
         if not dataset_name or not dataset_type:
             continue
 
+        group_key = (dataset_name, dataset_type)
+
         if exp_id:
             key = (dataset_name, dataset_type, exp_id, random_state)
             norm_ts = normalize_timestamp(timestamp)
-            if key not in latest_runs or norm_ts > latest_runs[key][0]:
+            if key not in latest_runs:
                 latest_runs[key] = (norm_ts, file_path)
+            elif norm_ts > latest_runs[key][0]:
+                _, old_path = latest_runs[key]
+                superseded_runs.setdefault(group_key, []).append(old_path)
+                latest_runs[key] = (norm_ts, file_path)
+            else:
+                superseded_runs.setdefault(group_key, []).append(file_path)
         else:
-            group_key = (dataset_name, dataset_type)
-            if group_key not in base_files:
-                base_files[group_key] = []
-            base_files[group_key].append(file_path)
+            base_files.setdefault(group_key, []).append(file_path)
 
     # Regroup by (dataset_name, dataset_type)
     grouped: Dict[Tuple[str, str], List[pathlib.Path]] = {}
@@ -177,6 +203,8 @@ def group_files(
             if bf not in grouped[group_key]:
                 grouped[group_key].append(bf)
 
+    if return_superseded:
+        return grouped, superseded_runs
     return grouped
 
 
@@ -502,7 +530,9 @@ def main():
     # Process CSV Results
     print("--- Processing CSV Results ---")
     if results_dir.exists():
-        grouped_csv = group_files(results_dir, ".csv", ignore_suffix=args.suffix)
+        grouped_csv, superseded_csv = group_files(
+            results_dir, ".csv", ignore_suffix=args.suffix, return_superseded=True
+        )
         all_csv_to_move = []
         for (dataset, dataset_type), files in grouped_csv.items():
             output_path = results_dir / f"{dataset}_{dataset_type}{args.suffix}.csv"
@@ -513,14 +543,16 @@ def main():
                 args.force,
                 allow_partial=args.allow_partial,
             )
-            if merged_ok and not args.no_archive and files:
+            superseded = superseded_csv.get((dataset, dataset_type), [])
+            all_raw_files = files + superseded
+            if merged_ok and not args.no_archive and all_raw_files:
                 csv_archive_dir = (
                     pathlib.Path(args.archive_dir)
                     if args.archive_dir
                     else results_dir / "archive"
                 )
                 archive_files(
-                    files,
+                    all_raw_files,
                     csv_archive_dir,
                     dataset,
                     dataset_type,
@@ -529,7 +561,7 @@ def main():
                     keep_originals=args.keep_originals,
                 )
             if merged_ok:
-                all_csv_to_move.extend(files)
+                all_csv_to_move.extend(all_raw_files)
 
         if args.move_to and all_csv_to_move and args.no_archive:
             move_files(all_csv_to_move, pathlib.Path(args.move_to), args.dry_run)
@@ -539,7 +571,9 @@ def main():
     # Process JSON Outputs
     print("\n--- Processing JSON Outputs ---")
     if output_dir.exists():
-        grouped_json = group_files(output_dir, ".json", ignore_suffix=args.suffix)
+        grouped_json, superseded_json = group_files(
+            output_dir, ".json", ignore_suffix=args.suffix, return_superseded=True
+        )
         all_json_to_move = []
         for (dataset, dataset_type), files in grouped_json.items():
             output_path = output_dir / f"{dataset}_{dataset_type}{args.suffix}.json"
@@ -550,14 +584,16 @@ def main():
                 args.force,
                 allow_partial=args.allow_partial,
             )
-            if merged_ok and not args.no_archive and files:
+            superseded = superseded_json.get((dataset, dataset_type), [])
+            all_raw_files = files + superseded
+            if merged_ok and not args.no_archive and all_raw_files:
                 json_archive_dir = (
                     pathlib.Path(args.archive_dir)
                     if args.archive_dir
                     else output_dir / "archive"
                 )
                 archive_files(
-                    files,
+                    all_raw_files,
                     json_archive_dir,
                     dataset,
                     dataset_type,
@@ -566,7 +602,7 @@ def main():
                     keep_originals=args.keep_originals,
                 )
             if merged_ok:
-                all_json_to_move.extend(files)
+                all_json_to_move.extend(all_raw_files)
 
         if args.move_to and all_json_to_move and args.no_archive:
             move_files(all_json_to_move, pathlib.Path(args.move_to), args.dry_run)

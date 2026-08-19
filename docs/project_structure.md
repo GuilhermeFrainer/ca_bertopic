@@ -65,7 +65,7 @@ Contains primary entry points to launch model training and evaluations.
 ### 3. Analysis & Evaluation ([scripts/analysis/](../scripts/analysis))
 Scripts for processing, evaluating, and compiling results.
 - **[find_best_models.py](../scripts/analysis/find_best_models.py)**: Scrapes results to identify the best model configurations per metric and generates plots/LaTeX tables.
-- **[merge_results.py](../scripts/analysis/merge_results.py)**: Combines results from different runs or environments.
+- **[merge_results.py](../scripts/analysis/merge_results.py)**: Consolidates and deduplicates results from individual experiment runs into merged files, with single-pass archiving and cleanup (see [merge_results_lifecycle.md](merge_results_lifecycle.md)).
 - **[calculate_total_time.py](../scripts/analysis/calculate_total_time.py)**: Analyzes time metrics from logs to determine model throughput and compute times.
 - **[count_models.py](../scripts/analysis/count_models.py)**: Summarizes completed model files.
 
