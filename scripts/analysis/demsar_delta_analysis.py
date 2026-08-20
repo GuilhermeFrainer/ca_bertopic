@@ -97,8 +97,7 @@ def parse_args():
         const="__STDOUT__",
         metavar="FILE",
         help=(
-            "Output the results as a LaTeX table. If FILE is omitted, "
-            "prints to stdout."
+            "Output the results as a LaTeX table. If FILE is omitted, prints to stdout."
         ),
     )
     parser.add_argument(

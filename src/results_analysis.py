@@ -913,3 +913,615 @@ def compute_demsar_delta_table(
             df_details["n_blocks"].max() if not df_details.is_empty() else 0
         ),
     }
+
+
+def friedman_omnibus_test(
+    mean_ranks: Sequence[float] | np.ndarray,
+    n_blocks: int,
+    k_models: int,
+) -> Dict[str, float]:
+    """Computes Friedman chi-squared statistic and Iman-Davenport F-statistic.
+
+    Following Demšar (2006):
+    - Friedman statistic:
+      chi2_F = (12 * N / (k * (k + 1))) * (sum(R_j^2) - (k * (k + 1)^2 / 4))
+    - Iman and Davenport (1987) correction:
+      F_F = ((N - 1) * chi2_F) / (N * (k - 1) - chi2_F)
+
+    Args:
+        mean_ranks: Average rank for each model across the N blocks.
+        n_blocks: Number of evaluation blocks (N).
+        k_models: Number of algorithms (k).
+
+    Returns:
+        Dictionary with keys:
+        - 'chi2_f': Friedman chi-squared statistic
+        - 'p_chi2': Asymptotic chi-squared p-value
+        - 'f_f': Iman-Davenport F-statistic
+        - 'p_f_f': F-distribution p-value
+        - 'df1': Numerator degrees of freedom (k - 1)
+        - 'df2': Denominator degrees of freedom ((k - 1) * (N - 1))
+        - 'n_blocks': Number of blocks (N)
+        - 'k_models': Number of models (k)
+    """
+    if n_blocks <= 1 or k_models <= 1:
+        return {
+            "chi2_f": 0.0,
+            "p_chi2": 1.0,
+            "f_f": 0.0,
+            "p_f_f": 1.0,
+            "df1": max(1, k_models - 1),
+            "df2": max(1, (k_models - 1) * (n_blocks - 1)),
+            "n_blocks": n_blocks,
+            "k_models": k_models,
+        }
+
+    ranks_arr = np.asarray(mean_ranks, dtype=float)
+    k = k_models
+    n = n_blocks
+
+    sum_sq_ranks = float(np.sum(ranks_arr**2))
+    term = (k * ((k + 1) ** 2)) / 4.0
+    chi2_f = (12.0 * n / (k * (k + 1))) * (sum_sq_ranks - term)
+
+    # Clean numerical inaccuracies around zero
+    if chi2_f < 0.0:
+        chi2_f = 0.0
+
+    df1 = k - 1
+    df2 = (k - 1) * (n - 1)
+    p_chi2 = float(scipy_stats.chi2.sf(chi2_f, df1))
+
+    denom = (n * (k - 1)) - chi2_f
+    if denom <= 1e-12:
+        # Extreme significance: identical ranks in every block
+        f_f = float("inf")
+        p_f_f = 0.0
+    else:
+        f_f = float(((n - 1) * chi2_f) / denom)
+        p_f_f = float(scipy_stats.f.sf(f_f, df1, df2))
+
+    return {
+        "chi2_f": chi2_f,
+        "p_chi2": p_chi2,
+        "f_f": f_f,
+        "p_f_f": p_f_f,
+        "df1": df1,
+        "df2": df2,
+        "n_blocks": n,
+        "k_models": k,
+    }
+
+
+def nemenyi_critical_difference(
+    n_blocks: int,
+    k_models: int,
+    alpha: float = 0.05,
+) -> float:
+    """Computes Nemenyi Critical Difference (CD) for all-vs-all model comparison.
+
+    Following Demšar (2006), CD = q_alpha * sqrt((k * (k + 1)) / (6 * N)),
+    where q_alpha is the Studentized range critical value divided by sqrt(2).
+
+    Args:
+        n_blocks: Number of evaluation blocks (N).
+        k_models: Number of models (k).
+        alpha: Significance level (default: 0.05).
+
+    Returns:
+        The Critical Difference threshold as a float.
+    """
+    if n_blocks <= 0 or k_models <= 1:
+        return 0.0
+
+    # Upper alpha-quantile of studentized range distribution with k treatments, inf df
+    q_alpha = float(
+        scipy_stats.studentized_range.ppf(1.0 - alpha, k_models, np.inf) / np.sqrt(2)
+    )
+    cd = q_alpha * np.sqrt((k_models * (k_models + 1)) / (6.0 * n_blocks))
+    return float(cd)
+
+
+def compute_nemenyi_cliques(
+    models: Sequence[str],
+    mean_ranks: Dict[str, float],
+    cd: float,
+) -> Dict[str, str]:
+    """Computes statistical equivalence cliques (letters) based on Nemenyi CD.
+
+    Models whose rank difference is <= CD belong to the same clique.
+    Assigns letters ('a', 'b', 'c', ...) following multcomp standard.
+
+    Args:
+        models: List of model names.
+        mean_ranks: Dict mapping model name to mean rank.
+        cd: Nemenyi Critical Difference value.
+
+    Returns:
+        Dict mapping model name to comma-separated letter codes (e.g. 'a', 'a, b').
+    """
+    if not models:
+        return {}
+
+    # Sort models by mean rank ascending (best to worst)
+    sorted_models = sorted(models, key=lambda m: (mean_ranks.get(m, float("inf")), m))
+    k = len(sorted_models)
+    if k == 1:
+        return {sorted_models[0]: "a"}
+
+    # Find maximal contiguous subsets [i, j] where R_j - R_i <= CD
+    valid_subsets = []
+    for i in range(k):
+        for j in range(i, k):
+            r_diff = mean_ranks[sorted_models[j]] - mean_ranks[sorted_models[i]]
+            if r_diff <= cd + 1e-9:
+                valid_subsets.append((i, j))
+
+    # Keep only maximal subsets (not strictly contained within any other subset)
+    maximal_subsets = []
+    for i, j in valid_subsets:
+        is_maximal = True
+        for oi, oj in valid_subsets:
+            if (oi < i and oj >= j) or (oi <= i and oj > j):
+                is_maximal = False
+                break
+        if is_maximal and (i, j) not in maximal_subsets:
+            maximal_subsets.append((i, j))
+
+    # Sort maximal subsets by start index
+    maximal_subsets.sort(key=lambda s: (s[0], s[1]))
+
+    # Assign letters: 'a', 'b', 'c', ...
+    alphabet = "abcdefghijklmnopqrstuvwxyz"
+    model_cliques: Dict[str, List[str]] = {m: [] for m in sorted_models}
+
+    for idx, (start, end) in enumerate(maximal_subsets):
+        letter = alphabet[idx % len(alphabet)]
+        if idx >= len(alphabet):
+            letter = f"{letter}{idx // len(alphabet)}"
+        for m_idx in range(start, end + 1):
+            model_name = sorted_models[m_idx]
+            model_cliques[model_name].append(letter)
+
+    return {
+        m: ", ".join(letters) if letters else "a"
+        for m, letters in model_cliques.items()
+    }
+
+
+def pairwise_all_vs_all_tests(
+    models: Sequence[str],
+    mean_ranks: Dict[str, float],
+    n_blocks: int,
+    k_models: int,
+    alpha: float = 0.05,
+    correction: str = "holm",
+) -> pl.DataFrame:
+    """Performs pairwise comparison between all model pairs using rank z-statistics.
+
+    Following Demšar (2006), z = (R_A - R_B) / sqrt((k * (k + 1)) / (6 * N)),
+    with Holm-Bonferroni step-down correction for multiple testing.
+
+    Args:
+        models: List of model names.
+        mean_ranks: Dict mapping model name to mean rank.
+        n_blocks: Number of evaluation blocks (N).
+        k_models: Number of models (k).
+        alpha: Significance level threshold (default: 0.05).
+        correction: Multiple testing correction ('holm' or 'none').
+
+    Returns:
+        Polars DataFrame containing pairwise test results.
+    """
+    if k_models <= 1 or n_blocks <= 0:
+        return pl.DataFrame()
+
+    se = np.sqrt((k_models * (k_models + 1)) / (6.0 * n_blocks))
+    pairs = []
+    unique_pairs = []
+
+    for i in range(len(models)):
+        for j in range(len(models)):
+            if i == j:
+                continue
+            m_a = models[i]
+            m_b = models[j]
+            r_a = mean_ranks[m_a]
+            r_b = mean_ranks[m_b]
+            diff_r = r_a - r_b
+            z_val = diff_r / se
+            p_raw = float(2.0 * scipy_stats.norm.sf(abs(z_val)))
+
+            pair_dict = {
+                "model_a": m_a,
+                "model_b": m_b,
+                "rank_a": r_a,
+                "rank_b": r_b,
+                "rank_diff": diff_r,
+                "z_stat": float(z_val),
+                "p_raw": p_raw,
+            }
+            pairs.append(pair_dict)
+
+            # Keep canonical upper pair for multiplicity correction
+            if i < j:
+                unique_pairs.append((m_a, m_b, p_raw))
+
+    # Apply Holm correction on unique pairs
+    if correction == "holm" and unique_pairs:
+        raw_p_list = [p for _, _, p in unique_pairs]
+        adj_p_list = holm_bonferroni(raw_p_list)
+        p_adj_map = {}
+        for (m_a, m_b, _), p_adj in zip(unique_pairs, adj_p_list):
+            p_adj_map[(m_a, m_b)] = p_adj
+            p_adj_map[(m_b, m_a)] = p_adj
+    else:
+        p_adj_map = {(p["model_a"], p["model_b"]): p["p_raw"] for p in pairs}
+
+    for p in pairs:
+        p["p_adj"] = p_adj_map.get((p["model_a"], p["model_b"]), p["p_raw"])
+        p["is_significant"] = bool(p["p_adj"] < alpha)
+
+    return pl.DataFrame(pairs)
+
+
+def compute_demsar_all_vs_all(
+    df: pl.DataFrame | Sequence[pl.DataFrame],
+    dataset: Optional[str | Sequence[str]] = None,
+    metrics: Optional[Sequence[str]] = None,
+    alpha: float = 0.05,
+    exclude_clustering: Optional[Sequence[str]] = None,
+    exclude_dim_red: Optional[Sequence[str]] = None,
+    merge_info0: bool = False,
+    higher_is_better: Optional[Dict[str, bool]] = None,
+) -> Dict[str, Any]:
+    """Performs full Demšar (2006) All-vs-All Model Comparison across metrics.
+
+    Workflow:
+    1. Seed Aggregation: Averages scores over random seeds for each
+       (dataset, topic_count, model_type).
+    2. Block Construction: Constructs the (N blocks x k models) evaluation matrix.
+    3. Block-by-Block Ranking: Converts scores to fractional ranks (Rank 1 = best)
+       and computes mean rank R_j for each model.
+    4. Omnibus Testing: Computes Friedman chi-square and Iman-Davenport F_F test.
+    5. Post-Hoc Analysis: If omnibus test is significant (p < alpha), computes
+       Nemenyi CD, equivalence cliques, and all-pairs z-tests with Holm correction.
+    6. Deliverables Generation: Creates Model Ranking Summary Table and k x k
+       Pairwise Delta Matrix for each metric.
+
+    Args:
+        df: Polars DataFrame or sequence of DataFrames with results.
+        dataset: Dataset identifier or list of datasets to filter by (None = all).
+        metrics: List of metrics to evaluate (default: METRICS).
+        alpha: Significance threshold (default: 0.05).
+        exclude_clustering: Clustering algorithms to exclude.
+        exclude_dim_red: Dimensionality reduction algorithms to exclude.
+        merge_info0: Treat '_info0' variants as base model type.
+        higher_is_better: Optional dict indicating optimization direction per metric.
+
+    Returns:
+        A dictionary mapping each metric name to its results dict, plus 'metadata'.
+    """
+    if isinstance(df, (list, tuple)):
+        if not df:
+            return {
+                "metrics": {},
+                "metadata": {"n_blocks": 0, "k_models": 0, "alpha": alpha},
+            }
+        combined_df = pl.concat(
+            [d.clone() for d in df if isinstance(d, pl.DataFrame) and not d.is_empty()],
+            how="diagonal",
+        )
+    else:
+        combined_df = df.clone()
+
+    if combined_df.is_empty():
+        return {
+            "metrics": {},
+            "metadata": {"n_blocks": 0, "k_models": 0, "alpha": alpha},
+        }
+
+    target_metrics = [m for m in (metrics or METRICS)]
+
+    # Directionality default (NLP metrics: higher is better)
+    direction_map = {m: True for m in target_metrics}
+    if higher_is_better:
+        direction_map.update(higher_is_better)
+
+    # 1. Dataset normalization and filtering
+    if "dataset_name" in combined_df.columns:
+        combined_df = combined_df.with_columns(
+            pl.col("dataset_name")
+            .replace("anes_stemmed", "anes")
+            .str.replace(r"_s\d+$", "")
+        )
+        if dataset is not None:
+            if isinstance(dataset, str):
+                combined_df = combined_df.filter(pl.col("dataset_name") == dataset)
+            else:
+                combined_df = combined_df.filter(
+                    pl.col("dataset_name").is_in(list(dataset))
+                )
+
+    if combined_df.is_empty():
+        return {
+            "metrics": {},
+            "metadata": {"n_blocks": 0, "k_models": 0, "alpha": alpha},
+        }
+
+    # 2. Extract model_type and topic_idx
+    m_types = []
+    t_indices = []
+    model_names = (
+        combined_df["model_name"].to_list()
+        if "model_name" in combined_df.columns
+        else []
+    )
+    for name in model_names:
+        mtype, tidx = parse_model_type_and_topic(str(name), merge_info0=merge_info0)
+        m_types.append(mtype)
+        t_indices.append(tidx)
+
+    annotated = combined_df.with_columns(
+        [
+            pl.Series("model_type", m_types),
+            pl.Series("topic_idx", t_indices),
+        ]
+    )
+
+    if "nr_topics" in annotated.columns:
+        annotated = annotated.with_columns(
+            pl.when(pl.col("topic_idx") == 0)
+            .then(pl.col("nr_topics").fill_null(0))
+            .otherwise(pl.col("topic_idx"))
+            .alias("topic_idx")
+        )
+    elif "n_topics" in annotated.columns:
+        annotated = annotated.with_columns(
+            pl.when(pl.col("topic_idx") == 0)
+            .then(pl.col("n_topics").fill_null(0))
+            .otherwise(pl.col("topic_idx"))
+            .alias("topic_idx")
+        )
+
+    # 3. Apply algorithm exclusion filters
+    def filter_algos(
+        dframe: pl.DataFrame,
+        col_name: str,
+        exclusions: Optional[Sequence[str]],
+        default_pattern: Optional[str],
+    ) -> pl.DataFrame:
+        if col_name not in dframe.columns:
+            return dframe
+        if exclusions is not None:
+            norm_exclusions = [e.lower().replace("_", "") for e in exclusions]
+            cond = (
+                dframe[col_name]
+                .fill_null("")
+                .map_elements(
+                    lambda x: any(
+                        ex in x.lower().replace("_", "")
+                        or x.lower().replace("_", "") == ex
+                        for ex in norm_exclusions
+                    ),
+                    return_dtype=pl.Boolean,
+                )
+            )
+            return dframe.filter(~cond)
+        elif default_pattern:
+            return dframe.filter(~pl.col(col_name).str.contains(default_pattern))
+        return dframe
+
+    annotated = filter_algos(
+        annotated, "clustering_algo", exclude_clustering, "k_means"
+    )
+    annotated = filter_algos(annotated, "dim_red_algo", exclude_dim_red, "pca")
+
+    if annotated.is_empty():
+        return {
+            "metrics": {},
+            "metadata": {"n_blocks": 0, "k_models": 0, "alpha": alpha},
+        }
+
+    # Canonical model ordering preference
+    canonical_order = [
+        "mv_co_reg_spectral",
+        "mv_co_reg_spectral_info0",
+        "mv_spectral",
+        "mv_spectral_info0",
+        "aligned_umap",
+        "append_umap",
+        "baseline",
+        "umap_spectral",
+        "stm",
+    ]
+
+    all_present_models = annotated["model_type"].unique().to_list()
+    ordered_models = [m for m in canonical_order if m in all_present_models]
+    ordered_models += sorted(
+        [m for m in all_present_models if m not in canonical_order]
+    )
+
+    available_metrics = [m for m in target_metrics if m in annotated.columns]
+
+    # Create Block ID: (dataset_name, topic_idx)
+    block_cols = ["topic_idx"]
+    if "dataset_name" in annotated.columns:
+        block_cols = ["dataset_name", "topic_idx"]
+
+    # 4. Aggregate across random seeds for each (block, model_type)
+    agg_exprs = [
+        pl.col(m).cast(pl.Float64, strict=False).mean().alias(m)
+        for m in available_metrics
+    ]
+    df_agg = (
+        annotated.group_by(block_cols + ["model_type"])
+        .agg(agg_exprs)
+        .sort(block_cols + ["model_type"])
+    )
+
+    # Unique blocks
+    blocks_df = df_agg.select(block_cols).unique().sort(block_cols)
+    n_blocks = len(blocks_df)
+
+    results_by_metric: Dict[str, Any] = {}
+
+    for metric in available_metrics:
+        hib = direction_map.get(metric, True)
+
+        # Pivot to Block x Model matrix
+        # Filter models with complete observations across blocks
+        valid_models = []
+        for m in ordered_models:
+            sub = df_agg.filter(
+                (pl.col("model_type") == m) & pl.col(metric).is_not_null()
+            )
+            if len(sub) == n_blocks:
+                valid_models.append(m)
+
+        if len(valid_models) < 2 or n_blocks < 2:
+            continue
+
+        k_models = len(valid_models)
+
+        # Build (N x k) score matrix
+        score_matrix = np.zeros((n_blocks, k_models), dtype=float)
+        for b_idx, b_row in enumerate(blocks_df.iter_rows(named=True)):
+            for m_idx, model in enumerate(valid_models):
+                filter_cond = pl.col("model_type") == model
+                for b_col in block_cols:
+                    filter_cond = filter_cond & (pl.col(b_col) == b_row[b_col])
+                val = df_agg.filter(filter_cond)[metric][0]
+                score_matrix[b_idx, m_idx] = float(val)
+
+        # Block-by-block ranking (1 = best)
+        # Using scipy.stats.rankdata:
+        # rankdata on negative scores if higher_is_better assigns 1 to highest
+        rank_matrix = np.zeros_like(score_matrix)
+        for b_idx in range(n_blocks):
+            row_vals = score_matrix[b_idx, :]
+            to_rank = -row_vals if hib else row_vals
+            rank_matrix[b_idx, :] = scipy_stats.rankdata(to_rank, method="average")
+
+        mean_ranks_arr = np.mean(rank_matrix, axis=0)
+        mean_scores_arr = np.mean(score_matrix, axis=0)
+        std_scores_arr = np.std(score_matrix, axis=0)
+
+        mean_ranks_dict = {
+            model: float(mean_ranks_arr[idx]) for idx, model in enumerate(valid_models)
+        }
+        mean_scores_dict = {
+            model: float(mean_scores_arr[idx]) for idx, model in enumerate(valid_models)
+        }
+        std_scores_dict = {
+            model: float(std_scores_arr[idx]) for idx, model in enumerate(valid_models)
+        }
+
+        # Omnibus Test
+        omnibus = friedman_omnibus_test(mean_ranks_arr, n_blocks, k_models)
+        is_omnibus_sig = bool(omnibus["p_f_f"] < alpha)
+
+        # Critical Difference & Post-Hoc
+        cd = nemenyi_critical_difference(n_blocks, k_models, alpha=alpha)
+        cliques = compute_nemenyi_cliques(valid_models, mean_ranks_dict, cd)
+
+        # Pairwise All-vs-All tests
+        pairwise_df = pairwise_all_vs_all_tests(
+            models=valid_models,
+            mean_ranks=mean_ranks_dict,
+            n_blocks=n_blocks,
+            k_models=k_models,
+            alpha=alpha,
+            correction="holm",
+        )
+
+        # Build Model Ranking Summary Table
+        summary_rows = []
+        # Sort by mean rank ascending (best to worst)
+        ranked_models = sorted(
+            valid_models, key=lambda m: (mean_ranks_dict[m], -mean_scores_dict[m])
+        )
+
+        best_model = ranked_models[0] if ranked_models else None
+
+        for m in ranked_models:
+            m_score = mean_scores_dict[m]
+            m_std = std_scores_dict[m]
+            m_rank = mean_ranks_dict[m]
+            group = cliques.get(m, "a")
+
+            summary_rows.append(
+                {
+                    "Model": m,
+                    "Mean Score": m_score,
+                    "Std Score": m_std,
+                    "Mean Score (±SD)": f"{m_score:.3f} (±{m_std:.3f})",
+                    "Mean Rank": m_rank,
+                    "Significance Group": group,
+                    "Is Best": (m == best_model),
+                }
+            )
+
+        df_summary = pl.DataFrame(summary_rows)
+
+        # Build Pairwise Delta Matrix (k x k)
+        # Rows: Model A, Cols: Model B
+        # Cell: Score_A - Score_B with '*' if post-hoc p_adj < alpha
+        delta_matrix_rows = []
+        for m_a in ranked_models:
+            row_dict = {"Model": m_a}
+            for m_b in ranked_models:
+                if m_a == m_b:
+                    row_dict[m_b] = "-"
+                else:
+                    diff_score = mean_scores_dict[m_a] - mean_scores_dict[m_b]
+                    # Check post-hoc significance from pairwise_df
+                    pair_match = pairwise_df.filter(
+                        (pl.col("model_a") == m_a) & (pl.col("model_b") == m_b)
+                    )
+                    sig_flag = ""
+                    if not pair_match.is_empty() and is_omnibus_sig:
+                        if pair_match["is_significant"][0]:
+                            sig_flag = "*"
+                    elif (
+                        is_omnibus_sig
+                        and abs(mean_ranks_dict[m_a] - mean_ranks_dict[m_b]) > cd
+                    ):
+                        sig_flag = "*"
+
+                    row_dict[m_b] = f"{diff_score:+.3f}{sig_flag}"
+            delta_matrix_rows.append(row_dict)
+
+        df_delta_matrix = pl.DataFrame(delta_matrix_rows)
+
+        results_by_metric[metric] = {
+            "metric": metric,
+            "higher_is_better": hib,
+            "n_blocks": n_blocks,
+            "k_models": k_models,
+            "models": ranked_models,
+            "mean_ranks": mean_ranks_dict,
+            "mean_scores": mean_scores_dict,
+            "std_scores": std_scores_dict,
+            "omnibus": omnibus,
+            "is_significant": is_omnibus_sig,
+            "critical_difference": cd,
+            "cliques": cliques,
+            "summary_table": df_summary,
+            "pairwise_tests": pairwise_df,
+            "pairwise_delta_matrix": df_delta_matrix,
+        }
+
+    return {
+        "metrics": results_by_metric,
+        "metadata": {
+            "n_blocks": n_blocks,
+            "k_models": len(ordered_models),
+            "alpha": alpha,
+            "datasets": (
+                list(combined_df["dataset_name"].unique())
+                if "dataset_name" in combined_df.columns
+                else []
+            ),
+        },
+    }
