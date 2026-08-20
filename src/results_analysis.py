@@ -1,6 +1,8 @@
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
 import polars as pl
+import scipy.stats as scipy_stats
 
 METRICS = ["u_mass", "c_v", "c_npmi", "irbo", "topic_diversity"]
 
@@ -297,14 +299,17 @@ def compute_stopword_impact(
     exclude_dim_red: List[str] | None = None,
     merge_info0: bool = False,
 ) -> Dict[str, pl.DataFrame]:
-    """Computes metric differences between remove_rep_stopwords and keep_rep_stopwords runs.
+    """Computes metric differences between remove and keep stopwords runs.
 
-    Calculates pairwise difference (remove_rep_stopwords - keep_rep_stopwords) for
-    corresponding models (same model configuration and random seed) and aggregates by model_type.
+    Calculates pairwise difference (remove_rep_stopwords - keep_rep_stopwords)
+    for corresponding models (same configuration and seed) and aggregates
+    by model_type.
 
     Args:
-        df_remove_rep_stopwords: Polars DataFrame of results with representation stopwords removed.
-        df_keep_rep_stopwords: Polars DataFrame of results with representation stopwords kept.
+        df_remove_rep_stopwords: Polars DataFrame of results with representation
+            stopwords removed.
+        df_keep_rep_stopwords: Polars DataFrame of results with representation
+            stopwords kept.
         dataset: Name of dataset to filter by.
         exclude_clustering: Optional list of clustering algorithms to exclude.
         exclude_dim_red: Optional list of dim reduction algorithms to exclude.
@@ -451,3 +456,460 @@ def compute_stopword_impact(
         results[metric] = aggregated
 
     return results
+
+
+def parse_model_type_and_topic(
+    model_name: str, merge_info0: bool = False
+) -> Tuple[str, int]:
+    """Extracts base model type and topic count index from a model run name.
+
+    Examples:
+        'baseline_1_seed36201624' -> ('baseline', 1)
+        'stemmed_mv_spectral_3_seed100' -> ('mv_spectral', 3)
+        'append_umap_5' -> ('append_umap', 5)
+
+    Args:
+        model_name: The raw experiment model name.
+        merge_info0: Whether to strip trailing '_info0'.
+
+    Returns:
+        Tuple of (model_type, topic_index).
+    """
+    if not isinstance(model_name, str):
+        return str(model_name), 0
+
+    clean = model_name
+    if clean.startswith("stemmed_"):
+        clean = clean[len("stemmed_") :]
+    if clean.startswith("stm_"):
+        # Handle stm naming if needed
+        pass
+    if "_seed" in clean:
+        clean = clean.split("_seed")[0]
+
+    parts = clean.split("_")
+    if parts[-1].isdigit():
+        topic_idx = int(parts[-1])
+        base = "_".join(parts[:-1])
+    else:
+        topic_idx = 0
+        base = clean
+
+    if merge_info0 and base.endswith("_info0"):
+        base = base[: -len("_info0")]
+
+    return base, topic_idx
+
+
+def wilcoxon_exact_test(
+    differences: Sequence[float] | np.ndarray,
+    alternative: str = "two-sided",
+    zero_method: str = "pratt",
+) -> Tuple[float, float]:
+    """Computes exact paired Wilcoxon signed-rank test statistic and p-value.
+
+    Following Demšar (2006), uses the exact permutation distribution for small
+    sample sizes (such as N=5 topic counts) and applies Pratt's method for handling
+    zero differences without discarding paired blocks.
+
+    Args:
+        differences: Paired differences (Alternative - Default) across sample blocks.
+        alternative: Test direction ('two-sided', 'greater', or 'less').
+        zero_method: Zero handling method ('pratt', 'wilcoxon', or 'zsplit').
+
+    Returns:
+        Tuple of (statistic, p_value).
+    """
+    diff_arr = np.asarray(differences, dtype=float)
+    if len(diff_arr) == 0:
+        return 0.0, 1.0
+
+    # If all differences are zero, there is no variance and no difference
+    if np.all(diff_arr == 0):
+        return 0.0, 1.0
+
+    try:
+        res = scipy_stats.wilcoxon(
+            diff_arr,
+            zero_method=zero_method,
+            method="exact",
+            alternative=alternative,
+        )
+        p_val = float(res.pvalue)
+        if np.isnan(p_val):
+            p_val = 1.0
+        return float(res.statistic), p_val
+    except Exception:
+        # Fallback for degenerate distributions
+        return 0.0, 1.0
+
+
+def holm_bonferroni(p_values: Sequence[float]) -> List[float]:
+    """Applies Holm-Bonferroni step-down adjustment to control FWER.
+
+    Controls family-wise error rate across a family of hypotheses:
+    p_adj_(i) = min(1.0, max_{j <= i} ((m - j + 1) * p_(j)))
+
+    Args:
+        p_values: Sequence of raw p-values.
+
+    Returns:
+        List of adjusted p-values in original input order.
+    """
+    n = len(p_values)
+    if n == 0:
+        return []
+
+    indexed = sorted(enumerate(p_values), key=lambda x: x[1])
+    adjusted = [0.0] * n
+    running_max = 0.0
+
+    for rank, (orig_idx, p) in enumerate(indexed):
+        multiplier = n - rank
+        adj = min(1.0, multiplier * p)
+        running_max = max(running_max, adj)
+        adjusted[orig_idx] = running_max
+
+    return adjusted
+
+
+def compute_demsar_delta_table(
+    df_default: pl.DataFrame,
+    df_alternative: pl.DataFrame,
+    dataset: Optional[str] = "fed",
+    metrics: Optional[List[str]] = None,
+    alpha: float = 0.10,
+    alternative: str = "two-sided",
+    zero_method: str = "pratt",
+    correction: str = "per_metric",
+    exclude_clustering: Optional[List[str]] = None,
+    exclude_dim_red: Optional[List[str]] = None,
+    merge_info0: bool = False,
+) -> Dict[str, Any]:
+    """Computes Demšar-compliant Model-by-Metric Delta Table and statistical tests.
+
+    Workflow:
+    1. Seed Aggregation: Averages scores across random seeds for each
+       (model, metric, topic_count).
+    2. Delta Computation: Computes paired differences across N=5 topic counts.
+    3. Non-Parametric Significance: Runs paired exact Wilcoxon signed-rank test
+       for each (model, metric).
+    4. FWER Control: Applies Holm-Bonferroni step-down correction.
+    5. Formatting: Creates structured delta tables with significance flags.
+
+    Args:
+        df_default: Polars DataFrame of baseline/default runs.
+        df_alternative: Polars DataFrame of alternative configuration runs.
+        dataset: Dataset identifier to filter by (or None for all).
+        metrics: List of metrics to evaluate (default: METRICS).
+        alpha: Significance threshold (e.g., 0.10 for two-tailed or 0.05
+            for one-tailed).
+        alternative: Test direction ('two-sided', 'greater', or 'less').
+        zero_method: Zero handling method for Wilcoxon ('pratt' or 'wilcoxon').
+        correction: FWER correction mode ('per_metric', 'table', or 'none').
+        exclude_clustering: Clustering algorithms to exclude.
+        exclude_dim_red: Dimensionality reduction algorithms to exclude.
+        merge_info0: Treat '_info0' variants as base model type.
+
+    Returns:
+        Dictionary containing:
+        - 'df_summary': Polars DataFrame with formatted strings per cell
+        - 'df_details': Polars DataFrame with granular statistics (delta, std,
+          w_stat, p_raw, p_adj, sig)
+        - 'models': List of model types
+        - 'metrics': List of evaluated metrics
+        - 'alpha': Alpha threshold used
+        - 'alternative': Test direction used
+        - 'correction': Correction method used
+        - 'n_topic_blocks': Number of paired topic count blocks (N=5)
+    """
+    if df_default.is_empty() or df_alternative.is_empty():
+        return {
+            "df_summary": pl.DataFrame(),
+            "df_details": pl.DataFrame(),
+            "models": [],
+            "metrics": [],
+            "alpha": alpha,
+            "alternative": alternative,
+            "correction": correction,
+            "n_topic_blocks": 0,
+        }
+
+    target_metrics = [m for m in (metrics or METRICS)]
+
+    # 1. Dataset normalization and filtering
+    std_df = df_default.clone()
+    alt_df = df_alternative.clone()
+
+    for df_ref in [std_df, alt_df]:
+        if "dataset_name" in df_ref.columns:
+            df_ref = df_ref.with_columns(
+                pl.col("dataset_name")
+                .replace("anes_stemmed", "anes")
+                .str.replace(r"_s\d+$", "")
+            )
+
+    if dataset:
+        if "dataset_name" in std_df.columns:
+            std_df = std_df.filter(pl.col("dataset_name") == dataset)
+        if "dataset_name" in alt_df.columns:
+            alt_df = alt_df.filter(pl.col("dataset_name") == dataset)
+
+    if std_df.is_empty() or alt_df.is_empty():
+        return {
+            "df_summary": pl.DataFrame(),
+            "df_details": pl.DataFrame(),
+            "models": [],
+            "metrics": target_metrics,
+            "alpha": alpha,
+            "alternative": alternative,
+            "correction": correction,
+            "n_topic_blocks": 0,
+        }
+
+    # 2. Extract model_type and topic_idx
+    def annotate_types_and_topics(df: pl.DataFrame) -> pl.DataFrame:
+        m_types = []
+        t_indices = []
+        model_names = df["model_name"].to_list() if "model_name" in df.columns else []
+        for name in model_names:
+            mtype, tidx = parse_model_type_and_topic(str(name), merge_info0=merge_info0)
+            m_types.append(mtype)
+            t_indices.append(tidx)
+
+        annotated = df.with_columns(
+            [
+                pl.Series("model_type", m_types),
+                pl.Series("topic_idx", t_indices),
+            ]
+        )
+
+        # Fallback for topic_idx if parsed as 0 but n_topics / nr_topics exists
+        if "nr_topics" in annotated.columns:
+            annotated = annotated.with_columns(
+                pl.when(pl.col("topic_idx") == 0)
+                .then(pl.col("nr_topics").fill_null(0))
+                .otherwise(pl.col("topic_idx"))
+                .alias("topic_idx")
+            )
+        elif "n_topics" in annotated.columns:
+            annotated = annotated.with_columns(
+                pl.when(pl.col("topic_idx") == 0)
+                .then(pl.col("n_topics").fill_null(0))
+                .otherwise(pl.col("topic_idx"))
+                .alias("topic_idx")
+            )
+
+        return annotated
+
+    std_df = annotate_types_and_topics(std_df)
+    alt_df = annotate_types_and_topics(alt_df)
+
+    # 3. Apply exclusion filters with normalized matching
+    def filter_algos(
+        df: pl.DataFrame,
+        col_name: str,
+        exclusions: Optional[List[str]],
+        default_pattern: Optional[str],
+    ) -> pl.DataFrame:
+        if col_name not in df.columns:
+            return df
+        if exclusions is not None:
+            norm_exclusions = [e.lower().replace("_", "") for e in exclusions]
+            # Match if normalized value is in exclusions or contains any excluded token
+            cond = (
+                df[col_name]
+                .fill_null("")
+                .map_elements(
+                    lambda x: any(
+                        ex in x.lower().replace("_", "")
+                        or x.lower().replace("_", "") == ex
+                        for ex in norm_exclusions
+                    ),
+                    return_dtype=pl.Boolean,
+                )
+            )
+            return df.filter(~cond)
+        elif default_pattern:
+            return df.filter(~pl.col(col_name).str.contains(default_pattern))
+        return df
+
+    std_df = filter_algos(std_df, "clustering_algo", exclude_clustering, "k_means")
+    alt_df = filter_algos(alt_df, "clustering_algo", exclude_clustering, "k_means")
+
+    std_df = filter_algos(std_df, "dim_red_algo", exclude_dim_red, "pca")
+    alt_df = filter_algos(alt_df, "dim_red_algo", exclude_dim_red, "pca")
+
+    if std_df.is_empty() or alt_df.is_empty():
+        return {
+            "df_summary": pl.DataFrame(),
+            "df_details": pl.DataFrame(),
+            "models": [],
+            "metrics": target_metrics,
+            "alpha": alpha,
+            "alternative": alternative,
+            "correction": correction,
+            "n_topic_blocks": 0,
+        }
+
+    available_metrics = [
+        m for m in target_metrics if m in std_df.columns and m in alt_df.columns
+    ]
+    if not available_metrics:
+        return {
+            "df_summary": pl.DataFrame(),
+            "df_details": pl.DataFrame(),
+            "models": [],
+            "metrics": [],
+            "alpha": alpha,
+            "alternative": alternative,
+            "correction": correction,
+            "n_topic_blocks": 0,
+        }
+
+    # 4. Seed Aggregation: Average across seeds for each (model_type, topic_idx)
+    agg_exprs = [
+        pl.col(m).cast(pl.Float64, strict=False).mean().alias(m)
+        for m in available_metrics
+    ]
+
+    std_agg = (
+        std_df.group_by(["model_type", "topic_idx"])
+        .agg(agg_exprs)
+        .sort(["model_type", "topic_idx"])
+    )
+    alt_agg = (
+        alt_df.group_by(["model_type", "topic_idx"])
+        .agg(agg_exprs)
+        .sort(["model_type", "topic_idx"])
+    )
+
+    # 5. Join default and alternative on paired (model_type, topic_idx)
+    joined = std_agg.join(
+        alt_agg, on=["model_type", "topic_idx"], suffix="_alternative"
+    )
+    if joined.is_empty():
+        return {
+            "df_summary": pl.DataFrame(),
+            "df_details": pl.DataFrame(),
+            "models": [],
+            "metrics": available_metrics,
+            "alpha": alpha,
+            "alternative": alternative,
+            "correction": correction,
+            "n_topic_blocks": 0,
+        }
+
+    # Desired canonical model order
+    canonical_order = [
+        "mv_co_reg_spectral",
+        "mv_co_reg_spectral_info0",
+        "mv_spectral",
+        "mv_spectral_info0",
+        "aligned_umap",
+        "append_umap",
+        "baseline",
+        "umap_spectral",
+        "stm",
+    ]
+
+    present_models = joined["model_type"].unique().to_list()
+    ordered_models = [m for m in canonical_order if m in present_models]
+    ordered_models += sorted([m for m in present_models if m not in canonical_order])
+
+    # 6. Compute deltas and exact Wilcoxon test for each (model, metric)
+    records = []
+    for model in ordered_models:
+        model_sub = joined.filter(pl.col("model_type") == model).sort("topic_idx")
+        n_blocks = len(model_sub)
+
+        for metric in available_metrics:
+            alt_col = f"{metric}_alternative"
+            d_series = (model_sub[alt_col] - model_sub[metric]).drop_nulls()
+            d_vals = d_series.to_numpy()
+
+            if len(d_vals) == 0:
+                mean_d = 0.0
+                std_d = 0.0
+                w_stat = 0.0
+                p_raw = 1.0
+            else:
+                mean_d = float(np.mean(d_vals))
+                std_d = float(np.std(d_vals))
+                w_stat, p_raw = wilcoxon_exact_test(
+                    d_vals,
+                    alternative=alternative,
+                    zero_method=zero_method,
+                )
+
+            records.append(
+                {
+                    "model_type": model,
+                    "metric": metric,
+                    "mean_delta": mean_d,
+                    "std_delta": std_d,
+                    "n_blocks": n_blocks,
+                    "w_stat": w_stat,
+                    "p_raw": p_raw,
+                }
+            )
+
+    # 7. Apply FWER Adjustment
+    if correction == "per_metric":
+        # Group by metric and apply Holm-Bonferroni per column
+        for metric in available_metrics:
+            metric_indices = [i for i, r in enumerate(records) if r["metric"] == metric]
+            raw_ps = [records[i]["p_raw"] for i in metric_indices]
+            adj_ps = holm_bonferroni(raw_ps)
+            for i, adj_p in zip(metric_indices, adj_ps):
+                records[i]["p_adj"] = adj_p
+    elif correction == "table":
+        # Global Holm-Bonferroni across all (model, metric) pairs
+        raw_ps = [r["p_raw"] for r in records]
+        adj_ps = holm_bonferroni(raw_ps)
+        for r, adj_p in zip(records, adj_ps):
+            r["p_adj"] = adj_p
+    else:
+        # No adjustment
+        for r in records:
+            r["p_adj"] = r["p_raw"]
+
+    # 8. Add significance flags and cell formatting
+    for r in records:
+        is_sig = bool(r["p_adj"] < alpha)
+        r["is_significant"] = is_sig
+        flag = "*" if is_sig else ""
+        mean_d = r["mean_delta"]
+        # Format string e.g. +0.034* or -0.012
+        r["formatted"] = f"{mean_d:+.3f}{flag}"
+
+    df_details = pl.DataFrame(records)
+
+    # 9. Build Summary Table (Rows: Models, Columns: Metrics)
+    summary_rows = []
+    for model in ordered_models:
+        row_dict = {"Model": model}
+        for metric in available_metrics:
+            match = df_details.filter(
+                (pl.col("model_type") == model) & (pl.col("metric") == metric)
+            )
+            if not match.is_empty():
+                row_dict[metric] = match["formatted"][0]
+            else:
+                row_dict[metric] = "N/A"
+        summary_rows.append(row_dict)
+
+    df_summary = pl.DataFrame(summary_rows)
+
+    return {
+        "df_summary": df_summary,
+        "df_details": df_details,
+        "models": ordered_models,
+        "metrics": available_metrics,
+        "alpha": alpha,
+        "alternative": alternative,
+        "correction": correction,
+        "n_topic_blocks": (
+            df_details["n_blocks"].max() if not df_details.is_empty() else 0
+        ),
+    }

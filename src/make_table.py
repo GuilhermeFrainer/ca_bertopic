@@ -123,7 +123,8 @@ def generate_best_models_latex_table(
         dump: If True, uses model_name instead of model_type for rows.
         average: If True, indicates that values are averages of model runs.
         highlight_colors: Tuple of hex colors for 1st, 2nd, and 3rd best results.
-        result_type: Optional result type identifier (e.g. 'standard', 'stemmed', 'no_stopword_removal').
+        result_type: Optional result type identifier (e.g. 'standard',
+            'stemmed', 'no_stopword_removal').
 
     Returns:
         A LaTeX table string.
@@ -299,7 +300,8 @@ def generate_best_models_latex_table(
     caption += (
         f" \\textcolor[HTML]{{{highlight_colors[0]}}}{{1st}}, "
         f"\\textcolor[HTML]{{{highlight_colors[1]}}}{{2nd}}, and "
-        f"\\textcolor[HTML]{{{highlight_colors[2]}}}{{3rd}} best results are highlighted."
+        f"\\textcolor[HTML]{{{highlight_colors[2]}}}{{3rd}} "
+        "best results are highlighted."
     )
 
     # Export to LaTeX
@@ -492,10 +494,238 @@ def generate_stopword_impact_latex_table(
         f"Average metric changes ($\\text{{mean}} \\pm \\text{{std}}$) resulting from "
         f"representation stopword removal for the {dataset} dataset "
         f"(comparing representation stopwords removed vs. kept). "
-        f"\\cellcolor[HTML]{{{pos_color}}}{{Green}} indicates average improvement ($\\Delta > 0$), "
-        f"and \\cellcolor[HTML]{{{neg_color}}}{{red}} indicates average decrease ($\\Delta < 0$)."
+        f"\\cellcolor[HTML]{{{pos_color}}}{{Green}} indicates average "
+        f"improvement ($\\Delta > 0$), and "
+        f"\\cellcolor[HTML]{{{neg_color}}}{{red}} indicates average "
+        f"decrease ($\\Delta < 0$)."
     )
     table_label = f"tab:stopword_impact_{dataset}"
+
+    latex = display_df.to_latex(
+        index=False,
+        caption=caption,
+        label=table_label,
+        escape=False,
+        column_format="l" + "r" * len(metric_cols),
+        position="h!",
+    )
+
+    lines = latex.splitlines()
+    processed_lines = []
+    in_tabular = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("\\begin{table}"):
+            processed_lines.append("\\begin{table}")
+            processed_lines.append("\\centering")
+            continue
+
+        if (
+            stripped.startswith("\\centering")
+            or stripped.startswith("\\caption")
+            or stripped.startswith("\\label")
+        ):
+            processed_lines.append(stripped)
+            continue
+
+        if stripped.startswith("\\begin{tabular}"):
+            processed_lines.append("\\resizebox{\\columnwidth}{!}{%")
+            processed_lines.append("    \\begin{tabular}" + stripped[15:])
+            in_tabular = True
+            continue
+
+        if stripped.startswith("\\end{tabular}"):
+            processed_lines.append("    \\end{tabular}%")
+            processed_lines.append("}")
+            in_tabular = False
+            continue
+
+        if in_tabular:
+            processed_lines.append("            " + stripped)
+        else:
+            if stripped == "\\end{table}":
+                processed_lines.append("\\end{table}")
+            elif stripped:
+                processed_lines.append(stripped)
+
+    return "\n".join(processed_lines)
+
+
+def generate_demsar_delta_markdown_table(
+    delta_results: dict,
+    dataset: str = "fed",
+    condition_name: str = "Alternative",
+) -> str:
+    """Generates a Markdown table summarizing Demšar-compliant performance deltas.
+
+    Args:
+        delta_results: Output dictionary from compute_demsar_delta_table.
+        dataset: Dataset identifier.
+        condition_name: Name of the alternative condition (e.g., 'Stemmed').
+
+    Returns:
+        Formatted Markdown table string.
+    """
+    df_summary = delta_results.get("df_summary")
+    if df_summary is None or df_summary.is_empty():
+        return f"_No delta results available for dataset {dataset}_"
+
+    metrics = delta_results.get("metrics", [])
+    metric_labels = {
+        "u_mass": "UMass",
+        "c_v": "C_v",
+        "c_npmi": "C_npmi",
+        "irbo": "IRBO",
+        "topic_diversity": "Diversity",
+    }
+
+    headers = ["Topic Model"] + [metric_labels.get(m, m) for m in metrics]
+    col_align = [":---"] + [":---:"] * len(metrics)
+
+    lines = []
+    lines.append(
+        f"### Performance Delta Table: {condition_name} vs. Default ({dataset.upper()})"
+    )
+    alpha = delta_results.get("alpha", 0.10)
+    correction = delta_results.get("correction", "per_metric")
+    lines.append(
+        f"_Statistical significance tested via paired exact Wilcoxon "
+        f"signed-rank test (N=5 topic counts) with Holm-Bonferroni "
+        f"correction ({correction}, $\\alpha = {alpha}$). '*' denotes "
+        f"adjusted $p < {alpha}$._\n"
+    )
+
+    lines.append("| " + " | ".join(headers) + " |")
+    lines.append("| " + " | ".join(col_align) + " |")
+
+    for row in df_summary.iter_rows(named=True):
+        model_name = row["Model"]
+        cells = [f"**{model_name}**"]
+        for m in metrics:
+            val = str(row.get(m, "N/A"))
+            cells.append(val)
+        lines.append("| " + " | ".join(cells) + " |")
+
+    return "\n".join(lines)
+
+
+def generate_demsar_delta_latex_table(
+    delta_results: dict,
+    dataset: str = "fed",
+    condition_name: str = "Stemmed",
+    pos_color: str = "D4EDDA",
+    neg_color: str = "F8D7DA",
+) -> str:
+    """Generates a publication-ready LaTeX table for Demšar-compliant delta evaluations.
+
+    Args:
+        delta_results: Output dictionary from compute_demsar_delta_table.
+        dataset: Dataset identifier string.
+        condition_name: Description of the alternative condition.
+        pos_color: Hex color for positive performance change.
+        neg_color: Hex color for negative performance change.
+
+    Returns:
+        LaTeX table string with proper styling and sizing.
+    """
+    import pandas as pd
+
+    df_details = delta_results.get("df_details")
+    if df_details is None or df_details.is_empty():
+        return ""
+
+    MODEL_RENAME_MAP = {
+        "append_umap": "Naive",
+        "mv_co_reg_spectral": "$\\text{\\systemshort}_1$",
+        "mv_co_reg_spectral_info0": "$\\text{\\systemshort}_1\\text{-info0}$",
+        "baseline": "$\\text{BERTopic}_1$",
+        "umap_spectral": "$\\text{BERTopic}_2$",
+        "mv_spectral": "$\\text{\\systemshort}_2$",
+        "mv_spectral_info0": "$\\text{\\systemshort}_2\\text{-info0}$",
+        "aligned_umap": "$\\text{\\systemshort}_3$",
+        "stm": "STM",
+    }
+
+    metrics = delta_results.get("metrics", [])
+    models = delta_results.get("models", [])
+    alpha = delta_results.get("alpha", 0.10)
+
+    rows = []
+    for model in models:
+        display_name = MODEL_RENAME_MAP.get(model, model.replace("_", " "))
+        row_dict = {"Model": display_name}
+        for metric in metrics:
+            match = df_details.filter(
+                (pl.col("model_type") == model) & (pl.col("metric") == metric)
+            )
+            if not match.is_empty():
+                mean_d = match["mean_delta"][0]
+                std_d = match["std_delta"][0]
+                is_sig = match["is_significant"][0]
+                row_dict[metric] = (mean_d, std_d, is_sig)
+            else:
+                row_dict[metric] = None
+        rows.append(row_dict)
+
+    final_df = pd.DataFrame(rows)
+    metric_cols = [c for c in final_df.columns if c != "Model"]
+
+    rename_map = {
+        "u_mass": "$\\Delta C_{\\text{UMass}}$",
+        "c_v": "$\\Delta C_v$",
+        "c_npmi": "$\\Delta C_{npmi}$",
+        "irbo": "$\\Delta \\text{IRBO}$",
+        "topic_diversity": "$\\Delta \\text{Diversity}$",
+    }
+    actual_rename = {k: v for k, v in rename_map.items() if k in final_df.columns}
+
+    def format_delta_cells(df):
+        formatted_df = df.copy()
+        for col in metric_cols:
+            if col in df.columns:
+
+                def apply_cell(entry):
+                    if pd.isnull(entry) or entry is None:
+                        return "-"
+                    mean_val, std_val, is_sig = entry
+                    if pd.isnull(mean_val):
+                        return "-"
+
+                    sign = "+" if mean_val > 0 else ""
+                    star = "^{*}" if is_sig else ""
+
+                    if std_val is not None and std_val > 0.0:
+                        val_str = f"${sign}{mean_val:.3f} \\pm {std_val:.3f}{star}$"
+                    else:
+                        val_str = f"${sign}{mean_val:.3f}{star}$"
+
+                    if mean_val > 0:
+                        return f"\\cellcolor[HTML]{{{pos_color}}}{{{val_str}}}"
+                    elif mean_val < 0:
+                        return f"\\cellcolor[HTML]{{{neg_color}}}{{{val_str}}}"
+                    return val_str
+
+                formatted_df[col] = df[col].apply(apply_cell)
+        return formatted_df
+
+    display_df = format_delta_cells(final_df)
+    display_df = display_df.rename(columns=actual_rename)
+
+    caption = (
+        f"Demšar-compliant Performance Delta Table for {condition_name} vs. "
+        f"Default on the {dataset.upper()} dataset across $N=5$ topic counts. "
+        f"Values indicate mean delta across topic counts "
+        f"($\\text{{mean}} \\pm \\text{{std}}$). "
+        f"Statistical significance tested via paired exact Wilcoxon signed-rank "
+        f"tests with Holm-Bonferroni correction ($\\alpha = {alpha}$). "
+        f"$^*$ denotes statistically significant difference "
+        f"($p_{{\\text{{adj}}}} < {alpha}$)."
+    )
+    table_label = (
+        f"tab:demsar_delta_{dataset}_{condition_name.lower().replace(' ', '_')}"
+    )
 
     latex = display_df.to_latex(
         index=False,
