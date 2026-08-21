@@ -389,3 +389,19 @@ def test_train_and_evaluate_tritopic_real_execution():
     assert "n_topics" in metrics
     assert metrics["n_topics"] > 0
     assert hasattr(fitted_model, "topics_")
+
+    # Verify extract_qualitative_data maps doc indices to actual text strings
+    import src.utils as utils
+
+    qual_df = utils.extract_qualitative_data(
+        fitted_model, "real_tritopic", {"dataset_name": "test_ds"}
+    )
+    assert "representative_docs" in qual_df.columns
+    assert "representation" in qual_df.columns
+    assert qual_df["representative_docs"].dtype == pl.List(pl.String)
+    assert qual_df["representation"].dtype == pl.List(pl.String)
+
+    rep_docs_sample = qual_df["representative_docs"].to_list()[0]
+    assert len(rep_docs_sample) > 0
+    # First document should be one of the original input texts, not a stringified int
+    assert rep_docs_sample[0] in texts

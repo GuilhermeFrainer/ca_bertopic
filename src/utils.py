@@ -153,8 +153,43 @@ def extract_qualitative_data(
 
     import polars as pl
 
-    # Get topic info from BERTopic (returns a pandas DataFrame)
-    topic_info = topic_model.get_topic_info()
+    # Get topic info from model (returns a pandas DataFrame)
+    topic_info = topic_model.get_topic_info().copy()
+
+    # For TriTopic: prefer All_Keywords for complete representation if present
+    if "All_Keywords" in topic_info.columns:
+        topic_info["Keywords"] = topic_info["All_Keywords"]
+
+    # For models where Representative_Docs contains integer indices (like TriTopic),
+    # map them to the actual document texts if documents_ is available.
+    if (
+        hasattr(topic_model, "documents_")
+        and topic_model.documents_ is not None
+        and "Representative_Docs" in topic_info.columns
+        and len(topic_info) > 0
+    ):
+        docs = topic_model.documents_
+        first_docs = topic_info["Representative_Docs"].iloc[0]
+        if (
+            isinstance(first_docs, (list, np.ndarray))
+            and len(first_docs) > 0
+            and isinstance(first_docs[0], (int, np.integer))
+        ):
+
+            def map_docs(row_docs):
+                if isinstance(row_docs, (list, np.ndarray)):
+                    mapped = [
+                        str(docs[idx])
+                        for idx in row_docs
+                        if isinstance(idx, (int, np.integer)) and 0 <= idx < len(docs)
+                    ]
+                    if mapped:
+                        return mapped
+                return row_docs
+
+            topic_info["Representative_Docs"] = topic_info["Representative_Docs"].apply(
+                map_docs
+            )
 
     # Convert to Polars
     df = pl.from_pandas(topic_info)
@@ -182,6 +217,73 @@ def extract_qualitative_data(
         if isinstance(value, (list, dict)):
             value = json.dumps(value)
         df = df.with_columns(pl.lit(value).alias(key))
+
+    # Standardize column types for representation and representative_docs
+    if "representation" in df.columns:
+        dtype = df["representation"].dtype
+        if dtype in (pl.String, pl.Utf8):
+
+            def parse_repr(x):
+                if x is None:
+                    return []
+                if isinstance(x, list):
+                    return [str(w) for w in x]
+                if not isinstance(x, str) or not x.strip():
+                    return []
+                if x.startswith("[") and x.endswith("]"):
+                    try:
+                        parsed = json.loads(x)
+                        if isinstance(parsed, list):
+                            return [str(w) for w in parsed]
+                    except Exception:
+                        pass
+                return [w.strip() for w in x.split(",") if w.strip()]
+
+            df = df.with_columns(
+                pl.col("representation").map_elements(
+                    parse_repr, return_dtype=pl.List(pl.String)
+                )
+            )
+        elif isinstance(dtype, pl.List):
+            df = df.with_columns(pl.col("representation").cast(pl.List(pl.String)))
+
+    if "representative_docs" in df.columns:
+        dtype = df["representative_docs"].dtype
+        if dtype != pl.List(pl.String):
+            if isinstance(dtype, pl.List):
+                df = df.with_columns(
+                    pl.col("representative_docs").cast(pl.List(pl.String))
+                )
+            elif dtype in (pl.String, pl.Utf8):
+
+                def parse_docs(x):
+                    if x is None:
+                        return []
+                    if isinstance(x, list):
+                        return [str(d) for d in x]
+                    if not isinstance(x, str) or not x.strip():
+                        return []
+                    if x.startswith("[") and x.endswith("]"):
+                        try:
+                            parsed = json.loads(x)
+                            if isinstance(parsed, list):
+                                return [str(d) for d in parsed]
+                        except Exception:
+                            pass
+                    return [x]
+
+                df = df.with_columns(
+                    pl.col("representative_docs").map_elements(
+                        parse_docs, return_dtype=pl.List(pl.String)
+                    )
+                )
+            else:
+                df = df.with_columns(
+                    pl.col("representative_docs").map_elements(
+                        lambda x: [str(x)] if x is not None else [],
+                        return_dtype=pl.List(pl.String),
+                    )
+                )
 
     # Reorder columns: model_id first, then topic info, then metadata
     topic_cols = ["topic_id", "count", "name", "representation", "representative_docs"]

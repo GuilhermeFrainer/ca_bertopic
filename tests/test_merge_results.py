@@ -15,6 +15,7 @@ from scripts.analysis.merge_results import (  # noqa: E402
     group_files,
     merge_files,
     normalize_dataset_name,
+    standardize_json_dataframe,
 )
 
 
@@ -373,3 +374,72 @@ def test_merge_results_logging_warnings(tmp_path):
         logger=custom_logger,
     )
     assert not archive_dir.exists()
+
+
+def test_standardize_json_dataframe():
+    # Test comma-separated string representation and list[int] representative docs
+    df_raw = pl.DataFrame(
+        {
+            "representation": ["word1, word2, word3", '["word4", "word5"]'],
+            "representative_docs": [[101, 102], [103]],
+        }
+    )
+    std_df = standardize_json_dataframe(df_raw)
+    assert std_df["representation"].dtype == pl.List(pl.String)
+    assert std_df["representative_docs"].dtype == pl.List(pl.String)
+    assert std_df["representation"].to_list() == [
+        ["word1", "word2", "word3"],
+        ["word4", "word5"],
+    ]
+    assert std_df["representative_docs"].to_list() == [["101", "102"], ["103"]]
+
+
+def test_merge_files_json_mixed_schema_types(tmp_path):
+    import json
+
+    out_json = tmp_path / "yelp_standard_merged.json"
+
+    # File 1: Tritopic style (representation: String, representative_docs: List(Int64))
+    f_tritopic = tmp_path / "yelp_standard_tritopic-20260819-224904-1234.json"
+    data1 = [
+        {
+            "model_id": "tritopic_1_seed1234",
+            "topic_id": 0,
+            "count": 100,
+            "name": "Topic 0",
+            "representation": "food, good, great",
+            "representative_docs": [9118, 79],
+            "dataset_name": "yelp",
+            "random_state": 1234,
+            "file_timestamp": "20260819-224904",
+        }
+    ]
+    with open(f_tritopic, "w", encoding="utf-8") as f:
+        json.dump(data1, f)
+
+    # File 2: BERTopic style (representation: List(Str), docs: List(Str))
+    f_bertopic = tmp_path / "yelp_standard_baseline-20260820-100000-1234.json"
+    data2 = [
+        {
+            "model_id": "baseline_1_seed1234",
+            "topic_id": 0,
+            "count": 150,
+            "name": "Topic 0",
+            "representation": ["service", "staff", "friendly"],
+            "representative_docs": ["Great service here!", "Staff was very kind"],
+            "dataset_name": "yelp",
+            "random_state": 1234,
+            "file_timestamp": "20260820-100000",
+        }
+    ]
+    with open(f_bertopic, "w", encoding="utf-8") as f:
+        json.dump(data2, f)
+
+    success = merge_files([f_tritopic, f_bertopic], out_json, dry_run=False, force=True)
+    assert success
+    assert out_json.exists()
+
+    merged_df = pl.read_json(out_json)
+    assert len(merged_df) == 2
+    assert merged_df["representation"].dtype == pl.List(pl.String)
+    assert merged_df["representative_docs"].dtype == pl.List(pl.String)

@@ -273,6 +273,83 @@ def deduplicate_dataframe(df: pl.DataFrame, is_json: bool = False) -> pl.DataFra
         return deduped
 
 
+def standardize_json_dataframe(df: pl.DataFrame) -> pl.DataFrame:
+    """Standardizes JSON topic dataframe schemas.
+
+    Ensures representation and representative_docs are typed as List(String).
+    """
+    if df.is_empty():
+        return df
+
+    if "representation" in df.columns:
+        dtype = df["representation"].dtype
+        if dtype in (pl.String, pl.Utf8):
+
+            def parse_repr(x):
+                if x is None:
+                    return []
+                if isinstance(x, list):
+                    return [str(w) for w in x]
+                if not isinstance(x, str) or not x.strip():
+                    return []
+                if x.startswith("[") and x.endswith("]"):
+                    try:
+                        parsed = json.loads(x)
+                        if isinstance(parsed, list):
+                            return [str(w) for w in parsed]
+                    except Exception:
+                        pass
+                return [w.strip() for w in x.split(",") if w.strip()]
+
+            df = df.with_columns(
+                pl.col("representation").map_elements(
+                    parse_repr, return_dtype=pl.List(pl.String)
+                )
+            )
+        elif isinstance(dtype, pl.List):
+            df = df.with_columns(pl.col("representation").cast(pl.List(pl.String)))
+
+    if "representative_docs" in df.columns:
+        dtype = df["representative_docs"].dtype
+        if dtype != pl.List(pl.String):
+            if isinstance(dtype, pl.List):
+                df = df.with_columns(
+                    pl.col("representative_docs").cast(pl.List(pl.String))
+                )
+            elif dtype in (pl.String, pl.Utf8):
+
+                def parse_docs(x):
+                    if x is None:
+                        return []
+                    if isinstance(x, list):
+                        return [str(d) for d in x]
+                    if not isinstance(x, str) or not x.strip():
+                        return []
+                    if x.startswith("[") and x.endswith("]"):
+                        try:
+                            parsed = json.loads(x)
+                            if isinstance(parsed, list):
+                                return [str(d) for d in parsed]
+                        except Exception:
+                            pass
+                    return [x]
+
+                df = df.with_columns(
+                    pl.col("representative_docs").map_elements(
+                        parse_docs, return_dtype=pl.List(pl.String)
+                    )
+                )
+            else:
+                df = df.with_columns(
+                    pl.col("representative_docs").map_elements(
+                        lambda x: [str(x)] if x is not None else [],
+                        return_dtype=pl.List(pl.String),
+                    )
+                )
+
+    return df
+
+
 def merge_files(
     files: List[pathlib.Path],
     output_path: pathlib.Path,
@@ -301,6 +378,7 @@ def merge_files(
                 existing_df = pl.read_csv(output_path, infer_schema_length=None)
             elif output_path.suffix == ".json":
                 existing_df = pl.read_json(output_path, infer_schema_length=None)
+                existing_df = standardize_json_dataframe(existing_df)
             else:
                 existing_df = None
 
@@ -318,6 +396,7 @@ def merge_files(
                 df = pl.read_csv(f, infer_schema_length=None)
             elif f.suffix == ".json":
                 df = pl.read_json(f, infer_schema_length=None)
+                df = standardize_json_dataframe(df)
             else:
                 continue
 
@@ -336,7 +415,7 @@ def merge_files(
         return False
 
     try:
-        combined_df = pl.concat(dfs, how="diagonal")
+        combined_df = pl.concat(dfs, how="diagonal_relaxed")
         deduped_df = deduplicate_dataframe(combined_df, is_json=is_json)
         final_rows = len(deduped_df)
 
