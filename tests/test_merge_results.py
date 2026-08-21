@@ -308,3 +308,68 @@ def test_archive_files_including_superseded(tmp_path):
 
     assert not f_std_older.exists()
     assert not f_std_newer.exists()
+
+
+def test_merge_results_logging_and_file_creation(tmp_path):
+
+    import src.logger_config as logger_config
+
+    log_dir = tmp_path / "logs"
+    logger = logger_config.setup_logging("merge_results", log_dir)
+
+    f_test = tmp_path / "fed_standard_baseline-20260805-100000-1234.csv"
+    pl.DataFrame({"dataset_name": ["fed"], "val": [10]}).write_csv(f_test)
+    out_csv = tmp_path / "fed_standard_merged.csv"
+
+    success = merge_files(
+        [f_test],
+        out_csv,
+        dry_run=False,
+        force=True,
+        allow_partial=True,
+        logger=logger,
+    )
+    assert success
+    assert out_csv.exists()
+
+    # Verify log file creation
+    log_files = list(log_dir.glob("merge_results-*.log"))
+    assert len(log_files) >= 1
+    log_content = log_files[0].read_text(encoding="utf-8")
+    assert "Starting experiment: merge_results" in log_content
+    assert "Merging fed_standard_merged.csv" in log_content
+    assert "Successfully saved merged results" in log_content
+
+
+def test_merge_results_logging_warnings(tmp_path):
+    import logging
+
+    records = []
+
+    class TestHandler(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    custom_logger = logging.getLogger("test_merge_logger")
+    custom_logger.setLevel(logging.INFO)
+    custom_logger.addHandler(TestHandler())
+
+    # Trigger warning via get_dataset_info on corrupt json file
+    bad_file = tmp_path / "corrupt.json"
+    bad_file.write_text("{invalid_json", encoding="utf-8")
+
+    get_dataset_info(bad_file, logger=custom_logger)
+    assert any("Could not read" in r.getMessage() for r in records)
+
+    # Archive empty files check
+    archive_dir = tmp_path / "archive"
+    archive_files(
+        [],
+        archive_dir,
+        "fed",
+        "standard",
+        tmp_path / "out.csv",
+        dry_run=False,
+        logger=custom_logger,
+    )
+    assert not archive_dir.exists()

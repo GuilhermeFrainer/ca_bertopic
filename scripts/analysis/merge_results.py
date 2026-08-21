@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import json
+import logging
 import os
 import pathlib
 import re
@@ -15,13 +16,14 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import src.logger_config as logger_config
 from src.verification import verify_dataset_completeness
+
+LOG_DIR = PROJECT_ROOT / "logs"
 
 
 def normalize_dataset_name(name: str) -> str:
-    """
-    Strips sampling suffixes like _s10000 and _stemmed from the dataset name.
-    """
+    """Strips sampling suffixes like _s10000 and _stemmed from the dataset name."""
     if not name:
         return name
     name = re.sub(r"_s\d+$", "", name)
@@ -38,8 +40,8 @@ def normalize_timestamp(ts: Any) -> str:
 
 
 def parse_filename(filename: str) -> Tuple[str, str, str]:
-    """
-    Parses a filename into experiment_id, timestamp, and random_state.
+    """Parses a filename into experiment_id, timestamp, and random_state.
+
     Format: experiment_id-YYYYMMDD-HHMMSS-random_state.ext
     """
     # Remove extension
@@ -57,11 +59,14 @@ def parse_filename(filename: str) -> Tuple[str, str, str]:
     return experiment_id, timestamp, random_state
 
 
-def get_dataset_info(file_path: pathlib.Path) -> Tuple[str | None, str | None]:
-    """
-    Reads the file and/or inspects filename to extract (dataset_name, dataset_type).
+def get_dataset_info(
+    file_path: pathlib.Path, logger: logging.Logger | None = None
+) -> Tuple[str | None, str | None]:
+    """Reads the file and/or inspects filename to extract (dataset_name, dataset_type).
+
     dataset_type can be 'stemmed', 'no_stopword_removal', or 'standard'.
     """
+    _logger = logger or logging.getLogger("pipeline")
     dataset_name = None
     df = None
 
@@ -71,7 +76,7 @@ def get_dataset_info(file_path: pathlib.Path) -> Tuple[str | None, str | None]:
         elif file_path.suffix == ".json":
             df = pl.read_json(file_path, infer_schema_length=None)
     except Exception as e:
-        print(f"Warning: Could not read {file_path}: {e}")
+        _logger.warning(f"Could not read {file_path}: {e}")
 
     if df is not None and "dataset_name" in df.columns and len(df) > 0:
         dataset_name = str(df["dataset_name"][0])
@@ -124,11 +129,11 @@ def get_dataset_info(file_path: pathlib.Path) -> Tuple[str | None, str | None]:
     return dataset_name, dataset_type
 
 
-def get_dataset_name(file_path: pathlib.Path) -> str | None:
-    """
-    Reads the file to extract the dataset_name.
-    """
-    d_name, _ = get_dataset_info(file_path)
+def get_dataset_name(
+    file_path: pathlib.Path, logger: logging.Logger | None = None
+) -> str | None:
+    """Reads the file to extract the dataset_name."""
+    d_name, _ = get_dataset_info(file_path, logger=logger)
     return d_name
 
 
@@ -137,6 +142,7 @@ def group_files(
     extension: str,
     ignore_suffix: str = None,
     return_superseded: bool = False,
+    logger: logging.Logger | None = None,
 ) -> (
     Dict[Tuple[str, str], List[pathlib.Path]]
     | Tuple[
@@ -152,6 +158,7 @@ def group_files(
         ignore_suffix: Filename suffix to ignore (e.g. '_merged').
         return_superseded: If True, returns a tuple of (latest_runs_dict,
             superseded_runs_dict). Otherwise, returns only latest_runs_dict.
+        logger: Optional logger instance for warning messages.
 
     Returns:
         Dict or (Dict, Dict) mapping (dataset_name, dataset_type) to file lists.
@@ -167,7 +174,7 @@ def group_files(
 
         exp_id, timestamp, random_state = parse_filename(file_path.name)
 
-        dataset_name, dataset_type = get_dataset_info(file_path)
+        dataset_name, dataset_type = get_dataset_info(file_path, logger=logger)
         if not dataset_name or not dataset_type:
             continue
 
@@ -272,12 +279,14 @@ def merge_files(
     dry_run: bool,
     force: bool,
     allow_partial: bool = False,
+    logger: logging.Logger | None = None,
 ) -> bool:
     """Merges existing merged data and new incoming files with deduplication.
 
     Always keeps the newer entry when duplicates or re-runs are detected.
     Returns True if successful, False otherwise.
     """
+    _logger = logger or logging.getLogger("pipeline")
     if not files and not output_path.exists():
         return False
 
@@ -299,7 +308,7 @@ def merge_files(
                 existing_rows = len(existing_df)
                 dfs.append(existing_df)
         except Exception as e:
-            print(f"Warning: Could not read existing merged file {output_path}: {e}")
+            _logger.warning(f"Could not read existing merged file {output_path}: {e}")
 
     # 2. Load incoming individual files
     incoming_rows = 0
@@ -321,7 +330,7 @@ def merge_files(
                 incoming_rows += len(df)
                 dfs.append(df)
         except Exception as e:
-            print(f"Warning: Could not read file {f}: {e}")
+            _logger.warning(f"Could not read file {f}: {e}")
 
     if not dfs:
         return False
@@ -333,37 +342,35 @@ def merge_files(
 
         # 3. Check for partial models on CSV merges
         if not is_json:
-            d_name, d_type = get_dataset_info(output_path)
+            d_name, d_type = get_dataset_info(output_path, logger=_logger)
             if d_name and d_type:
                 report = verify_dataset_completeness(d_name, d_type, df=deduped_df)
                 if report.has_partial_models:
-                    print(
-                        f"\n[WARNING] Partial models detected for {output_path.name}:"
-                    )
+                    _logger.warning(f"Partial models detected for {output_path.name}:")
                     for pm in report.partial_models:
                         missing_str = ", ".join(str(s) for s in pm.missing_seeds)
-                        print(
+                        _logger.warning(
                             f"  - {pm.model_name}: {pm.found_runs}/{pm.expected_runs} "
                             f"runs. Missing seeds: [{missing_str}]"
                         )
                     slurm_cmd = report.slurm_rerun_command()
                     if slurm_cmd:
-                        print(f"  Slurm re-run command: {slurm_cmd}")
+                        _logger.warning(f"  Slurm re-run command: {slurm_cmd}")
                     if not allow_partial:
-                        print(
+                        _logger.warning(
                             f"Aborting merge for {output_path.name} to protect "
-                            "raw files. Use --allow-partial to override.\n"
+                            "raw files. Use --allow-partial to override."
                         )
                         return False
 
-        print(
+        _logger.info(
             f"Merging {output_path.name}: {existing_rows} existing + "
             f"{incoming_rows} incoming ({len(files)} files) -> "
             f"{final_rows} deduplicated rows (newer entries kept)."
         )
 
         if dry_run:
-            print(f"  [Dry Run] Would write {final_rows} rows to {output_path}")
+            _logger.info(f"  [Dry Run] Would write {final_rows} rows to {output_path}")
             return True
 
         if output_path.suffix == ".csv":
@@ -374,28 +381,32 @@ def merge_files(
             with open(output_path, "w", encoding="utf-8") as out_f:
                 json.dump(parsed_json, out_f, indent=4)
 
-        print(f"Successfully saved merged results to {output_path}")
+        _logger.info(f"Successfully saved merged results to {output_path}")
         return True
     except Exception as e:
-        print(f"Error merging files into {output_path}: {e}")
+        _logger.error(f"Error merging files into {output_path}: {e}")
         return False
 
 
-def move_files(files: List[pathlib.Path], move_to_dir: pathlib.Path, dry_run: bool):
-    """
-    Moves files to a specified directory.
-    """
+def move_files(
+    files: List[pathlib.Path],
+    move_to_dir: pathlib.Path,
+    dry_run: bool,
+    logger: logging.Logger | None = None,
+):
+    """Moves files to a specified directory."""
+    _logger = logger or logging.getLogger("pipeline")
     if not move_to_dir.exists() and not dry_run:
         move_to_dir.mkdir(parents=True, exist_ok=True)
 
     for f in files:
         target = move_to_dir / f.name
-        print(f"Moving {f.name} to {target}...")
+        _logger.info(f"Moving {f.name} to {target}...")
         if not dry_run:
             try:
                 os.replace(f, target)
             except Exception as e:
-                print(f"Error moving {f.name}: {e}")
+                _logger.error(f"Error moving {f.name}: {e}")
 
 
 def archive_files(
@@ -406,8 +417,10 @@ def archive_files(
     output_path: pathlib.Path,
     dry_run: bool,
     keep_originals: bool = False,
+    logger: logging.Logger | None = None,
 ):
     """Packages original raw files into a timestamped ZIP archive with README.txt."""
+    _logger = logger or logging.getLogger("pipeline")
     if not files:
         return
 
@@ -443,13 +456,13 @@ def archive_files(
         cleanup_msg = (
             "originals will be kept" if keep_originals else "originals will be removed"
         )
-        print(
+        _logger.info(
             f"  [Dry Run] Archive ZIP: {zip_path} "
             f"(contains README.txt + {len(files)} files; {cleanup_msg})"
         )
         return
 
-    print(f"Archiving {len(files)} files into {zip_path}...")
+    _logger.info(f"Archiving {len(files)} files into {zip_path}...")
     if not archive_dir.exists():
         archive_dir.mkdir(parents=True, exist_ok=True)
 
@@ -459,7 +472,7 @@ def archive_files(
             for f in files:
                 zf.write(f, arcname=f.name)
 
-        print(f"Successfully created archive {zip_path}")
+        _logger.info(f"Successfully created archive {zip_path}")
 
         if not keep_originals:
             for f in files:
@@ -467,9 +480,9 @@ def archive_files(
                     if f.exists():
                         f.unlink()
                 except Exception as e:
-                    print(f"Error removing {f.name}: {e}")
+                    _logger.error(f"Error removing {f.name}: {e}")
     except Exception as e:
-        print(f"Error archiving files into {zip_path}: {e}")
+        _logger.error(f"Error archiving files into {zip_path}: {e}")
 
 
 def main():
@@ -481,6 +494,12 @@ def main():
     )
     parser.add_argument(
         "--output-dir", type=str, default="output", help="Directory for JSON outputs."
+    )
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default="logs",
+        help="Directory for log files (default: logs).",
     )
     parser.add_argument(
         "--suffix", type=str, default="_merged", help="Suffix for merged files."
@@ -525,13 +544,28 @@ def main():
     args = parser.parse_args()
 
     results_dir = pathlib.Path(args.results_dir)
+    if not results_dir.is_absolute():
+        results_dir = PROJECT_ROOT / results_dir
+
     output_dir = pathlib.Path(args.output_dir)
+    if not output_dir.is_absolute():
+        output_dir = PROJECT_ROOT / output_dir
+
+    log_dir = pathlib.Path(args.log_dir)
+    if not log_dir.is_absolute():
+        log_dir = PROJECT_ROOT / log_dir
+
+    logger = logger_config.setup_logging("merge_results", log_dir)
 
     # Process CSV Results
-    print("--- Processing CSV Results ---")
+    logger.info("--- Processing CSV Results ---")
     if results_dir.exists():
         grouped_csv, superseded_csv = group_files(
-            results_dir, ".csv", ignore_suffix=args.suffix, return_superseded=True
+            results_dir,
+            ".csv",
+            ignore_suffix=args.suffix,
+            return_superseded=True,
+            logger=logger,
         )
         all_csv_to_move = []
         for (dataset, dataset_type), files in grouped_csv.items():
@@ -542,6 +576,7 @@ def main():
                 args.dry_run,
                 args.force,
                 allow_partial=args.allow_partial,
+                logger=logger,
             )
             superseded = superseded_csv.get((dataset, dataset_type), [])
             all_raw_files = files + superseded
@@ -559,20 +594,28 @@ def main():
                     output_path,
                     args.dry_run,
                     keep_originals=args.keep_originals,
+                    logger=logger,
                 )
             if merged_ok:
                 all_csv_to_move.extend(all_raw_files)
 
         if args.move_to and all_csv_to_move and args.no_archive:
-            move_files(all_csv_to_move, pathlib.Path(args.move_to), args.dry_run)
+            move_dir = pathlib.Path(args.move_to)
+            if not move_dir.is_absolute():
+                move_dir = PROJECT_ROOT / move_dir
+            move_files(all_csv_to_move, move_dir, args.dry_run, logger=logger)
     else:
-        print(f"Results directory {results_dir} not found.")
+        logger.warning(f"Results directory {results_dir} not found.")
 
     # Process JSON Outputs
-    print("\n--- Processing JSON Outputs ---")
+    logger.info("--- Processing JSON Outputs ---")
     if output_dir.exists():
         grouped_json, superseded_json = group_files(
-            output_dir, ".json", ignore_suffix=args.suffix, return_superseded=True
+            output_dir,
+            ".json",
+            ignore_suffix=args.suffix,
+            return_superseded=True,
+            logger=logger,
         )
         all_json_to_move = []
         for (dataset, dataset_type), files in grouped_json.items():
@@ -583,6 +626,7 @@ def main():
                 args.dry_run,
                 args.force,
                 allow_partial=args.allow_partial,
+                logger=logger,
             )
             superseded = superseded_json.get((dataset, dataset_type), [])
             all_raw_files = files + superseded
@@ -600,14 +644,18 @@ def main():
                     output_path,
                     args.dry_run,
                     keep_originals=args.keep_originals,
+                    logger=logger,
                 )
             if merged_ok:
                 all_json_to_move.extend(all_raw_files)
 
         if args.move_to and all_json_to_move and args.no_archive:
-            move_files(all_json_to_move, pathlib.Path(args.move_to), args.dry_run)
+            move_dir = pathlib.Path(args.move_to)
+            if not move_dir.is_absolute():
+                move_dir = PROJECT_ROOT / move_dir
+            move_files(all_json_to_move, move_dir, args.dry_run, logger=logger)
     else:
-        print(f"Output directory {output_dir} not found.")
+        logger.warning(f"Output directory {output_dir} not found.")
 
 
 if __name__ == "__main__":
