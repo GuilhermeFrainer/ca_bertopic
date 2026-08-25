@@ -99,7 +99,7 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
 
         with open(base_path, "r", encoding="utf-8") as f:
             base_config = yaml.safe_load(f)
-            logger.info(f"Loaded base config from {base_path}")
+            logger.debug(f"Loaded base config from {base_path}")
 
         # If base file is flat (no 'experiment' key), treat it as 'experiment' data
         if (
@@ -120,7 +120,7 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
 
         config = base_config
 
-    logger.info(f"Loaded config from {config_path}")
+    logger.debug(f"Loaded config from {config_path}")
     return config
 
 

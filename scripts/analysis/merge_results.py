@@ -65,8 +65,40 @@ def get_dataset_info(
     """Reads the file and/or inspects filename to extract (dataset_name, dataset_type).
 
     dataset_type can be 'stemmed', 'no_stopword_removal', or 'standard'.
+    Uses fast filename-based inference first, falling back to reading file contents
+    only when filename is ambiguous.
     """
     _logger = logger or logging.getLogger("pipeline")
+    filename_lower = file_path.name.lower()
+
+    # 1. Fast-path extraction from filename alone
+    exp_id, _, _ = parse_filename(file_path.name)
+    stem = file_path.stem
+    if stem.endswith("_merged"):
+        stem = stem[:-7]
+    parts = stem.split("_")
+
+    candidate_name = None
+    if exp_id:
+        candidate_name = exp_id.split("_")[0]
+    elif parts and parts[0]:
+        candidate_name = parts[0]
+
+    if candidate_name:
+        is_stemmed = "stemmed" in filename_lower
+        is_no_stopword = ("no_stopword" in filename_lower) or (
+            "keep_rep_stopwords" in filename_lower
+        )
+        is_standard = "standard" in filename_lower
+
+        if is_stemmed:
+            return normalize_dataset_name(candidate_name), "stemmed"
+        elif is_no_stopword:
+            return normalize_dataset_name(candidate_name), "no_stopword_removal"
+        elif is_standard:
+            return normalize_dataset_name(candidate_name), "standard"
+
+    # 2. Fallback: inspect file contents if filename is ambiguous
     dataset_name = None
     df = None
 
@@ -82,21 +114,11 @@ def get_dataset_info(
         dataset_name = str(df["dataset_name"][0])
 
     if not dataset_name:
-        exp_id, _, _ = parse_filename(file_path.name)
-        if exp_id:
-            dataset_name = exp_id.split("_")[0]
-        else:
-            stem = file_path.stem
-            if stem.endswith("_merged"):
-                stem = stem[:-7]
-            parts = stem.split("_")
-            if parts and parts[0]:
-                dataset_name = parts[0]
+        if candidate_name:
+            dataset_name = candidate_name
 
     if not dataset_name:
         return None, None
-
-    filename_lower = file_path.name.lower()
 
     # 1. Stemmed check
     is_stemmed = "stemmed" in filename_lower
@@ -226,17 +248,24 @@ def deduplicate_dataframe(df: pl.DataFrame, is_json: bool = False) -> pl.DataFra
         return df
 
     # Build standardized timestamp expression for comparisons
-    ts_expr = pl.lit("")
-    if "file_timestamp" in df.columns:
-        ts_expr = pl.col("file_timestamp").fill_null("")
-    elif "timestamp" in df.columns:
-        ts_expr = pl.col("timestamp").fill_null("")
-
-    df_with_ts = df.with_columns(
-        ts_expr.map_elements(normalize_timestamp, return_dtype=pl.Utf8).alias(
-            "__norm_ts"
-        )
+    ts_col = (
+        "file_timestamp"
+        if "file_timestamp" in df.columns
+        else ("timestamp" if "timestamp" in df.columns else None)
     )
+    if ts_col:
+        ts_clean = (
+            pl.col(ts_col)
+            .cast(pl.Utf8)
+            .fill_null("")
+            .str.replace_all(r"\D", "")
+            .str.slice(0, 14)
+            .str.pad_end(14, "0")
+        )
+    else:
+        ts_clean = pl.lit("00000000000000")
+
+    df_with_ts = df.with_columns(ts_clean.alias("__norm_ts"))
 
     # Determine grouping key for unique runs
     run_key_cols = []
@@ -261,14 +290,14 @@ def deduplicate_dataframe(df: pl.DataFrame, is_json: bool = False) -> pl.DataFra
         )
         return deduped
     else:
-        # For JSON: multiple topic rows per run. Find max __norm_ts per run_key_cols
-        max_ts_df = df_with_ts.group_by(run_key_cols).agg(
-            pl.col("__norm_ts").max().alias("__max_norm_ts")
-        )
-        joined = df_with_ts.join(max_ts_df, on=run_key_cols, how="inner")
-        filtered = joined.filter(pl.col("__norm_ts") == pl.col("__max_norm_ts"))
-        deduped = filtered.drop(["__norm_ts", "__max_norm_ts"]).unique(
-            maintain_order=True
+        # For JSON: multiple topic rows per run. Keep all topics
+        # for latest __norm_ts per run_key_cols
+        deduped = (
+            df_with_ts.filter(
+                pl.col("__norm_ts") == pl.col("__norm_ts").max().over(run_key_cols)
+            )
+            .drop("__norm_ts")
+            .unique(maintain_order=True)
         )
         return deduped
 
@@ -279,6 +308,15 @@ def standardize_json_dataframe(df: pl.DataFrame) -> pl.DataFrame:
     Ensures representation and representative_docs are typed as List(String).
     """
     if df.is_empty():
+        return df
+
+    repr_ok = "representation" not in df.columns or df[
+        "representation"
+    ].dtype == pl.List(pl.String)
+    docs_ok = "representative_docs" not in df.columns or df[
+        "representative_docs"
+    ].dtype == pl.List(pl.String)
+    if repr_ok and docs_ok:
         return df
 
     if "representation" in df.columns:
@@ -356,6 +394,8 @@ def merge_files(
     dry_run: bool,
     force: bool,
     allow_partial: bool = False,
+    dataset_name: str | None = None,
+    dataset_type: str | None = None,
     logger: logging.Logger | None = None,
 ) -> bool:
     """Merges existing merged data and new incoming files with deduplication.
@@ -421,7 +461,10 @@ def merge_files(
 
         # 3. Check for partial models on CSV merges
         if not is_json:
-            d_name, d_type = get_dataset_info(output_path, logger=_logger)
+            d_name = dataset_name
+            d_type = dataset_type
+            if not d_name or not d_type:
+                d_name, d_type = get_dataset_info(output_path, logger=_logger)
             if d_name and d_type:
                 report = verify_dataset_completeness(d_name, d_type, df=deduped_df)
                 if report.has_partial_models:
@@ -455,8 +498,7 @@ def merge_files(
         if output_path.suffix == ".csv":
             deduped_df.write_csv(output_path)
         elif output_path.suffix == ".json":
-            json_str = deduped_df.write_json()
-            parsed_json = json.loads(json_str)
+            parsed_json = deduped_df.to_dicts()
             with open(output_path, "w", encoding="utf-8") as out_f:
                 json.dump(parsed_json, out_f, indent=4)
 
@@ -655,6 +697,8 @@ def main():
                 args.dry_run,
                 args.force,
                 allow_partial=args.allow_partial,
+                dataset_name=dataset,
+                dataset_type=dataset_type,
                 logger=logger,
             )
             superseded = superseded_csv.get((dataset, dataset_type), [])
@@ -705,6 +749,8 @@ def main():
                 args.dry_run,
                 args.force,
                 allow_partial=args.allow_partial,
+                dataset_name=dataset,
+                dataset_type=dataset_type,
                 logger=logger,
             )
             superseded = superseded_json.get((dataset, dataset_type), [])

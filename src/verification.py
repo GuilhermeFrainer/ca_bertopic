@@ -263,15 +263,33 @@ def verify_dataset_completeness(
             for c in ["u_mass", "c_v", "c_npmi", "irbo", "topic_diversity"]
             if c in df.columns
         ]
-        for row in df.iter_rows(named=True):
-            m_name = row.get("model_name", "unknown_model")
-            seed = row.get("random_state", "")
-            for metric in critical_metrics:
-                val = row.get(metric)
-                if val is None or str(val).lower() in ("nan", "null", "none"):
-                    report.null_metric_runs.append(
-                        f"Model: {m_name} (Seed: {seed}) has null '{metric}'"
-                    )
-                    break
+        if critical_metrics:
+            null_conditions = []
+            for c in critical_metrics:
+                col_expr = pl.col(c)
+                if df[c].dtype.is_numeric():
+                    cond = col_expr.is_null() | col_expr.is_nan()
+                else:
+                    cond = col_expr.is_null() | col_expr.cast(
+                        pl.Utf8
+                    ).str.to_lowercase().is_in(["nan", "null", "none", ""])
+                null_conditions.append(cond)
+
+            combined_null_cond = null_conditions[0]
+            for cond in null_conditions[1:]:
+                combined_null_cond = combined_null_cond | cond
+
+            null_df = df.filter(combined_null_cond)
+            if not null_df.is_empty():
+                for row in null_df.iter_rows(named=True):
+                    m_name = row.get("model_name", "unknown_model")
+                    seed = row.get("random_state", "")
+                    for metric in critical_metrics:
+                        val = row.get(metric)
+                        if val is None or str(val).lower() in ("nan", "null", "none"):
+                            report.null_metric_runs.append(
+                                f"Model: {m_name} (Seed: {seed}) has null '{metric}'"
+                            )
+                            break
 
     return report
