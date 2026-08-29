@@ -32,19 +32,35 @@ for model in "${MODELS[@]}"; do
 
 echo "Job started at \$(date) on \$(hostname)"
 
-# 1. Setup SCRATCH Workspace
-mkdir -p \$SCRATCH/ca_bertopic
-mkdir -p \$SCRATCH/ca_bertopic/{data/processed,results,models,logs,output,tables}
+# 1. Setup Job-Isolated SCRATCH Workspace & Cleanup Trap
+JOB_SCRATCH="\$SCRATCH/ca_bertopic_\${SLURM_JOB_ID}"
+
+cleanup() {
+    trap - EXIT INT TERM
+    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
+    cd "\$HOME" || cd /tmp
+    if [ -n "\${JOB_SCRATCH}" ] && [ -d "\${JOB_SCRATCH}" ]; then
+        rm -rf "\${JOB_SCRATCH}"
+        if [ ! -d "\${JOB_SCRATCH}" ]; then
+            echo "Scratch directory successfully removed."
+        else
+            echo "Warning: Failed to completely remove \${JOB_SCRATCH}."
+        fi
+    fi
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "\${JOB_SCRATCH}"/{data/processed,results,models,logs,output,tables}
 
 # 2. Sync Code base
-rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \\
-    --exclude='output/' --exclude='tables/' --exclude='.venv/' --exclude='.git/' \\
-    \$HOME/ca_bertopic/ \$SCRATCH/ca_bertopic/
+rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \
+    --exclude='output/' --exclude='tables/' --exclude='.venv/' --exclude='.git/' \
+    \$HOME/ca_bertopic/ "\${JOB_SCRATCH}/"
 
-cd \$SCRATCH/ca_bertopic
+cd "\${JOB_SCRATCH}"
 
 # 3. Sync specific data file (Trump embeddings)
-rsync -a \$HOME/ca_bertopic/data/processed/trump_embeddings.parquet \$SCRATCH/ca_bertopic/data/processed/
+rsync -a \$HOME/ca_bertopic/data/processed/trump_embeddings.parquet "\${JOB_SCRATCH}/data/processed/"
 
 # 4. Export UV path
 export PATH="\$HOME/.local/bin:\$PATH"
@@ -54,11 +70,11 @@ uv run python scripts/experiments/run_optimizer.py --exp trump/trump_standard_${
 
 # 6. Sync results back to HOME/slurm
 mkdir -p \$HOME/slurm/{results,logs,output,tables,models}
-rsync -a \$SCRATCH/ca_bertopic/results/ \$HOME/slurm/results/
-rsync -a \$SCRATCH/ca_bertopic/logs/ \$HOME/slurm/logs/
-rsync -a \$SCRATCH/ca_bertopic/output/ \$HOME/slurm/output/
-rsync -a \$SCRATCH/ca_bertopic/tables/ \$HOME/slurm/tables/
-rsync -a \$SCRATCH/ca_bertopic/models/ \$HOME/slurm/models/
+rsync -a "\${JOB_SCRATCH}/results/" \$HOME/slurm/results/
+rsync -a "\${JOB_SCRATCH}/logs/" \$HOME/slurm/logs/
+rsync -a "\${JOB_SCRATCH}/output/" \$HOME/slurm/output/
+rsync -a "\${JOB_SCRATCH}/tables/" \$HOME/slurm/tables/
+rsync -a "\${JOB_SCRATCH}/models/" \$HOME/slurm/models/
 
 echo "Job finished at \$(date)"
 EOF
@@ -96,17 +112,33 @@ for k in "${K_VALUES[@]}"; do
 
 echo "Job started at \$(date) on \$(hostname)"
 
-# 1. Setup SCRATCH Workspace
-mkdir -p \$SCRATCH/ca_bertopic
-mkdir -p \$SCRATCH/ca_bertopic/{data/processed,results,models,logs}
+# 1. Setup Job-Isolated SCRATCH Workspace & Cleanup Trap
+JOB_SCRATCH="\$SCRATCH/ca_bertopic_\${SLURM_JOB_ID}"
+
+cleanup() {
+    trap - EXIT INT TERM
+    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
+    cd "\$HOME" || cd /tmp
+    if [ -n "\${JOB_SCRATCH}" ] && [ -d "\${JOB_SCRATCH}" ]; then
+        rm -rf "\${JOB_SCRATCH}"
+        if [ ! -d "\${JOB_SCRATCH}" ]; then
+            echo "Scratch directory successfully removed."
+        else
+            echo "Warning: Failed to completely remove \${JOB_SCRATCH}."
+        fi
+    fi
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "\${JOB_SCRATCH}"/{data/processed,results,models,logs}
 
 # 2. Sync Code base
 rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \
     --exclude='.venv/' --exclude='.git/' \
-    \$HOME/ca_bertopic/ \$SCRATCH/ca_bertopic/
+    \$HOME/ca_bertopic/ "\${JOB_SCRATCH}/"
 
 # 3. Sync specific data file (Trump STM data)
-rsync -a \$HOME/ca_bertopic/data/processed/trump_stm_data.rds \$SCRATCH/ca_bertopic/data/processed/
+rsync -a \$HOME/ca_bertopic/data/processed/trump_stm_data.rds "\${JOB_SCRATCH}/data/processed/"
 
 # 4. Ensure Docker image is loaded
 if ! docker image inspect ${IMAGE_NAME}:${VERSION} >/dev/null 2>&1; then
@@ -114,9 +146,9 @@ if ! docker image inspect ${IMAGE_NAME}:${VERSION} >/dev/null 2>&1; then
 fi
 
 # 5. Run training via Docker
-mkdir -p \$SCRATCH/ca_bertopic/${output_dir}
+mkdir -p "\${JOB_SCRATCH}/${output_dir}"
 docker run --rm \
-    -v \$SCRATCH/ca_bertopic:/app/ca_bertopic \
+    -v "\${JOB_SCRATCH}:/app/ca_bertopic" \
     -w /app/ca_bertopic \
     -e RENV_PATHS_LIBRARY=/app/renv/library \
     ${IMAGE_NAME}:${VERSION} \
@@ -130,9 +162,9 @@ docker run --rm \
 
 # 6. Sync results back to HOME/slurm
 mkdir -p \$HOME/slurm/{results,models,logs}
-rsync -a \$SCRATCH/ca_bertopic/${output_dir}/ \$HOME/slurm/results/${model_id}/
-rsync -a \$SCRATCH/ca_bertopic/${model_path}   \$HOME/slurm/models/
-rsync -a \$SCRATCH/ca_bertopic/logs/           \$HOME/slurm/logs/
+rsync -a "\${JOB_SCRATCH}/${output_dir}/" \$HOME/slurm/results/${model_id}/
+rsync -a "\${JOB_SCRATCH}/${model_path}"   \$HOME/slurm/models/
+rsync -a "\${JOB_SCRATCH}/logs/"           \$HOME/slurm/logs/
 
 echo "Job finished at \$(date)"
 EOF

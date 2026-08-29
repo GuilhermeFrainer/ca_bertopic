@@ -484,8 +484,17 @@ echo "Job started at \$(date) on \$(hostname)"
 JOB_SCRATCH="\$SCRATCH/${PROJECT_NAME}_\${SLURM_JOB_ID}"
 
 cleanup() {
+    trap - EXIT INT TERM
     echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
-    rm -rf "\${JOB_SCRATCH}"
+    cd "\$HOME" || cd /tmp
+    if [ -n "\${JOB_SCRATCH}" ] && [ -d "\${JOB_SCRATCH}" ]; then
+        rm -rf "\${JOB_SCRATCH}"
+        if [ ! -d "\${JOB_SCRATCH}" ]; then
+            echo "Scratch directory successfully removed."
+        else
+            echo "Warning: Failed to completely remove \${JOB_SCRATCH}."
+        fi
+    fi
 }
 trap cleanup EXIT INT TERM
 
@@ -548,8 +557,17 @@ echo "Job started at \$(date) on \$(hostname)"
 JOB_SCRATCH="\$SCRATCH/${PROJECT_NAME}_\${SLURM_JOB_ID}"
 
 cleanup() {
+    trap - EXIT INT TERM
     echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
-    rm -rf "\${JOB_SCRATCH}"
+    cd "\$HOME" || cd /tmp
+    if [ -n "\${JOB_SCRATCH}" ] && [ -d "\${JOB_SCRATCH}" ]; then
+        rm -rf "\${JOB_SCRATCH}"
+        if [ ! -d "\${JOB_SCRATCH}" ]; then
+            echo "Scratch directory successfully removed."
+        else
+            echo "Warning: Failed to completely remove \${JOB_SCRATCH}."
+        fi
+    fi
 }
 trap cleanup EXIT INT TERM
 

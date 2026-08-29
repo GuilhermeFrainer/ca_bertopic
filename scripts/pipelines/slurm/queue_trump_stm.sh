@@ -34,18 +34,34 @@ for k in "${K_VALUES[@]}"; do
 #SBATCH --output=slurm_log/%x_%j.out
 #SBATCH --error=slurm_log/%x_%j.err
 
-# 1. Setup SCRATCH Workspace
-mkdir -p \$SCRATCH/ca_bertopic
-mkdir -p \$SCRATCH/ca_bertopic/{data/processed,results,models,logs}
+# 1. Setup Job-Isolated SCRATCH Workspace & Cleanup Trap
+JOB_SCRATCH="\$SCRATCH/ca_bertopic_\${SLURM_JOB_ID}"
+
+cleanup() {
+    trap - EXIT INT TERM
+    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
+    cd "\$HOME" || cd /tmp
+    if [ -n "\${JOB_SCRATCH}" ] && [ -d "\${JOB_SCRATCH}" ]; then
+        rm -rf "\${JOB_SCRATCH}"
+        if [ ! -d "\${JOB_SCRATCH}" ]; then
+            echo "Scratch directory successfully removed."
+        else
+            echo "Warning: Failed to completely remove \${JOB_SCRATCH}."
+        fi
+    fi
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "\${JOB_SCRATCH}"/{data/processed,results,models,logs}
 
 # 2. Sync Code and Data
 # We exclude .venv and .git to keep the sync fast and lean
 rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \
     --exclude='.venv/' --exclude='.git/' \
-    \$HOME/ca_bertopic/ \$SCRATCH/ca_bertopic/
+    \$HOME/ca_bertopic/ "\${JOB_SCRATCH}/"
 
 rsync -av \$HOME/ca_bertopic/data/processed/trump_stm_data.rds \
-    \$SCRATCH/ca_bertopic/data/processed/
+    "\${JOB_SCRATCH}/data/processed/"
 
 # 3. Ensure Docker image is loaded
 if ! docker image inspect ${IMAGE_NAME}:${VERSION} >/dev/null 2>&1; then
@@ -54,11 +70,11 @@ fi
 
 # 4. RUN TRAINING via Docker
 # We create a specific output folder for this K to avoid overwrites
-mkdir -p \$SCRATCH/ca_bertopic/${OUTPUT_DIR}
+mkdir -p "\${JOB_SCRATCH}/${OUTPUT_DIR}"
 
 # Note: We quote all arguments to prevent empty-string issues
 docker run --rm \
-    -v \$SCRATCH/ca_bertopic:/app/ca_bertopic \
+    -v "\${JOB_SCRATCH}:/app/ca_bertopic" \
     -w /app/ca_bertopic \
     -e RENV_PATHS_LIBRARY=/app/renv/library \
     ${IMAGE_NAME}:${VERSION} \
@@ -72,9 +88,9 @@ docker run --rm \
 
 # 5. Sync Results back to HOME/slurm
 mkdir -p \$HOME/slurm/{results,models,logs}
-rsync -av \$SCRATCH/ca_bertopic/${OUTPUT_DIR}/ \$HOME/slurm/results/${model_id}/
-rsync -av \$SCRATCH/ca_bertopic/${MODEL_PATH}   \$HOME/slurm/models/
-rsync -av \$SCRATCH/ca_bertopic/logs/           \$HOME/slurm/logs/
+rsync -av "\${JOB_SCRATCH}/${OUTPUT_DIR}/" \$HOME/slurm/results/${model_id}/
+rsync -av "\${JOB_SCRATCH}/${MODEL_PATH}"   \$HOME/slurm/models/
+rsync -av "\${JOB_SCRATCH}/logs/"           \$HOME/slurm/logs/
 EOF
 
 done
