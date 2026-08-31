@@ -1136,12 +1136,14 @@ def generate_pairwise_delta_latex_matrix(
 def generate_demsar_all_vs_all_report(
     all_vs_all_results: dict,
     dataset_label: str = "",
+    include_deltas: bool = False,
 ) -> str:
     """Generates a comprehensive Markdown report across all evaluated metrics.
 
     Args:
         all_vs_all_results: Result dictionary from compute_demsar_all_vs_all.
         dataset_label: Optional label for the dataset/corpus.
+        include_deltas: Whether to include pairwise delta matrices in the report.
 
     Returns:
         Multi-section Markdown report string.
@@ -1171,12 +1173,13 @@ def generate_demsar_all_vs_all_report(
         summary_md = generate_demsar_all_vs_all_markdown_table(
             all_vs_all_results, metric=metric_name, dataset_label=dataset_label
         )
-        delta_md = generate_pairwise_delta_markdown_matrix(
-            all_vs_all_results, metric=metric_name, dataset_label=dataset_label
-        )
         report_lines.append(summary_md)
-        report_lines.append("")
-        report_lines.append(delta_md)
+        if include_deltas:
+            delta_md = generate_pairwise_delta_markdown_matrix(
+                all_vs_all_results, metric=metric_name, dataset_label=dataset_label
+            )
+            report_lines.append("")
+            report_lines.append(delta_md)
         report_lines.append("\n---\n")
 
     return "\n".join(report_lines)

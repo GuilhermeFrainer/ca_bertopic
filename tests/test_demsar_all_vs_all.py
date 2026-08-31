@@ -257,3 +257,9 @@ def test_demsar_all_vs_all_table_generators():
 
     full_report = generate_demsar_all_vs_all_report(results, dataset_label="FED")
     assert "# Demšar (2006) All-vs-All Statistical Comparison Report" in full_report
+    assert "Pairwise Delta Matrix" not in full_report
+
+    full_report_with_deltas = generate_demsar_all_vs_all_report(
+        results, dataset_label="FED", include_deltas=True
+    )
+    assert "Pairwise Delta Matrix" in full_report_with_deltas

@@ -29,6 +29,12 @@ $mergeFlags = @()
 if ($MergeInfo0) { $mergeFlags += "--merge-info0" }
 if ($OnlyInfo0) { $mergeFlags += "--only-info0" }
 
+$demsarFlags = @()
+if ($MergeInfo0) { $demsarFlags += "--merge-info0" }
+
+$noiseFlags = @()
+if ($MergeInfo0) { $noiseFlags += "--merge-info0" }
+
 # List of result types to process
 $resultTypesToProcess = if ($ResultType -eq "all") { @("standard", "stemmed", "no_stopword_removal") } else { @($ResultType) }
 
@@ -51,11 +57,9 @@ foreach ($resType in $resultTypesToProcess) {
     $labelTablePath = Join-Path $typeTablesDir "model_labels.tex"
     uv run scripts/analysis/find_best_models.py --label-table --result-type $resType @mergeFlags | Out-File -FilePath "$labelTablePath" -Encoding utf8
 
-    # 0b. Generate HDBSCAN Noise Coverage Table
+    # 0b. Generate HDBSCAN Noise Coverage Table (Global across datasets)
     Write-Host "Generating HDBSCAN Noise Coverage Table ($resType)..." -ForegroundColor Yellow
     $noiseCoverageTablePath = Join-Path $typeTablesDir "hdbscan_noise_coverage.tex"
-    $noiseFlags = @()
-    if ($MergeInfo0) { $noiseFlags += "--merge-info0" }
     uv run scripts/analysis/calculate_noise_coverage.py --result-type $resType --output-latex "$noiseCoverageTablePath" @noiseFlags
 
     foreach ($dataset in $datasets) {
@@ -92,7 +96,12 @@ foreach ($resType in $resultTypesToProcess) {
             uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --star-plot "$starAvgPath" --average --suppress-nulls @mergeFlags
         }
 
-        # 4. LaTeX Tables
+        # 4. HDBSCAN Noise Coverage Table (Dataset)
+        Write-Host "Generating HDBSCAN Noise Coverage Table ($dataset)..."
+        $datasetNoiseCoveragePath = Join-Path $typeTablesDir "${dataset}_hdbscan_noise_coverage.tex"
+        uv run scripts/analysis/calculate_noise_coverage.py --dataset $dataset --result-type $resType --output-latex "$datasetNoiseCoveragePath" @noiseFlags
+
+        # 5. LaTeX Tables
         if ($Best) {
             Write-Host "Generating LaTeX Table (Best)..."
             $tableBestPath = Join-Path $typeTablesDir "${dataset}_table_best.tex"
@@ -111,11 +120,28 @@ foreach ($resType in $resultTypesToProcess) {
         $tableAvgFullPath = Join-Path $typeTablesDir "${dataset}_table_avg_full.tex"
         uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --latex "$tableAvgFullPath" --average --suppress-nulls --exclude-clustering none --exclude-dim-red none @mergeFlags
 
-        # 5. LaTeX Table (Dump)
+        # 6. LaTeX Table (Dump)
         Write-Host "Generating LaTeX Table (Dump)..."
         $tableDumpPath = Join-Path $typeTablesDir "${dataset}_table_dump.tex"
         uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --latex "$tableDumpPath" --dump
+
+        # 7. Demšar All-vs-All Ranking Table (Dataset)
+        Write-Host "Generating Demšar All-vs-All Table ($dataset)..."
+        $demsarTablePath = Join-Path $typeTablesDir "${dataset}_demsar_all_vs_all.tex"
+        uv run scripts/analysis/demsar_all_vs_all_analysis.py --dataset $dataset --condition $resType --latex "$demsarTablePath" @demsarFlags
+
+        # 8. Demšar Delta Table (Alternative Preprocessing Conditions vs Standard)
+        if ($resType -ne "standard") {
+            Write-Host "Generating Demšar Delta Table ($dataset)..."
+            $demsarDeltaPath = Join-Path $typeTablesDir "${dataset}_demsar_delta.tex"
+            uv run scripts/analysis/demsar_delta_analysis.py --dataset $dataset --condition $resType --latex "$demsarDeltaPath" @demsarFlags
+        }
     }
+
+    # 9. Demšar All-vs-All Ranking Table (All Datasets Pooled)
+    Write-Host "`nGenerating Demšar All-vs-All Table (All Datasets Pooled - $resType)..." -ForegroundColor Yellow
+    $allDemsarTablePath = Join-Path $typeTablesDir "all_datasets_demsar_all_vs_all.tex"
+    uv run scripts/analysis/demsar_all_vs_all_analysis.py --dataset all --condition $resType --latex "$allDemsarTablePath" @demsarFlags
 }
 
 Write-Host "`nAll results generated successfully in $outputDir" -ForegroundColor Cyan

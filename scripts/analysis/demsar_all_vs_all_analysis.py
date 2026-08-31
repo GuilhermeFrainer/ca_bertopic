@@ -91,6 +91,15 @@ def parse_args():
         help="Treat models with and without '_info0' as the same model type.",
     )
     parser.add_argument(
+        "--include-deltas",
+        action="store_true",
+        default=False,
+        help=(
+            "Include pairwise delta comparison matrices in the output "
+            "(omitted by default)."
+        ),
+    )
+    parser.add_argument(
         "--latex",
         type=str,
         nargs="?",
@@ -199,7 +208,9 @@ def main():
         return
 
     # Generate full Markdown report
-    md_report = generate_demsar_all_vs_all_report(results, dataset_label=ds_label)
+    md_report = generate_demsar_all_vs_all_report(
+        results, dataset_label=ds_label, include_deltas=args.include_deltas
+    )
 
     # Print or save output
     if args.markdown == "__STDOUT__" or (
@@ -219,10 +230,12 @@ def main():
             s_tex = generate_demsar_all_vs_all_latex_table(
                 results, metric=metric, dataset_label=ds_label
             )
-            d_tex = generate_pairwise_delta_latex_matrix(
-                results, metric=metric, dataset_label=ds_label
-            )
-            latex_blocks.extend([s_tex, "\n", d_tex, "\n"])
+            latex_blocks.extend([s_tex, "\n"])
+            if args.include_deltas:
+                d_tex = generate_pairwise_delta_latex_matrix(
+                    results, metric=metric, dataset_label=ds_label
+                )
+                latex_blocks.extend([d_tex, "\n"])
         full_latex = "\n".join(latex_blocks)
         if args.latex == "__STDOUT__":
             print("\n" + full_latex)
@@ -246,10 +259,12 @@ def main():
             s_tex = generate_demsar_all_vs_all_latex_table(
                 results, metric=metric, dataset_label=ds_label
             )
-            d_tex = generate_pairwise_delta_latex_matrix(
-                results, metric=metric, dataset_label=ds_label
-            )
-            latex_blocks.extend([s_tex, "\n", d_tex, "\n"])
+            latex_blocks.extend([s_tex, "\n"])
+            if args.include_deltas:
+                d_tex = generate_pairwise_delta_latex_matrix(
+                    results, metric=metric, dataset_label=ds_label
+                )
+                latex_blocks.extend([d_tex, "\n"])
         tex_file = TABLES_DIR / f"demsar_all_vs_all_{ds_slug}_{cond_slug}.tex"
         tex_file.write_text("\n".join(latex_blocks), encoding="utf-8")
         print(f" - LaTeX Tables:    {tex_file}")

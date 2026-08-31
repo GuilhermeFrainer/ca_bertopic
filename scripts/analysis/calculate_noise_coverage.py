@@ -4,6 +4,13 @@ from pathlib import Path
 
 import polars as pl
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Add project root to sys.path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -19,8 +26,8 @@ def generate_latex_table(df: pl.DataFrame, result_type: str | None = None) -> st
 
     Args:
         df: Polars DataFrame containing noise coverage data.
-        result_type: Optional result type identifier used to append preprocessing context
-            to the table caption. Valid options:
+        result_type: Optional result type identifier used to append preprocessing
+            context to the table caption. Valid options:
             - 'standard': Standard unstemmed text with representation stopwords removed.
             - 'stemmed': Stemmed text with stopwords removed.
             - 'no_stopword_removal' (or 'with_stopwords', 'no_stopword'): Unstemmed text
@@ -41,15 +48,23 @@ def generate_latex_table(df: pl.DataFrame, result_type: str | None = None) -> st
         elif rt in ("no_stopword", "no_stopword_removal", "with_stopwords"):
             res_descr = " for Unstemmed Text without Representation Stopword Removal"
 
+    caption_text = (
+        f"HDBSCAN Noise-Cluster Coverage across Random Seeds{res_descr} "
+        r"(Mean $\pm$ Standard Deviation)"
+    )
+    col_header = (
+        r"    Dataset & Model & Runs & Mean Noise Docs & "
+        r"Mean Noise Coverage (\% $\pm$ SD) \\"
+    )
     lines = [
-        "\\begin{table}[h]",
-        "\\centering",
-        f"\\caption{{HDBSCAN Noise-Cluster Coverage across Random Seeds{res_descr} (Mean $\\pm$ Standard Deviation)}}",
-        "\\label{tab:noise_coverage}",
-        "\\begin{tabular}{llrrr}",
-        "    \\toprule",
-        "    Dataset & Model & Runs & Mean Noise Docs & Mean Noise Coverage (\\% $\\pm$ SD) \\\\",
-        "    \\midrule",
+        r"\begin{table}[h]",
+        r"\centering",
+        f"\\caption{{{caption_text}}}",
+        r"\label{tab:noise_coverage}",
+        r"\begin{tabular}{llrrr}",
+        r"    \toprule",
+        col_header,
+        r"    \midrule",
     ]
 
     for row in df.iter_rows(named=True):
@@ -233,7 +248,7 @@ def main():
         latex_str = generate_latex_table(coverage_df, result_type=args.result_type)
         output_latex_path = Path(args.output_latex)
         output_latex_path.parent.mkdir(parents=True, exist_ok=True)
-        output_latex_path.write_text(latex_str)
+        output_latex_path.write_text(latex_str, encoding="utf-8")
         if not args.quiet:
             print(f"Saved LaTeX table to: {output_latex_path}")
 
