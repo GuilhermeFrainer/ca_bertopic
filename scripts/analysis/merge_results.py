@@ -10,6 +10,7 @@ import zipfile
 from typing import Any, Dict, List, Tuple
 
 import polars as pl
+from tqdm import tqdm
 
 # Add project root to sys.path
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -189,7 +190,10 @@ def group_files(
     superseded_runs: Dict[Tuple[str, str], List[pathlib.Path]] = {}
     base_files: Dict[Tuple[str, str], List[pathlib.Path]] = {}
 
-    for file_path in directory.glob(f"*{extension}"):
+    all_files = list(directory.glob(f"*{extension}"))
+    for file_path in tqdm(
+        all_files, desc=f"Scanning {directory.name} ({extension})", leave=False
+    ):
         # Avoid including the file we might be writing to
         if ignore_suffix and file_path.stem.endswith(ignore_suffix):
             continue
@@ -430,7 +434,7 @@ def merge_files(
 
     # 2. Load incoming individual files
     incoming_rows = 0
-    for f in files:
+    for f in tqdm(files, desc=f"Loading {output_path.name}", leave=False):
         try:
             if f.suffix == ".csv":
                 df = pl.read_csv(f, infer_schema_length=None)
@@ -520,7 +524,7 @@ def move_files(
     if not move_to_dir.exists() and not dry_run:
         move_to_dir.mkdir(parents=True, exist_ok=True)
 
-    for f in files:
+    for f in tqdm(files, desc=f"Moving to {move_to_dir.name}", leave=False):
         target = move_to_dir / f.name
         _logger.info(f"Moving {f.name} to {target}...")
         if not dry_run:
@@ -590,7 +594,7 @@ def archive_files(
     try:
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("README.txt", readme_content)
-            for f in files:
+            for f in tqdm(files, desc=f"Archiving {zip_name}", leave=False):
                 zf.write(f, arcname=f.name)
 
         _logger.info(f"Successfully created archive {zip_path}")
@@ -689,7 +693,9 @@ def main():
             logger=logger,
         )
         all_csv_to_move = []
-        for (dataset, dataset_type), files in grouped_csv.items():
+        for (dataset, dataset_type), files in tqdm(
+            grouped_csv.items(), desc="Processing CSV datasets"
+        ):
             output_path = results_dir / f"{dataset}_{dataset_type}{args.suffix}.csv"
             merged_ok = merge_files(
                 files,
@@ -741,7 +747,9 @@ def main():
             logger=logger,
         )
         all_json_to_move = []
-        for (dataset, dataset_type), files in grouped_json.items():
+        for (dataset, dataset_type), files in tqdm(
+            grouped_json.items(), desc="Processing JSON datasets"
+        ):
             output_path = output_dir / f"{dataset}_{dataset_type}{args.suffix}.json"
             merged_ok = merge_files(
                 files,
