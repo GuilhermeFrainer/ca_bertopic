@@ -41,8 +41,12 @@ dependencies = [
     "vegafusion>=2.0.3",
     "vl-convert-python>=1.8.0",
     "tritopic>=2.3.0",
+    "fast-tritopic",
     "marimo>=0.23.16",
 ]
+
+[tool.uv.sources]
+fast-tritopic = { path = "../fast-tritopic", editable = true }
 
 [project.scripts]
 test = "pytest"

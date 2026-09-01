@@ -33,6 +33,7 @@ ALL_MODELS=(
     "append_umap_mv_spectral_info0"
     "append_umap_mv_spherical_k_means"
     "baseline"
+    "fast_tritopic"
     "k_means"
     "mv_co_reg_spectral"
     "mv_co_reg_spectral_info0"
@@ -63,8 +64,8 @@ Options:
                                       Default: all 4 datasets.
 
   -m, --model, --models MODELS        Comma-separated list of models or model categories to run.
-                                      Categories: baseline, stm, spectral, kmeans, spherical, pca, umap.
-                                      Default: all 21 standard models.
+                                      Categories: baseline, stm, spectral, kmeans, spherical, pca, umap, tritopic.
+                                      Default: all standard models.
 
   -x, --exclude PATTERNS              Comma-separated keywords or categories to exclude.
                                       Example: -x pca,k_means (excludes PCA & K-Means models).
@@ -278,6 +279,11 @@ elif [ -n "$RAW_MODELS" ]; then
                         if [[ "$m" == *"umap"* ]]; then INITIAL_MODELS+=("$m"); matched=true; fi
                     done
                     ;;
+                tritopic)
+                    for m in "${ALL_MODELS[@]}"; do
+                        if [[ "$m" == *"tritopic"* ]]; then INITIAL_MODELS+=("$m"); matched=true; fi
+                    done
+                    ;;
             esac
 
             if [ "$matched" = false ]; then
@@ -481,18 +487,19 @@ for dataset in "${TARGET_DATASETS[@]}"; do
 echo "Job started at \$(date) on \$(hostname)"
 
 # 1. Setup Job-Isolated SCRATCH Workspace & Cleanup Trap
-JOB_SCRATCH="\$SCRATCH/${PROJECT_NAME}_\${SLURM_JOB_ID}"
+JOB_SCRATCH_ROOT="\$SCRATCH/job_\${SLURM_JOB_ID}"
+JOB_SCRATCH="\${JOB_SCRATCH_ROOT}/${PROJECT_NAME}"
 
 cleanup() {
     trap - EXIT INT TERM
-    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
+    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH_ROOT}"
     cd "\$HOME" || cd /tmp
-    if [ -n "\${JOB_SCRATCH}" ] && [ -d "\${JOB_SCRATCH}" ]; then
-        rm -rf "\${JOB_SCRATCH}"
-        if [ ! -d "\${JOB_SCRATCH}" ]; then
+    if [ -n "\${JOB_SCRATCH_ROOT}" ] && [ -d "\${JOB_SCRATCH_ROOT}" ]; then
+        rm -rf "\${JOB_SCRATCH_ROOT}"
+        if [ ! -d "\${JOB_SCRATCH_ROOT}" ]; then
             echo "Scratch directory successfully removed."
         else
-            echo "Warning: Failed to completely remove \${JOB_SCRATCH}."
+            echo "Warning: Failed to completely remove \${JOB_SCRATCH_ROOT}."
         fi
     fi
 }
@@ -504,6 +511,12 @@ mkdir -p "\${JOB_SCRATCH}"/{data/processed,results,models,logs,output,tables}
 rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \\
     --exclude='output/' --exclude='tables/' --exclude='.venv/' --exclude='.git/' \\
     \$HOME/${PROJECT_NAME}/ "\${JOB_SCRATCH}/"
+
+if [ -d "\$HOME/fast-tritopic" ]; then
+    mkdir -p "\${JOB_SCRATCH_ROOT}/fast-tritopic"
+    rsync -av --exclude='.venv/' --exclude='.git/' \\
+        \$HOME/fast-tritopic/ "\${JOB_SCRATCH_ROOT}/fast-tritopic/"
+fi
 
 cd "\${JOB_SCRATCH}"
 
@@ -554,18 +567,19 @@ EOF
 echo "Job started at \$(date) on \$(hostname)"
 
 # 1. Setup Job-Isolated SCRATCH Workspace & Cleanup Trap
-JOB_SCRATCH="\$SCRATCH/${PROJECT_NAME}_\${SLURM_JOB_ID}"
+JOB_SCRATCH_ROOT="\$SCRATCH/job_\${SLURM_JOB_ID}"
+JOB_SCRATCH="\${JOB_SCRATCH_ROOT}/${PROJECT_NAME}"
 
 cleanup() {
     trap - EXIT INT TERM
-    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
+    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH_ROOT}"
     cd "\$HOME" || cd /tmp
-    if [ -n "\${JOB_SCRATCH}" ] && [ -d "\${JOB_SCRATCH}" ]; then
-        rm -rf "\${JOB_SCRATCH}"
-        if [ ! -d "\${JOB_SCRATCH}" ]; then
+    if [ -n "\${JOB_SCRATCH_ROOT}" ] && [ -d "\${JOB_SCRATCH_ROOT}" ]; then
+        rm -rf "\${JOB_SCRATCH_ROOT}"
+        if [ ! -d "\${JOB_SCRATCH_ROOT}" ]; then
             echo "Scratch directory successfully removed."
         else
-            echo "Warning: Failed to completely remove \${JOB_SCRATCH}."
+            echo "Warning: Failed to completely remove \${JOB_SCRATCH_ROOT}."
         fi
     fi
 }
@@ -577,6 +591,12 @@ mkdir -p "\${JOB_SCRATCH}"/{data/processed,results,models,logs,output,tables}
 rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \\
     --exclude='output/' --exclude='tables/' --exclude='.venv/' --exclude='.git/' \\
     \$HOME/${PROJECT_NAME}/ "\${JOB_SCRATCH}/"
+
+if [ -d "\$HOME/fast-tritopic" ]; then
+    mkdir -p "\${JOB_SCRATCH_ROOT}/fast-tritopic"
+    rsync -av --exclude='.venv/' --exclude='.git/' \\
+        \$HOME/fast-tritopic/ "\${JOB_SCRATCH_ROOT}/fast-tritopic/"
+fi
 
 cd "\${JOB_SCRATCH}"
 

@@ -183,6 +183,77 @@ def test_create_tritopic_instance_n_clusters_override():
     assert model_2.n_topics == 30
 
 
+def test_create_fast_tritopic_instance_defaults():
+    """
+    Tests that create_fast_tritopic_instance sets expected default parameters
+    such as use_metadata_view=True and random_state.
+    """
+    from fast_tritopic import FastTriTopic
+
+    from src.models import create_fast_tritopic_instance, create_topic_model_instance
+
+    model_config = {"type": "fast_tritopic", "params": {}}
+    model = create_fast_tritopic_instance(model_config=model_config, random_state=42)
+
+    assert isinstance(model, FastTriTopic)
+    assert model.config.use_metadata_view is True
+    assert model.config.random_state == 42
+    assert model.n_topics == "auto"
+
+    # Test via factory function routing
+    factory_model = create_topic_model_instance(
+        model_config=model_config, scaled_metadata=None, random_state=123
+    )
+    assert isinstance(factory_model, FastTriTopic)
+    assert factory_model.config.random_state == 123
+
+
+def test_create_fast_tritopic_instance_custom_params():
+    """
+    Tests that custom parameters passed in YAML model config (e.g. n_neighbors,
+    n_topics, use_metadata_view) are correctly set on FastTriTopic.
+    """
+    from src.models import create_fast_tritopic_instance
+
+    model_config = {
+        "type": "fast_tritopic",
+        "params": {
+            "n_neighbors": 25,
+            "n_topics": 15,
+            "use_metadata_view": False,
+            "verbose": True,
+        },
+    }
+    model = create_fast_tritopic_instance(model_config=model_config, random_state=42)
+
+    assert model.config.n_neighbors == 25
+    assert model.n_topics == 15
+    assert model.config.use_metadata_view is False
+    assert model.config.verbose is True
+
+
+def test_create_fast_tritopic_instance_n_clusters_override():
+    """
+    Tests that n_clusters passed as argument or in params
+    is properly mapped to FastTriTopic's n_topics parameter.
+    """
+    from src.models import create_fast_tritopic_instance
+
+    # 1. Explicit n_clusters argument
+    model_config_1 = {"type": "fast_tritopic", "params": {}}
+    model_1 = create_fast_tritopic_instance(
+        model_config=model_config_1, random_state=42, n_clusters=20
+    )
+    assert model_1.n_topics == 20
+
+    # 2. n_clusters in config params
+    model_config_2 = {"type": "fast_tritopic", "params": {"n_clusters": 30}}
+    model_2 = create_fast_tritopic_instance(
+        model_config=model_config_2, random_state=42
+    )
+    assert model_2.n_topics == 30
+
+
 def test_train_and_evaluate_bertopic_with_scaled_metadata():
     """
     Tests that train_and_evaluate correctly fits a BERTopic model without
@@ -404,4 +475,65 @@ def test_train_and_evaluate_tritopic_real_execution():
     rep_docs_sample = qual_df["representative_docs"].to_list()[0]
     assert len(rep_docs_sample) > 0
     # First document should be one of the original input texts, not a stringified int
+    assert rep_docs_sample[0] in texts
+
+
+def test_train_and_evaluate_fast_tritopic_real_execution():
+    """
+    Integration test verifying real FastTriTopic model fitting with Polars metadata
+    and vectorized graph construction without crashing.
+    """
+    import polars as pl
+    from fast_tritopic import FastTriTopic
+    from tritopic import TriTopicConfig
+
+    import src.training as training
+
+    vocab = ["apple", "banana", "orange", "grape", "car", "train", "plane", "boat"]
+    rng = np.random.default_rng(42)
+    texts = [" ".join(rng.choice(vocab, size=8)) for _ in range(50)]
+    embeddings = rng.random((50, 16))
+    scaled_metadata = pl.DataFrame(
+        {
+            "meta_num1": rng.random(50),
+            "meta_num2": rng.random(50),
+            "meta_cat": ["A", "B", "A", "B", "C"] * 10,
+        }
+    )
+
+    config_obj = TriTopicConfig(verbose=False, random_state=42)
+    model = FastTriTopic(config=config_obj, n_topics=2)
+
+    config = {
+        "experiment": {
+            "coherence_metrics": [],
+            "diversity_metrics": [],
+        }
+    }
+
+    metrics, fitted_model = training.train_and_evaluate(
+        topic_model=model,
+        model_id="real_fast_tritopic",
+        text=texts,
+        embeddings=embeddings,
+        config=config,
+        scaled_metadata=scaled_metadata,
+    )
+
+    assert "n_topics" in metrics
+    assert metrics["n_topics"] > 0
+    assert hasattr(fitted_model, "topics_")
+
+    import src.utils as utils
+
+    qual_df = utils.extract_qualitative_data(
+        fitted_model, "real_fast_tritopic", {"dataset_name": "test_ds"}
+    )
+    assert "representative_docs" in qual_df.columns
+    assert "representation" in qual_df.columns
+    assert qual_df["representative_docs"].dtype == pl.List(pl.String)
+    assert qual_df["representation"].dtype == pl.List(pl.String)
+
+    rep_docs_sample = qual_df["representative_docs"].to_list()[0]
+    assert len(rep_docs_sample) > 0
     assert rep_docs_sample[0] in texts

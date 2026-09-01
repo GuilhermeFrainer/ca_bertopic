@@ -64,6 +64,7 @@ def collect_hyperparameters(
     collect_from_component("clustering")
     collect_from_component("bertopic")
     collect_from_component("tritopic")
+    collect_from_component("fast_tritopic")
 
     # Also collect from top-level params if present
     params = model_config.get("params") or {}
@@ -116,6 +117,7 @@ def clean_varied_params(varied_params: Dict[str, Any]) -> Dict[str, Any]:
         .replace("dimensionality_reduction.params.", "")
         .replace("bertopic.params.", "")
         .replace("tritopic.params.", "")
+        .replace("fast_tritopic.params.", "")
         .replace("params.", ""): value
         for key, value in varied_params.items()
     }
@@ -279,12 +281,13 @@ class Optimizer:
 
                     # 3. Store results, including the varied hyperparameters
                     # and metadata
-                    clustering_algo = model_config.get("clustering", {}).get(
-                        "type"
-                    ) or model_config.get("type", "tritopic")
+                    m_type = model_config.get("type", "tritopic")
+                    clustering_algo = (
+                        model_config.get("clustering", {}).get("type") or m_type
+                    )
                     dim_red_algo = (
                         model_config.get("dimensionality_reduction", {}).get("type")
-                        or "tritopic_internal"
+                        or f"{m_type}_internal"
                     )
 
                     run_metadata = {

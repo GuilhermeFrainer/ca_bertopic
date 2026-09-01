@@ -17,12 +17,19 @@ def create_topic_model_instance(
     remove_rep_stopwords: bool = False,
 ) -> Any:
     """
-    Factory function that creates a topic model instance (BERTopic or TriTopic)
-    based on the provided configuration dictionary.
+    Factory function that creates a topic model instance (BERTopic,
+    TriTopic, or FastTriTopic) based on the provided configuration dictionary.
     """
     model_type = model_config.get("type") or model_config.get("model_type")
     if model_type == "tritopic":
         return create_tritopic_instance(
+            model_config=model_config,
+            random_state=random_state,
+            n_clusters=n_clusters,
+            remove_rep_stopwords=remove_rep_stopwords,
+        )
+    elif model_type in ("fast_tritopic", "fast-tritopic"):
+        return create_fast_tritopic_instance(
             model_config=model_config,
             random_state=random_state,
             n_clusters=n_clusters,
@@ -36,6 +43,55 @@ def create_topic_model_instance(
         n_clusters=n_clusters,
         remove_rep_stopwords=remove_rep_stopwords,
     )
+
+
+def create_fast_tritopic_instance(
+    model_config: dict,
+    random_state: int,
+    n_clusters: Optional[int] = None,
+    remove_rep_stopwords: bool = False,
+) -> Any:
+    """
+    Factory function that builds a FastTriTopic instance from a configuration
+    dictionary.
+    """
+    try:
+        from fast_tritopic import FastTriTopic
+    except ImportError:
+        import sys
+        from pathlib import Path
+
+        sibling_src = Path(__file__).resolve().parents[2] / "fast-tritopic" / "src"
+        if sibling_src.exists() and str(sibling_src) not in sys.path:
+            sys.path.insert(0, str(sibling_src))
+        from fast_tritopic import FastTriTopic
+
+    from tritopic import TriTopicConfig
+
+    params = model_config.get("params") or {}
+    params = params.copy()
+
+    if "random_state" not in params:
+        params["random_state"] = random_state
+
+    # Standardize topic count across models
+    if n_clusters is not None:
+        n_topics = n_clusters
+        params.pop("n_clusters", None)
+        params.pop("n_topics", None)
+    elif "n_clusters" in params:
+        n_topics = params.pop("n_clusters")
+        params.pop("n_topics", None)
+    else:
+        n_topics = params.pop("n_topics", "auto")
+
+    # Default use_metadata_view to True so metadata is incorporated
+    # into the tri-modal graph
+    if "use_metadata_view" not in params:
+        params["use_metadata_view"] = True
+
+    config_obj = TriTopicConfig(**params)
+    return FastTriTopic(config=config_obj, n_topics=n_topics)
 
 
 def create_tritopic_instance(

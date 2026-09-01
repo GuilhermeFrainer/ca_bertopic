@@ -6,13 +6,13 @@
 # ==============================================================================
 
 # Models to run
-MODELS=("aligned_umap" "append_umap" "baseline" "mv_co_reg_spectral" "mv_co_reg_spectral_info0" "mv_spectral" "mv_spectral_info0" "umap_spectral")
+MODELS=("aligned_umap" "append_umap" "baseline" "fast_tritopic" "mv_co_reg_spectral" "mv_co_reg_spectral_info0" "mv_spectral" "mv_spectral_info0" "tritopic" "umap_spectral")
 
 # Ensure slurm log directory exists
 mkdir -p slurm_log
 
 # 1. Queue CA-BERTopic experiments (Non-STM)
-# Each of the 8 models has 5 standard configurations (nr_topics = 10, 20, 30, 40, 50) and 3 seeds (15 total runs)
+# Standard configurations (nr_topics = 10, 20, 30, 40, 50) and 3 seeds (15 total runs)
 for model in "${MODELS[@]}"; do
     for model_idx in {1..15}; do
         job_name="ca_bertopic_trump_${model}_m${model_idx}"
@@ -33,18 +33,19 @@ for model in "${MODELS[@]}"; do
 echo "Job started at \$(date) on \$(hostname)"
 
 # 1. Setup Job-Isolated SCRATCH Workspace & Cleanup Trap
-JOB_SCRATCH="\$SCRATCH/ca_bertopic_\${SLURM_JOB_ID}"
+JOB_SCRATCH_ROOT="\$SCRATCH/ca_bertopic_\${SLURM_JOB_ID}"
+JOB_SCRATCH="\${JOB_SCRATCH_ROOT}/ca_bertopic"
 
 cleanup() {
     trap - EXIT INT TERM
-    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH}"
+    echo "Cleaning up temporary scratch directory: \${JOB_SCRATCH_ROOT}"
     cd "\$HOME" || cd /tmp
-    if [ -n "\${JOB_SCRATCH}" ] && [ -d "\${JOB_SCRATCH}" ]; then
-        rm -rf "\${JOB_SCRATCH}"
-        if [ ! -d "\${JOB_SCRATCH}" ]; then
+    if [ -n "\${JOB_SCRATCH_ROOT}" ] && [ -d "\${JOB_SCRATCH_ROOT}" ]; then
+        rm -rf "\${JOB_SCRATCH_ROOT}"
+        if [ ! -d "\${JOB_SCRATCH_ROOT}" ]; then
             echo "Scratch directory successfully removed."
         else
-            echo "Warning: Failed to completely remove \${JOB_SCRATCH}."
+            echo "Warning: Failed to completely remove \${JOB_SCRATCH_ROOT}."
         fi
     fi
 }
@@ -56,6 +57,12 @@ mkdir -p "\${JOB_SCRATCH}"/{data/processed,results,models,logs,output,tables}
 rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='logs/' \
     --exclude='output/' --exclude='tables/' --exclude='.venv/' --exclude='.git/' \
     \$HOME/ca_bertopic/ "\${JOB_SCRATCH}/"
+
+if [ -d "\$HOME/fast-tritopic" ]; then
+    mkdir -p "\${JOB_SCRATCH_ROOT}/fast-tritopic"
+    rsync -av --exclude='.venv/' --exclude='.git/' \
+        \$HOME/fast-tritopic/ "\${JOB_SCRATCH_ROOT}/fast-tritopic/"
+fi
 
 cd "\${JOB_SCRATCH}"
 
