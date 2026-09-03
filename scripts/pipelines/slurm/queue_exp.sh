@@ -512,10 +512,17 @@ rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='
     --exclude='output/' --exclude='tables/' --exclude='.venv/' --exclude='.git/' \\
     \$HOME/${PROJECT_NAME}/ "\${JOB_SCRATCH}/"
 
+FAST_TRITOPIC_SRC=""
 if [ -d "\$HOME/fast-tritopic" ]; then
+    FAST_TRITOPIC_SRC="\$HOME/fast-tritopic"
+elif [ -d "\$HOME/fast_tritopic" ]; then
+    FAST_TRITOPIC_SRC="\$HOME/fast_tritopic"
+fi
+
+if [ -n "\$FAST_TRITOPIC_SRC" ]; then
     mkdir -p "\${JOB_SCRATCH_ROOT}/fast-tritopic"
-    rsync -av --exclude='.venv/' --exclude='.git/' \\
-        \$HOME/fast-tritopic/ "\${JOB_SCRATCH_ROOT}/fast-tritopic/"
+    rsync -avL --exclude='.venv/' --exclude='.git/' \\
+        "\$FAST_TRITOPIC_SRC/" "\${JOB_SCRATCH_ROOT}/fast-tritopic/"
 fi
 
 cd "\${JOB_SCRATCH}"
@@ -523,11 +530,26 @@ cd "\${JOB_SCRATCH}"
 # 3. Sync specific data files needed for this job
 ${copy_commands}
 
-# 4. Export UV path so that it may be used
+# 4. Export UV path and environment configuration
 export PATH="\$HOME/.local/bin:\$PATH"
+export UV_LINK_MODE="copy"
+
+# Link pre-built virtual environment from HOME if available to avoid
+# 10GB package copying and concurrent rebuild race conditions on scratch
+if [ -d "\$HOME/${PROJECT_NAME}/.venv" ]; then
+    ln -sfn "\$HOME/${PROJECT_NAME}/.venv" "\${JOB_SCRATCH}/.venv"
+    UV_SYNC_OPT="--no-sync"
+else
+    UV_SYNC_OPT=""
+fi
 
 # 5. Run training and evaluation for single model run
-${run_command}
+uv run \${UV_SYNC_OPT} python scripts/experiments/run_optimizer.py --exp ${exp_dir}/${dataset}_standard_${model} --model ${model_idx} ${rep_flag}
+RUN_EXIT=\$?
+if [ \$RUN_EXIT -ne 0 ]; then
+    echo "ERROR: Experiment execution failed with exit code \$RUN_EXIT" >&2
+    exit \$RUN_EXIT
+fi
 
 # 6. Sync results back to HOME/slurm
 mkdir -p \$HOME/slurm/{results,logs,output,tables,models}
@@ -592,10 +614,17 @@ rsync -av --exclude='data/' --exclude='models/' --exclude='results/' --exclude='
     --exclude='output/' --exclude='tables/' --exclude='.venv/' --exclude='.git/' \\
     \$HOME/${PROJECT_NAME}/ "\${JOB_SCRATCH}/"
 
+FAST_TRITOPIC_SRC=""
 if [ -d "\$HOME/fast-tritopic" ]; then
+    FAST_TRITOPIC_SRC="\$HOME/fast-tritopic"
+elif [ -d "\$HOME/fast_tritopic" ]; then
+    FAST_TRITOPIC_SRC="\$HOME/fast_tritopic"
+fi
+
+if [ -n "\$FAST_TRITOPIC_SRC" ]; then
     mkdir -p "\${JOB_SCRATCH_ROOT}/fast-tritopic"
-    rsync -av --exclude='.venv/' --exclude='.git/' \\
-        \$HOME/fast-tritopic/ "\${JOB_SCRATCH_ROOT}/fast-tritopic/"
+    rsync -avL --exclude='.venv/' --exclude='.git/' \\
+        "\$FAST_TRITOPIC_SRC/" "\${JOB_SCRATCH_ROOT}/fast-tritopic/"
 fi
 
 cd "\${JOB_SCRATCH}"
@@ -603,11 +632,26 @@ cd "\${JOB_SCRATCH}"
 # 3. Sync specific data files needed for this job
 ${copy_commands}
 
-# 4. Export UV path so that it may be used
+# 4. Export UV path and environment configuration
 export PATH="\$HOME/.local/bin:\$PATH"
+export UV_LINK_MODE="copy"
+
+# Link pre-built virtual environment from HOME if available to avoid
+# 10GB package copying and concurrent rebuild race conditions on scratch
+if [ -d "\$HOME/${PROJECT_NAME}/.venv" ]; then
+    ln -sfn "\$HOME/${PROJECT_NAME}/.venv" "\${JOB_SCRATCH}/.venv"
+    UV_SYNC_OPT="--no-sync"
+else
+    UV_SYNC_OPT=""
+fi
 
 # 5. Run training and evaluation
-${run_command}
+uv run \${UV_SYNC_OPT} python scripts/experiments/run_optimizer.py --exp ${exp_dir}/${dataset}_standard_${model} ${rep_flag}
+RUN_EXIT=\$?
+if [ \$RUN_EXIT -ne 0 ]; then
+    echo "ERROR: Experiment execution failed with exit code \$RUN_EXIT" >&2
+    exit \$RUN_EXIT
+fi
 
 # 6. Sync results back to HOME/slurm
 mkdir -p \$HOME/slurm/{results,logs,output,tables,models}

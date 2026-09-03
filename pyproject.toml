@@ -46,7 +46,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-fast-tritopic = { path = "../fast-tritopic", editable = true }
+fast-tritopic = { path = "../fast-tritopic" }
 
 [project.scripts]
 test = "pytest"

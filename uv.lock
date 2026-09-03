@@ -421,7 +421,7 @@ requires-dist = [
     { name = "cuvs-cu13", marker = "sys_platform == 'linux'", specifier = "==25.10.*" },
     { name = "cuxfilter-cu13", marker = "sys_platform == 'linux'", specifier = "==25.10.*" },
     { name = "dask-cudf-cu13", marker = "sys_platform == 'linux'", specifier = "==25.10.*" },
-    { name = "fast-tritopic", editable = "../fast-tritopic" },
+    { name = "fast-tritopic", directory = "../fast-tritopic" },
     { name = "fastexcel", specifier = ">=0.19.0" },
     { name = "gensim", specifier = ">=4.4.0" },
     { name = "great-tables", specifier = ">=0.20.0" },
@@ -1251,7 +1251,7 @@ wheels = [
 [[package]]
 name = "fast-tritopic"
 version = "0.1.0"
-source = { editable = "../fast-tritopic" }
+source = { directory = "../fast-tritopic" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
