@@ -43,6 +43,7 @@ dependencies = [
     "tritopic>=2.3.0",
     "fast-tritopic",
     "marimo>=0.23.16",
+    "tabulate>=0.10.0",
 ]
 
 [tool.uv.sources]

@@ -27,11 +27,39 @@ from src.experiment_tracker import (
     DEFAULT_SLURM_SCRIPT_CLUSTER,
     DEFAULT_SLURM_SCRIPT_LOCAL,
     build_coverage_matrix,
+    classify_result_condition,
     extract_model_name,
     generate_grouped_slurm_commands,
     generate_slurm_command,
     scan_experiment_configs,
 )
+from src.make_table import (
+    generate_best_models_latex_table,
+    generate_best_models_markdown_table,
+    generate_best_models_table_data,
+    generate_demsar_all_vs_all_latex_table,
+    generate_demsar_all_vs_all_report,
+    generate_demsar_delta_latex_table,
+    generate_demsar_delta_markdown_table,
+    generate_noise_coverage_latex_table,
+    generate_noise_coverage_markdown_table,
+    generate_pairwise_delta_latex_matrix,
+    generate_stopword_impact_latex_table,
+    generate_stopword_impact_markdown_table,
+    generate_stopword_impact_table_data,
+    style_demsar_delta_dataframe,
+    style_demsar_pairwise_matrix,
+)
+from src.results_analysis import (
+    calculate_hdbscan_noise_coverage,
+    compute_demsar_all_vs_all,
+    compute_demsar_delta_table,
+    compute_stopword_impact,
+    extract_model_type,
+    find_best_models,
+)
+
+TABLES_DIR = PROJECT_ROOT / "tables"
 
 # Default metrics for the visualization
 DEFAULT_X_AXIS = "u_mass"
@@ -49,24 +77,6 @@ METRIC_CONFIG = {
     "n_topics": "max",
     "n_observations": "max",
 }
-
-
-def extract_model_type(name: str) -> str:
-    """Extracts the base model type from a model name (e.g., baseline_1 -> baseline)."""
-    if not name or not isinstance(name, str):
-        return "unknown"
-
-    res = name
-    # Strip common prefixes
-    if res.startswith("stemmed_"):
-        res = res[len("stemmed_") :]
-
-    # Handles common patterns like 'baseline_1' or 'mv_spectral_2'
-    # We take the part before the last underscore if it's followed by a digit
-    parts = res.split("_")
-    if len(parts) > 1 and parts[-1].isdigit():
-        return "_".join(parts[:-1])
-    return res
 
 
 @st.cache_data
@@ -92,7 +102,9 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
             # Normalize dataset and model names early
             if "dataset_name" in df.columns:
                 df = df.with_columns(
-                    pl.col("dataset_name").replace("anes_stemmed", "anes")
+                    pl.col("dataset_name")
+                    .replace("anes_stemmed", "anes")
+                    .str.replace(r"_s\d+$", "")
                 )
 
             if "model_name" in df.columns:
@@ -138,9 +150,24 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
             # Legacy fallback: ensure _embeddings suffix is stripped
             dataset = dataset.replace("_embeddings", "")
 
+            cond = classify_result_condition(
+                source_file=file_basename,
+                exp_id=(
+                    df["experiment_id"][0]
+                    if "experiment_id" in df.columns and len(df) > 0
+                    else ""
+                ),
+                stopword_removal_col=(
+                    df["stopword_removal"][0]
+                    if "stopword_removal" in df.columns and len(df) > 0
+                    else None
+                ),
+            )
+
             df = df.with_columns(
                 pl.lit(os.path.splitext(file_basename)[0]).alias("source_file"),
                 pl.lit(dataset).alias("dataset_label"),
+                pl.lit(cond).alias("condition"),
                 pl.lit(exp_date).cast(pl.Date).alias("experiment_date"),
                 pl.lit(
                     "optimizer" if "opt" in file_basename.lower() else "non-optimizer"
@@ -206,6 +233,201 @@ def load_all_results(results_dir: str = "results") -> pl.DataFrame:
         return pl.DataFrame()
 
     return pl.concat(dfs, how="diagonal_relaxed")
+
+
+def render_table_export_bar(
+    latex_content: str,
+    csv_content: str,
+    markdown_content: str,
+    file_slug: str,
+    key_prefix: str,
+):
+    """Renders export buttons (LaTeX, CSV, Markdown) and a Save to tables/ button."""
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.download_button(
+            label="📥 Download LaTeX (.tex)",
+            data=latex_content,
+            file_name=f"{file_slug}.tex",
+            mime="text/x-tex",
+            key=f"{key_prefix}_dl_tex",
+            use_container_width=True,
+        )
+    with col2:
+        st.download_button(
+            label="📥 Download CSV (.csv)",
+            data=csv_content,
+            file_name=f"{file_slug}.csv",
+            mime="text/csv",
+            key=f"{key_prefix}_dl_csv",
+            use_container_width=True,
+        )
+    with col3:
+        st.download_button(
+            label="📥 Download Markdown (.md)",
+            data=markdown_content,
+            file_name=f"{file_slug}.md",
+            mime="text/markdown",
+            key=f"{key_prefix}_dl_md",
+            use_container_width=True,
+        )
+    with col4:
+        if st.button(
+            "💾 Save to tables/",
+            key=f"{key_prefix}_save_btn",
+            use_container_width=True,
+            help=(
+                "Saves .tex, .csv, and .md files directly into the project's "
+                "tables/ directory."
+            ),
+        ):
+            TABLES_DIR.mkdir(parents=True, exist_ok=True)
+            tex_file = TABLES_DIR / f"{file_slug}.tex"
+            md_file = TABLES_DIR / f"{file_slug}.md"
+            csv_file = TABLES_DIR / f"{file_slug}.csv"
+            tex_file.write_text(latex_content, encoding="utf-8")
+            md_file.write_text(markdown_content, encoding="utf-8")
+            csv_file.write_text(csv_content, encoding="utf-8")
+            st.success(
+                f"Saved `{file_slug}` (.tex, .md, .csv) to `{TABLES_DIR.name}/`!"
+            )
+
+
+@st.cache_data
+def get_cached_best_models(
+    _df: pl.DataFrame,
+    dataset: str,
+    condition: str,
+    exclude_clustering: tuple[str, ...] | None,
+    exclude_dim_red: tuple[str, ...] | None,
+    dump: bool,
+    average: bool,
+    merge_info0: bool,
+    suppress_nulls: bool,
+):
+    f_df = _df
+    if condition != "all" and "condition" in f_df.columns:
+        f_df = f_df.filter(pl.col("condition") == condition)
+
+    ex_clust = list(exclude_clustering) if exclude_clustering else None
+    ex_dim = list(exclude_dim_red) if exclude_dim_red else None
+
+    return find_best_models(
+        f_df,
+        dataset=dataset,
+        exclude_clustering=ex_clust,
+        exclude_dim_red=ex_dim,
+        dump=dump,
+        average=average,
+        merge_info0=merge_info0,
+        suppress_nulls=suppress_nulls,
+    )
+
+
+@st.cache_data
+def get_cached_demsar_all_vs_all(
+    _df: pl.DataFrame,
+    datasets: tuple[str, ...],
+    condition: str,
+    metrics: tuple[str, ...],
+    alpha: float,
+    exclude_clustering: tuple[str, ...] | None,
+    exclude_dim_red: tuple[str, ...] | None,
+    merge_info0: bool,
+):
+    f_df = _df
+    if condition != "all" and "condition" in f_df.columns:
+        f_df = f_df.filter(pl.col("condition") == condition)
+
+    filter_ds = None if "all" in [d.lower() for d in datasets] else list(datasets)
+    if filter_ds and len(filter_ds) == 1:
+        filter_ds = filter_ds[0]
+
+    ex_clust = list(exclude_clustering) if exclude_clustering else None
+    ex_dim = list(exclude_dim_red) if exclude_dim_red else None
+
+    return compute_demsar_all_vs_all(
+        df=f_df,
+        dataset=filter_ds,
+        metrics=list(metrics),
+        alpha=alpha,
+        exclude_clustering=ex_clust,
+        exclude_dim_red=ex_dim,
+        merge_info0=merge_info0,
+    )
+
+
+@st.cache_data
+def get_cached_demsar_delta(
+    _df: pl.DataFrame,
+    dataset: str,
+    condition: str,
+    alpha: float,
+    correction: str,
+    exclude_clustering: tuple[str, ...] | None,
+    exclude_dim_red: tuple[str, ...] | None,
+    merge_info0: bool,
+):
+    df_std = _df.filter(pl.col("condition") == "remove_rep_stopwords")
+    df_alt = _df.filter(pl.col("condition") == condition)
+
+    ex_clust = list(exclude_clustering) if exclude_clustering else None
+    ex_dim = list(exclude_dim_red) if exclude_dim_red else None
+
+    return compute_demsar_delta_table(
+        df_default=df_std,
+        df_alternative=df_alt,
+        dataset=dataset,
+        alpha=alpha,
+        correction=correction,
+        exclude_clustering=ex_clust,
+        exclude_dim_red=ex_dim,
+        merge_info0=merge_info0,
+    )
+
+
+@st.cache_data
+def get_cached_stopword_impact(
+    _df: pl.DataFrame,
+    dataset: str,
+    exclude_clustering: tuple[str, ...] | None,
+    exclude_dim_red: tuple[str, ...] | None,
+    merge_info0: bool,
+):
+    df_rem = _df.filter(pl.col("condition") == "remove_rep_stopwords")
+    df_keep = _df.filter(pl.col("condition") == "keep_rep_stopwords")
+
+    ex_clust = list(exclude_clustering) if exclude_clustering else None
+    ex_dim = list(exclude_dim_red) if exclude_dim_red else None
+
+    return compute_stopword_impact(
+        df_remove_rep_stopwords=df_rem,
+        df_keep_rep_stopwords=df_keep,
+        dataset=dataset,
+        exclude_clustering=ex_clust,
+        exclude_dim_red=ex_dim,
+        merge_info0=merge_info0,
+    )
+
+
+@st.cache_data
+def get_cached_noise_coverage(
+    _df: pl.DataFrame,
+    dataset: str | None,
+    condition: str,
+    merge_info0: bool,
+):
+    f_df = _df
+    if condition != "all" and "condition" in f_df.columns:
+        f_df = f_df.filter(pl.col("condition") == condition)
+
+    ds_arg = None if dataset == "all" else dataset
+    return calculate_hdbscan_noise_coverage(
+        df=f_df,
+        dataset=ds_arg,
+        group_by_model_type=True,
+        merge_info0=merge_info0,
+    )
 
 
 def main():
@@ -404,11 +626,12 @@ def main():
         return
 
     # 3. Main Tabs
-    tab_metrics, tab_qualitative, tab_coverage = st.tabs(
+    tab_metrics, tab_qualitative, tab_coverage, tab_paper_tables = st.tabs(
         [
             "📊 Quantitative Metrics",
             "🔍 Qualitative Analysis",
             "📋 Experiment Coverage",
+            "📑 Paper Results Tables",
         ]
     )
 
@@ -474,61 +697,205 @@ def main():
                 "Cells with NaNs/errors are styled in red below."
             )
 
-        # Table with highlighting (Reverted to Pandas Style as requested)
-        # 1. Cast n_clusters to integer if it exists
-        display_df = filtered_df.clone()
-        if "n_clusters" in display_df.columns:
-            display_df = display_df.with_columns(
-                pl.col("n_clusters").cast(pl.Int64, strict=False)
-            )
+        tab1_view_mode = st.radio(
+            "Display Mode:",
+            options=[
+                "📊 Aggregated by Model Type (Mean ± SD across seeds & topic numbers)",
+                "📄 Raw Individual Runs",
+            ],
+            horizontal=True,
+            key="tab1_view_mode",
+        )
 
         import pandas as pd
 
-        pdf = display_df.to_pandas()
+        if "📊 Aggregated" in tab1_view_mode:
+            # Group by dataset and model_type (and condition if multiple)
+            agg_group_cols = ["dataset_label", "model_type"]
+            if (
+                "condition" in filtered_df.columns
+                and filtered_df["condition"].n_unique() > 1
+            ):
+                agg_group_cols.append("condition")
 
-        def highlight_metrics(s):
-            styles = [""] * len(s)
-            is_metric = s.name in METRIC_CONFIG
-            is_numeric = s.name in numeric_cols
+            # Determine numeric metrics present in filtered_df
+            eval_metrics = [
+                m
+                for m in [
+                    "u_mass",
+                    "c_v",
+                    "c_npmi",
+                    "irbo",
+                    "topic_diversity",
+                    "outliers",
+                    "duration_seconds",
+                ]
+                if m in filtered_df.columns
+            ]
 
-            if is_metric or is_numeric:
-                numeric_s = pd.to_numeric(s, errors="coerce")
+            agg_exprs = [pl.len().alias("N_Runs")]
+            for m in eval_metrics:
+                agg_exprs.append(
+                    pl.col(m).cast(pl.Float64, strict=False).mean().alias(f"{m}_mean")
+                )
+                agg_exprs.append(
+                    pl.col(m)
+                    .cast(pl.Float64, strict=False)
+                    .std()
+                    .fill_null(0.0)
+                    .alias(f"{m}_std")
+                )
 
-                for i, val in enumerate(s):
-                    num_val = numeric_s.iloc[i]
-                    if pd.isna(val) or pd.isna(num_val):
-                        styles[i] = (
-                            "background-color: #F8D7DA; color: #721C24; "
-                            "font-weight: bold; border: 1px solid #F5C6CB;"
-                        )
+            agg_df = (
+                filtered_df.group_by(agg_group_cols)
+                .agg(agg_exprs)
+                .sort(["dataset_label", "model_type"])
+            )
 
-                if is_metric:
-                    valid_s = numeric_s.dropna()
-                    if not valid_s.empty:
-                        direction = METRIC_CONFIG[s.name]
+            # Build display and numeric pandas DataFrames
+            disp_rows = []
+            num_rows = []
+            for r in agg_df.iter_rows(named=True):
+                disp_r = {
+                    "Dataset": r["dataset_label"].upper(),
+                    "Model": r["model_type"],
+                    "Runs (N)": r["N_Runs"],
+                }
+                num_r = {
+                    "Dataset": r["dataset_label"].upper(),
+                    "Model": r["model_type"],
+                    "Runs (N)": r["N_Runs"],
+                }
+                if "condition" in agg_group_cols:
+                    disp_r["Condition"] = r["condition"]
+                    num_r["Condition"] = r["condition"]
+
+                for m in eval_metrics:
+                    m_mean = r[f"{m}_mean"]
+                    m_std = r[f"{m}_std"]
+                    num_r[m] = m_mean
+                    if m_mean is None or (
+                        isinstance(m_mean, float) and pd.isna(m_mean)
+                    ):
+                        disp_r[m] = "-"
+                    elif m_std is not None and m_std > 0.0:
+                        disp_r[m] = f"{m_mean:.3f} ± {m_std:.3f}"
+                    else:
+                        disp_r[m] = f"{m_mean:.3f}"
+
+                disp_rows.append(disp_r)
+                num_rows.append(num_r)
+
+            disp_pandas = pd.DataFrame(disp_rows)
+            num_pandas = pd.DataFrame(num_rows)
+
+            def highlight_agg_metrics(col_series):
+                c_name = col_series.name
+                if c_name not in eval_metrics:
+                    return [""] * len(col_series)
+
+                styles = []
+                direction = METRIC_CONFIG.get(c_name, "max")
+
+                # Find best value per dataset
+                for i in range(len(col_series)):
+                    ds = num_pandas["Dataset"].iloc[i]
+                    ds_mask = num_pandas["Dataset"] == ds
+                    ds_vals = num_pandas.loc[ds_mask, c_name].dropna()
+                    val = num_pandas[c_name].iloc[i]
+                    if pd.isna(val) or ds_vals.empty:
+                        styles.append("")
+                    else:
                         best_val = (
-                            valid_s.max() if direction == "max" else valid_s.min()
+                            ds_vals.max() if direction == "max" else ds_vals.min()
                         )
-                        for i, num_val in enumerate(numeric_s):
-                            if (
-                                pd.notna(num_val)
-                                and num_val == best_val
-                                and styles[i] == ""
-                            ):
-                                styles[i] = (
-                                    "background-color: #2E7D32; "
-                                    "color: white; font-weight: bold;"
-                                )
+                        if val == best_val:
+                            styles.append(
+                                "background-color: #2E7D32; color: white; "
+                                "font-weight: bold;"
+                            )
+                        else:
+                            styles.append("")
+                return styles
 
-            return styles
+            styled_agg = disp_pandas.style.apply(highlight_agg_metrics, axis=0)
+            st.dataframe(styled_agg, width="stretch", hide_index=True)
+            st.caption(
+                "Aggregated across seeds and topic counts (Mean ± SD). "
+                ":green-background[**Green**: Best performing model type per dataset]."
+            )
 
-        # Filter pdf to selected columns for display, while keeping original
-        # pdf for backend/plotting
-        pdf_display = pdf[selected_columns] if selected_columns else pdf
-        styled_table = pdf_display.style.apply(highlight_metrics).format(
-            na_rep="⚠️ NaN (Error)"
-        )
-        st.dataframe(styled_table, width="stretch")
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                st.download_button(
+                    label="📥 Download Aggregated Table (.csv)",
+                    data=disp_pandas.to_csv(index=False),
+                    file_name="aggregated_results.csv",
+                    mime="text/csv",
+                    key="agg_dl_csv",
+                    use_container_width=True,
+                )
+            with col_e2:
+                st.download_button(
+                    label="📥 Download Aggregated Table (.md)",
+                    data=disp_pandas.to_markdown(index=False),
+                    file_name="aggregated_results.md",
+                    mime="text/markdown",
+                    key="agg_dl_md",
+                    use_container_width=True,
+                )
+        else:
+            # Table with highlighting (Raw individual runs)
+            display_df = filtered_df.clone()
+            if "n_clusters" in display_df.columns:
+                display_df = display_df.with_columns(
+                    pl.col("n_clusters").cast(pl.Int64, strict=False)
+                )
+
+            pdf = display_df.to_pandas()
+
+            def highlight_metrics(s):
+                styles = [""] * len(s)
+                is_metric = s.name in METRIC_CONFIG
+                is_numeric = s.name in numeric_cols
+
+                if is_metric or is_numeric:
+                    numeric_s = pd.to_numeric(s, errors="coerce")
+
+                    for i, val in enumerate(s):
+                        num_val = numeric_s.iloc[i]
+                        if pd.isna(val) or pd.isna(num_val):
+                            styles[i] = (
+                                "background-color: #F8D7DA; color: #721C24; "
+                                "font-weight: bold; border: 1px solid #F5C6CB;"
+                            )
+
+                    if is_metric:
+                        valid_s = numeric_s.dropna()
+                        if not valid_s.empty:
+                            direction = METRIC_CONFIG[s.name]
+                            best_val = (
+                                valid_s.max() if direction == "max" else valid_s.min()
+                            )
+                            for i, num_val in enumerate(numeric_s):
+                                if (
+                                    pd.notna(num_val)
+                                    and num_val == best_val
+                                    and styles[i] == ""
+                                ):
+                                    styles[i] = (
+                                        "background-color: #2E7D32; "
+                                        "color: white; font-weight: bold;"
+                                    )
+
+                return styles
+
+            # Filter pdf to selected columns for display
+            pdf_display = pdf[selected_columns] if selected_columns else pdf
+            styled_table = pdf_display.style.apply(highlight_metrics).format(
+                na_rep="⚠️ NaN (Error)"
+            )
+            st.dataframe(styled_table, width="stretch")
 
         # 4. Dynamic Plotting
         st.divider()
@@ -1136,6 +1503,666 @@ def main():
                     )
                     st.write(f"**{cond_badge} {cond_title}** — Status: `{status_text}`")
                     st.code(cmd_str, language="bash")
+
+    with tab_paper_tables:
+        st.header("📑 Publication & Paper Results Tables")
+        st.markdown(
+            "Generate, inspect, and export publication-ready LaTeX tables, "
+            "Markdown reports, and CSV datasets matching the experimental "
+            "configurations and statistical tests in the paper."
+        )
+
+        table_choice = st.radio(
+            "**Select Paper Table Type:**",
+            options=[
+                "🏆 Benchmark Results (Best Models / Seed Averages)",
+                "📐 Demšar All-vs-All Statistical Comparison",
+                "🔬 Demšar Condition Sensitivity Deltas",
+                "🛑 Representation Stopword Impact",
+                "📉 HDBSCAN Noise & Outlier Coverage",
+                "📂 Pre-Generated Tables Archive",
+            ],
+            horizontal=True,
+            key="pub_table_choice",
+        )
+
+        st.divider()
+
+        # ----------------------------------------------------------------------
+        # 1. Benchmark Results Table
+        # ----------------------------------------------------------------------
+        if "🏆 Benchmark" in table_choice:
+            st.subheader("🏆 Model Performance Benchmark Table")
+            st.caption(
+                "Consolidated model comparisons across metrics ($C_{\\text{UMass}}$, "
+                "$C_v$, $C_{npmi}$, IRBO, Topic Diversity) with Olympic 3-tier "
+                "highlights (🥇 Gold, 🥈 Silver, 🥉 Bronze)."
+            )
+
+            bm_c1, bm_c2, bm_c3 = st.columns(3)
+            with bm_c1:
+                available_ds = sorted(df["dataset_label"].unique().to_list())
+                default_ds_idx = (
+                    available_ds.index("fed") if "fed" in available_ds else 0
+                )
+                bm_dataset = st.selectbox(
+                    "Dataset:",
+                    options=available_ds,
+                    index=default_ds_idx,
+                    key="bm_ds",
+                )
+            with bm_c2:
+                cond_map = {
+                    "Standard (Stopwords Removed)": "remove_rep_stopwords",
+                    "Stemmed": "stemmed",
+                    "Keep Stopwords (No Removal)": "keep_rep_stopwords",
+                    "All Conditions Combined": "all",
+                }
+                bm_cond_label = st.selectbox(
+                    "Preprocessing Condition:",
+                    options=list(cond_map.keys()),
+                    index=0,
+                    key="bm_cond",
+                )
+                bm_cond = cond_map[bm_cond_label]
+            with bm_c3:
+                mode_options = [
+                    "Average Across Seeds (Mean ± SD)",
+                    "Best Run per Model Type",
+                    "All Configurations Dump",
+                ]
+                bm_mode = st.selectbox(
+                    "Aggregation Mode:",
+                    options=mode_options,
+                    index=0,
+                    key="bm_mode",
+                )
+                is_average = bm_mode == "Average Across Seeds (Mean ± SD)"
+                is_dump = bm_mode == "All Configurations Dump"
+
+            with st.expander("⚙️ Algorithmic Exclusions & Options", expanded=False):
+                bm_opt1, bm_opt2, bm_opt3, bm_opt4 = st.columns(4)
+                with bm_opt1:
+                    ex_clust = st.checkbox(
+                        "Exclude K-Means", value=True, key="bm_ex_kmeans"
+                    )
+                with bm_opt2:
+                    ex_pca = st.checkbox("Exclude PCA", value=True, key="bm_ex_pca")
+                with bm_opt3:
+                    merge_info0 = st.checkbox(
+                        "Merge info0 variants",
+                        value=False,
+                        key="bm_merge_info0",
+                    )
+                with bm_opt4:
+                    suppress_nulls = st.checkbox(
+                        "Suppress Nulls", value=False, key="bm_suppress_nulls"
+                    )
+
+            ex_clust_list = ("kmeans", "spherical_kmeans") if ex_clust else None
+            ex_dim_list = ("pca",) if ex_pca else None
+
+            bm_results = get_cached_best_models(
+                _df=df,
+                dataset=bm_dataset,
+                condition=bm_cond,
+                exclude_clustering=ex_clust_list,
+                exclude_dim_red=ex_dim_list,
+                dump=is_dump,
+                average=is_average,
+                merge_info0=merge_info0,
+                suppress_nulls=suppress_nulls,
+            )
+
+            if not bm_results:
+                st.warning(
+                    f"No valid metric results found for dataset '{bm_dataset}' "
+                    f"with condition '{bm_cond_label}'."
+                )
+            else:
+                table_data = generate_best_models_table_data(
+                    results=bm_results,
+                    dump=is_dump,
+                    average=is_average,
+                )
+                latex_code = generate_best_models_latex_table(
+                    results=bm_results,
+                    dataset=bm_dataset,
+                    dump=is_dump,
+                    average=is_average,
+                    result_type=bm_cond if bm_cond != "all" else None,
+                )
+                markdown_code = generate_best_models_markdown_table(
+                    results=bm_results,
+                    dataset=bm_dataset,
+                    dump=is_dump,
+                    average=is_average,
+                    result_type=bm_cond_label,
+                )
+                csv_data = table_data["display_df"].to_csv(index=False)
+
+                st.dataframe(table_data["styler"], width="stretch", hide_index=True)
+                st.caption(
+                    "Cell highlights: "
+                    ":orange-background[**🥇 1st Best** (Gold)] | "
+                    ":gray-background[**🥈 2nd Best** (Silver)] | "
+                    "**🥉 3rd Best** (Bronze)"
+                )
+
+                mode_slug = "avg" if is_average else ("dump" if is_dump else "best")
+                file_slug = f"best_models_{bm_dataset}_{bm_cond}_{mode_slug}"
+                render_table_export_bar(
+                    latex_content=latex_code,
+                    csv_content=csv_data,
+                    markdown_content=markdown_code,
+                    file_slug=file_slug,
+                    key_prefix="bm",
+                )
+
+                with st.expander("📄 View Raw LaTeX Code", expanded=False):
+                    st.code(latex_code, language="latex")
+                with st.expander("📝 View Markdown Code", expanded=False):
+                    st.code(markdown_code, language="markdown")
+
+        # ----------------------------------------------------------------------
+        # 2. Demšar All-vs-All Statistical Comparison
+        # ----------------------------------------------------------------------
+        elif "📐 Demšar All-vs-All" in table_choice:
+            st.subheader("📐 Demšar (2006) All-vs-All Statistical Ranking")
+            st.caption(
+                "Non-parametric multi-algorithm comparisons via Friedman / "
+                "Iman-Davenport omnibus tests, Nemenyi Critical Difference (CD), "
+                "Demšar cliques, and Holm-Bonferroni pairwise testing."
+            )
+
+            da_c1, da_c2, da_c3, da_c4 = st.columns(4)
+            with da_c1:
+                available_ds = sorted(df["dataset_label"].unique().to_list())
+                da_datasets = st.multiselect(
+                    "Datasets:",
+                    options=available_ds,
+                    default=["fed"] if "fed" in available_ds else [available_ds[0]],
+                    key="da_ds",
+                )
+            with da_c2:
+                cond_map = {
+                    "Standard (Stopwords Removed)": "remove_rep_stopwords",
+                    "Stemmed": "stemmed",
+                    "Keep Stopwords (No Removal)": "keep_rep_stopwords",
+                }
+                da_cond_label = st.selectbox(
+                    "Condition:",
+                    options=list(cond_map.keys()),
+                    index=0,
+                    key="da_cond",
+                )
+                da_cond = cond_map[da_cond_label]
+            with da_c3:
+                metric_options = [
+                    "u_mass",
+                    "c_v",
+                    "c_npmi",
+                    "irbo",
+                    "topic_diversity",
+                ]
+                da_metric = st.selectbox(
+                    "Metric to Inspect:",
+                    options=metric_options,
+                    index=0,
+                    key="da_metric",
+                )
+            with da_c4:
+                da_alpha = st.select_slider(
+                    "Alpha (α):",
+                    options=[0.01, 0.05, 0.10],
+                    value=0.05,
+                    key="da_alpha",
+                )
+
+            with st.expander("⚙️ Exclusions & Additional Matrices", expanded=False):
+                da_opt1, da_opt2, da_opt3, da_opt4 = st.columns(4)
+                with da_opt1:
+                    da_ex_kmeans = st.checkbox(
+                        "Exclude K-Means", value=True, key="da_ex_kmeans"
+                    )
+                with da_opt2:
+                    da_ex_pca = st.checkbox("Exclude PCA", value=True, key="da_ex_pca")
+                with da_opt3:
+                    da_merge_info0 = st.checkbox(
+                        "Merge info0 variants",
+                        value=False,
+                        key="da_merge_info0",
+                    )
+                with da_opt4:
+                    da_inc_deltas = st.checkbox(
+                        "Include Pairwise Deltas",
+                        value=True,
+                        key="da_inc_deltas",
+                    )
+
+            if not da_datasets:
+                st.warning("Please select at least one dataset.")
+            else:
+                ex_clust_list = ("kmeans", "spherical_kmeans") if da_ex_kmeans else None
+                ex_dim_list = ("pca",) if da_ex_pca else None
+
+                da_results = get_cached_demsar_all_vs_all(
+                    _df=df,
+                    datasets=tuple(da_datasets),
+                    condition=da_cond,
+                    metrics=tuple(metric_options),
+                    alpha=da_alpha,
+                    exclude_clustering=ex_clust_list,
+                    exclude_dim_red=ex_dim_list,
+                    merge_info0=da_merge_info0,
+                )
+
+                metrics_dict = da_results.get("metrics", {})
+                if not metrics_dict or da_metric not in metrics_dict:
+                    st.warning(
+                        "Could not compute Demšar all-vs-all ranking for "
+                        f"'{da_metric}'. Ensure multiple model configurations "
+                        "and evaluation blocks exist."
+                    )
+                else:
+                    m_data = metrics_dict[da_metric]
+                    omnibus = m_data.get("omnibus", {})
+                    f_stat = omnibus.get("f_f", 0.0)
+                    p_val = omnibus.get("p_f_f", 1.0)
+                    cd = m_data.get("critical_difference", 0.0)
+                    is_sig = p_val < da_alpha
+
+                    o_col1, o_col2, o_col3, o_col4 = st.columns(4)
+                    o_col1.metric("Omnibus F_F", f"{f_stat:.3f}")
+                    o_col2.metric("p-value", f"{p_val:.4f}")
+                    o_col3.metric("Critical Difference (CD)", f"{cd:.3f}")
+                    o_col4.metric(
+                        "Significance Status",
+                        "Statistically Significant" if is_sig else "Not Significant",
+                    )
+
+                    st.markdown(f"#### Model Ranking Summary: `{da_metric.upper()}`")
+                    df_summary = m_data["summary_table"].to_pandas()
+                    st.dataframe(df_summary, width="stretch", hide_index=True)
+
+                    if da_inc_deltas and "pairwise_delta_matrix" in m_data:
+                        st.markdown(
+                            f"#### Pairwise Delta Matrix: `{da_metric.upper()}`"
+                        )
+                        df_matrix = m_data["pairwise_delta_matrix"].to_pandas()
+                        st.dataframe(
+                            style_demsar_pairwise_matrix(df_matrix),
+                            width="stretch",
+                            hide_index=True,
+                        )
+
+                    ds_slug = "_".join(da_datasets).lower()
+                    ds_label = ", ".join(da_datasets).upper()
+                    latex_table = generate_demsar_all_vs_all_latex_table(
+                        da_results, metric=da_metric, dataset_label=ds_label
+                    )
+                    if da_inc_deltas:
+                        delta_latex = generate_pairwise_delta_latex_matrix(
+                            da_results, metric=da_metric, dataset_label=ds_label
+                        )
+                        latex_table += "\n\n" + delta_latex
+
+                    md_report = generate_demsar_all_vs_all_report(
+                        da_results,
+                        dataset_label=ds_label,
+                        include_deltas=da_inc_deltas,
+                    )
+                    csv_data = df_summary.to_csv(index=False)
+
+                    file_slug = f"demsar_all_vs_all_{ds_slug}_{da_metric}_{da_cond}"
+                    render_table_export_bar(
+                        latex_content=latex_table,
+                        csv_content=csv_data,
+                        markdown_content=md_report,
+                        file_slug=file_slug,
+                        key_prefix="da",
+                    )
+
+                    with st.expander("📄 View LaTeX Code", expanded=False):
+                        st.code(latex_table, language="latex")
+                    with st.expander("📝 View Full Markdown Report", expanded=False):
+                        st.code(md_report, language="markdown")
+
+        # ----------------------------------------------------------------------
+        # 3. Demšar Condition Sensitivity Deltas
+        # ----------------------------------------------------------------------
+        elif "🔬 Demšar Condition" in table_choice:
+            st.subheader("🔬 Demšar Condition Sensitivity Deltas")
+            st.caption(
+                "Model-by-metric performance change (Alternative - Default "
+                "Standard) across $N=5$ topic counts. Evaluated using paired exact "
+                "Wilcoxon signed-rank tests with Holm-Bonferroni FWER control."
+            )
+
+            dd_c1, dd_c2, dd_c3, dd_c4 = st.columns(4)
+            with dd_c1:
+                available_ds = sorted(df["dataset_label"].unique().to_list())
+                dd_dataset = st.selectbox(
+                    "Dataset:", options=available_ds, index=0, key="dd_ds"
+                )
+            with dd_c2:
+                dd_cond_map = {
+                    "Stemmed vs Standard": "stemmed",
+                    "Keep Stopwords vs Remove": "keep_rep_stopwords",
+                }
+                dd_cond_label = st.selectbox(
+                    "Comparison Condition:",
+                    options=list(dd_cond_map.keys()),
+                    index=0,
+                    key="dd_cond",
+                )
+                dd_cond = dd_cond_map[dd_cond_label]
+            with dd_c3:
+                dd_alpha = st.select_slider(
+                    "Alpha (α):",
+                    options=[0.01, 0.05, 0.10],
+                    value=0.10,
+                    key="dd_alpha",
+                )
+            with dd_c4:
+                dd_corr = st.selectbox(
+                    "Correction Scope:",
+                    options=["per_metric", "table", "none"],
+                    index=0,
+                    key="dd_corr",
+                )
+
+            with st.expander("⚙️ Exclusions", expanded=False):
+                dd_opt1, dd_opt2, dd_opt3 = st.columns(3)
+                with dd_opt1:
+                    dd_ex_kmeans = st.checkbox(
+                        "Exclude K-Means", value=True, key="dd_ex_kmeans"
+                    )
+                with dd_opt2:
+                    dd_ex_pca = st.checkbox("Exclude PCA", value=True, key="dd_ex_pca")
+                with dd_opt3:
+                    dd_merge_info0 = st.checkbox(
+                        "Merge info0 variants",
+                        value=False,
+                        key="dd_merge_info0",
+                    )
+
+            ex_clust_list = ("kmeans", "spherical_kmeans") if dd_ex_kmeans else None
+            ex_dim_list = ("pca",) if dd_ex_pca else None
+
+            delta_results = get_cached_demsar_delta(
+                _df=df,
+                dataset=dd_dataset,
+                condition=dd_cond,
+                alpha=dd_alpha,
+                correction=dd_corr,
+                exclude_clustering=ex_clust_list,
+                exclude_dim_red=ex_dim_list,
+                merge_info0=dd_merge_info0,
+            )
+
+            df_summary = delta_results.get("df_summary")
+            if df_summary is None or df_summary.is_empty():
+                st.warning(
+                    f"No paired results found for dataset '{dd_dataset}' "
+                    f"comparing '{dd_cond_label}'. Ensure both Default and "
+                    "Alternative runs exist."
+                )
+            else:
+                pdf_summary = df_summary.to_pandas()
+                st.dataframe(
+                    style_demsar_delta_dataframe(pdf_summary),
+                    width="stretch",
+                    hide_index=True,
+                )
+                st.caption(
+                    "Cell format: `Mean Δ ± SD` | "
+                    ":green-background[**Green**: Improvement (Δ > 0)] | "
+                    ":red-background[**Red**: Decline (Δ < 0)] | "
+                    "**\\***: Statistically significant ($p_{\\text{adj}} < \\alpha$)"
+                )
+
+                latex_code = generate_demsar_delta_latex_table(
+                    delta_results,
+                    dataset=dd_dataset,
+                    condition_name=dd_cond.capitalize(),
+                )
+                markdown_code = generate_demsar_delta_markdown_table(
+                    delta_results,
+                    dataset=dd_dataset,
+                    condition_name=dd_cond.capitalize(),
+                )
+                csv_data = pdf_summary.to_csv(index=False)
+
+                file_slug = f"demsar_delta_{dd_dataset}_{dd_cond}"
+                render_table_export_bar(
+                    latex_content=latex_code,
+                    csv_content=csv_data,
+                    markdown_content=markdown_code,
+                    file_slug=file_slug,
+                    key_prefix="dd",
+                )
+
+                with st.expander(
+                    "🔍 Detailed Test Statistics (Raw p-values, W-stats)",
+                    expanded=False,
+                ):
+                    df_details = delta_results.get("df_details")
+                    if df_details is not None and not df_details.is_empty():
+                        st.dataframe(
+                            df_details.to_pandas(),
+                            width="stretch",
+                            hide_index=True,
+                        )
+
+                with st.expander("📄 View LaTeX Code", expanded=False):
+                    st.code(latex_code, language="latex")
+                with st.expander("📝 View Markdown Code", expanded=False):
+                    st.code(markdown_code, language="markdown")
+
+        # ----------------------------------------------------------------------
+        # 4. Representation Stopword Impact
+        # ----------------------------------------------------------------------
+        elif "🛑 Representation" in table_choice:
+            st.subheader("🛑 Representation Stopword Impact")
+            st.caption(
+                "Metric differences (Mean ± SD) between representation stopwords "
+                "removed vs. kept."
+            )
+
+            sw_c1, sw_c2, sw_c3 = st.columns(3)
+            with sw_c1:
+                available_ds = sorted(df["dataset_label"].unique().to_list())
+                sw_dataset = st.selectbox(
+                    "Dataset:", options=available_ds, index=0, key="sw_ds"
+                )
+            with sw_c2:
+                sw_ex_kmeans = st.checkbox(
+                    "Exclude K-Means", value=True, key="sw_ex_kmeans"
+                )
+            with sw_c3:
+                sw_merge_info0 = st.checkbox(
+                    "Merge info0 variants",
+                    value=False,
+                    key="sw_merge_info0",
+                )
+
+            ex_clust_list = ("kmeans", "spherical_kmeans") if sw_ex_kmeans else None
+
+            sw_results = get_cached_stopword_impact(
+                _df=df,
+                dataset=sw_dataset,
+                exclude_clustering=ex_clust_list,
+                exclude_dim_red=("pca",),
+                merge_info0=sw_merge_info0,
+            )
+
+            if not sw_results:
+                st.warning(
+                    f"No paired stopword removal data found for dataset '{sw_dataset}'."
+                )
+            else:
+                sw_data = generate_stopword_impact_table_data(sw_results)
+                st.dataframe(sw_data["styler"], width="stretch", hide_index=True)
+                st.caption(
+                    ":green-background[**Green**: Improvement (Δ > 0)] | "
+                    ":red-background[**Red**: Decline (Δ < 0)]"
+                )
+
+                latex_code = generate_stopword_impact_latex_table(
+                    sw_results, dataset=sw_dataset
+                )
+                markdown_code = generate_stopword_impact_markdown_table(
+                    sw_results, dataset=sw_dataset
+                )
+                csv_data = sw_data["display_df"].to_csv(index=False)
+
+                file_slug = f"stopword_impact_{sw_dataset}"
+                render_table_export_bar(
+                    latex_content=latex_code,
+                    csv_content=csv_data,
+                    markdown_content=markdown_code,
+                    file_slug=file_slug,
+                    key_prefix="sw",
+                )
+
+                with st.expander("📄 View LaTeX Code", expanded=False):
+                    st.code(latex_code, language="latex")
+                with st.expander("📝 View Markdown Code", expanded=False):
+                    st.code(markdown_code, language="markdown")
+
+        # ----------------------------------------------------------------------
+        # 5. HDBSCAN Noise & Outlier Coverage
+        # ----------------------------------------------------------------------
+        elif "📉 HDBSCAN" in table_choice:
+            st.subheader("📉 HDBSCAN Noise & Outlier Coverage")
+            st.caption(
+                "Noise document count and percentage coverage assigned to the "
+                "outlier cluster (-1) across seeds."
+            )
+
+            nc_c1, nc_c2, nc_c3 = st.columns(3)
+            with nc_c1:
+                available_ds = ["all"] + sorted(df["dataset_label"].unique().to_list())
+                nc_dataset = st.selectbox(
+                    "Dataset:", options=available_ds, index=0, key="nc_ds"
+                )
+            with nc_c2:
+                cond_opts = [
+                    "all",
+                    "remove_rep_stopwords",
+                    "keep_rep_stopwords",
+                    "stemmed",
+                ]
+                nc_cond = st.selectbox(
+                    "Condition:", options=cond_opts, index=0, key="nc_cond"
+                )
+            with nc_c3:
+                nc_merge_info0 = st.checkbox(
+                    "Merge info0 variants",
+                    value=False,
+                    key="nc_merge_info0",
+                )
+
+            df_noise = get_cached_noise_coverage(
+                _df=df,
+                dataset=nc_dataset,
+                condition=nc_cond,
+                merge_info0=nc_merge_info0,
+            )
+
+            if df_noise.is_empty():
+                st.warning("No HDBSCAN runs found matching criteria.")
+            else:
+                pdf_noise = df_noise.to_pandas()
+                st.dataframe(pdf_noise, width="stretch", hide_index=True)
+
+                latex_code = generate_noise_coverage_latex_table(
+                    df_noise, result_type=nc_cond if nc_cond != "all" else None
+                )
+                markdown_code = generate_noise_coverage_markdown_table(df_noise)
+                csv_data = pdf_noise.to_csv(index=False)
+
+                file_slug = f"noise_coverage_{nc_dataset}_{nc_cond}"
+                render_table_export_bar(
+                    latex_content=latex_code,
+                    csv_content=csv_data,
+                    markdown_content=markdown_code,
+                    file_slug=file_slug,
+                    key_prefix="nc",
+                )
+
+                with st.expander("📄 View LaTeX Code", expanded=False):
+                    st.code(latex_code, language="latex")
+                with st.expander("📝 View Markdown Code", expanded=False):
+                    st.code(markdown_code, language="markdown")
+
+        # ----------------------------------------------------------------------
+        # 6. Pre-Generated Tables Archive
+        # ----------------------------------------------------------------------
+        elif "📂 Pre-Generated" in table_choice:
+            st.subheader("📂 Pre-Generated Paper Tables Archive")
+            st.caption(
+                "Browse, preview, and download existing table artifacts saved "
+                "in the `tables/` repository."
+            )
+
+            if not TABLES_DIR.exists():
+                st.info("The `tables/` directory does not exist yet.")
+            else:
+                saved_files = sorted(
+                    [
+                        f.name
+                        for f in TABLES_DIR.glob("*.*")
+                        if f.suffix in [".tex", ".md", ".csv"] and f.name != ".gitkeep"
+                    ]
+                )
+                if not saved_files:
+                    st.info("No table files found in `tables/`.")
+                else:
+                    af_c1, af_c2 = st.columns([3, 1])
+                    with af_c1:
+                        sel_file = st.selectbox(
+                            "Select saved table file:",
+                            options=saved_files,
+                            key="archive_sel",
+                        )
+                    with af_c2:
+                        st.write("")
+                        st.write("")
+                        file_path = TABLES_DIR / sel_file
+                        file_data = file_path.read_text(
+                            encoding="utf-8", errors="replace"
+                        )
+                        mime_map = {
+                            ".tex": "text/x-tex",
+                            ".md": "text/markdown",
+                            ".csv": "text/csv",
+                        }
+                        st.download_button(
+                            label=f"📥 Download `{sel_file}`",
+                            data=file_data,
+                            file_name=sel_file,
+                            mime=mime_map.get(file_path.suffix, "text/plain"),
+                            key="archive_dl",
+                            use_container_width=True,
+                        )
+
+                    st.markdown(f"**File**: `{sel_file}` ({len(file_data)} bytes)")
+                    if sel_file.endswith(".md"):
+                        st.markdown(file_data)
+                    elif sel_file.endswith(".csv"):
+                        try:
+                            csv_df = pl.read_csv(file_path)
+                            st.dataframe(
+                                csv_df.to_pandas(),
+                                width="stretch",
+                                hide_index=True,
+                            )
+                        except Exception:
+                            st.code(file_data, language="text")
+                    elif sel_file.endswith(".tex"):
+                        st.code(file_data, language="latex")
 
 
 if __name__ == "__main__":

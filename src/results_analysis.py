@@ -121,8 +121,8 @@ def find_best_models(
     if df.is_empty():
         return {}
 
-    # Add model_type column if it doesn't exist
-    if "model_type" not in df.columns:
+    # Add or update model_type column based on model_name and merge_info0
+    if "model_name" in df.columns:
         df = df.with_columns(
             pl.col("model_name")
             .map_elements(
@@ -248,7 +248,7 @@ def calculate_hdbscan_noise_coverage(
         return filtered_df
 
     # Extract model_type if needed
-    if "model_type" not in filtered_df.columns:
+    if "model_name" in filtered_df.columns:
         filtered_df = filtered_df.with_columns(
             pl.col("model_name")
             .map_elements(
