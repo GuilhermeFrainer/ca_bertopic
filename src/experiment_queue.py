@@ -229,8 +229,12 @@ def resolve_datasets(raw_datasets: str | None, is_test: bool = False) -> list[st
     return list(DEFAULT_DATASETS)
 
 
-def resolve_models(raw_models: str | None, is_test: bool = False) -> list[str]:
-    """Resolve model list expanding categories and matching models.
+def resolve_models(
+    raw_models: str | None = None,
+    is_test: bool = False,
+    raw_exact_models: str | None = None,
+) -> list[str]:
+    """Resolve model list expanding categories, matching, or exact models.
 
     Preserves legacy category mappings:
     - kmeans/k_means: matches any model with 'k_means' in name (including spherical)
@@ -241,16 +245,40 @@ def resolve_models(raw_models: str | None, is_test: bool = False) -> list[str]:
     - tritopic: matches any model with 'tritopic' in name
 
     For any non-category token, matches exact name or substring in ALL_MODELS.
+    When raw_exact_models is specified, models are matched strictly 1:1.
 
     Args:
         raw_models: Comma-separated model names or categories.
         is_test: Whether test mode is enabled.
+        raw_exact_models: Comma-separated exact model names (no expansion).
 
     Returns:
         List of unique models preserving resolution order.
+
+    Raises:
+        ValueError: If an exact model name is unknown.
     """
-    if is_test and (raw_models is None or not raw_models.strip()):
-        return ["baseline", "stm"]
+    exact_models: list[str] = []
+    if raw_exact_models is not None and raw_exact_models.strip():
+        for item in raw_exact_models.split(","):
+            item_clean = item.strip()
+            if not item_clean:
+                continue
+            if item_clean not in ALL_MODELS:
+                valid_models_str = ", ".join(ALL_MODELS)
+                raise ValueError(
+                    f"Error: Unknown exact model '{item_clean}'. "
+                    f"Valid models are: {valid_models_str}"
+                )
+            if item_clean not in exact_models:
+                exact_models.append(item_clean)
+
+    if not (raw_models and raw_models.strip()):
+        if exact_models:
+            return exact_models
+        if is_test:
+            return ["baseline", "stm"]
+        return list(ALL_MODELS)
 
     if raw_models is not None and raw_models.strip():
         initial_models: list[str] = []
@@ -308,8 +336,13 @@ def resolve_models(raw_models: str | None, is_test: bool = False) -> list[str]:
         for m in initial_models:
             if m not in target_models:
                 target_models.append(m)
+        for m in exact_models:
+            if m not in target_models:
+                target_models.append(m)
         return target_models
 
+    if exact_models:
+        return exact_models
     return list(ALL_MODELS)
 
 
@@ -450,6 +483,7 @@ def create_queue_plan(
     time_limit: str = DEFAULT_TIME,
     project_name: str = PROJECT_NAME,
     allow_empty_datasets: bool = False,
+    raw_exact_models: str | None = None,
 ) -> QueuePlan:
     """Create a fully resolved QueuePlan.
 
@@ -468,6 +502,7 @@ def create_queue_plan(
         time_limit: SLURM time allocation.
         project_name: Project name.
         allow_empty_datasets: For internal testing of dataset validation.
+        raw_exact_models: User-specified exact model names.
 
     Returns:
         Resolved QueuePlan.
@@ -485,7 +520,9 @@ def create_queue_plan(
 
     indices = parse_run_indices(raw_runs)
 
-    initial_models = resolve_models(raw_models, is_test=is_test)
+    initial_models = resolve_models(
+        raw_models, is_test=is_test, raw_exact_models=raw_exact_models
+    )
     final_models = apply_exclusions(initial_models, raw_excludes)
 
     excludes_tuple: tuple[str, ...] = ()

@@ -76,6 +76,19 @@ Examples:
     )
 
     parser.add_argument(
+        "-e",
+        "--exact-model",
+        "--exact-models",
+        dest="exact_model",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated list of exact model names to run. "
+            "Disables category expansion and substring matching."
+        ),
+    )
+
+    parser.add_argument(
         "-x",
         "--exclude",
         dest="exclude",
@@ -326,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
         plan = create_queue_plan(
             raw_datasets=args.dataset,
             raw_models=args.model,
+            raw_exact_models=args.exact_model,
             raw_excludes=args.exclude,
             raw_runs=args.runs,
             split=split,

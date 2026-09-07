@@ -140,6 +140,29 @@ class TestResolveModels:
         res = resolve_models("baseline,baseline,stm,baseline")
         assert res == ["baseline", "stm"]
 
+    def test_exact_model_tritopic(self):
+        res = resolve_models(raw_exact_models="tritopic")
+        assert res == ["tritopic"]
+        assert "fast_tritopic" not in res
+
+    def test_exact_model_mv_spectral(self):
+        res = resolve_models(raw_exact_models="mv_spectral")
+        assert res == ["mv_spectral"]
+        assert "append_umap_mv_spectral" not in res
+        assert "pca_mv_spectral" not in res
+
+    def test_exact_model_multiple(self):
+        res = resolve_models(raw_exact_models="tritopic, baseline")
+        assert res == ["tritopic", "baseline"]
+
+    def test_exact_model_invalid_raises(self):
+        with pytest.raises(ValueError, match="Unknown exact model 'invalid_model'"):
+            resolve_models(raw_exact_models="invalid_model")
+
+    def test_exact_model_combined_with_category(self):
+        res = resolve_models(raw_models="baseline", raw_exact_models="tritopic")
+        assert res == ["baseline", "tritopic"]
+
 
 class TestApplyExclusions:
     """Test applying exclusions to models."""

@@ -45,6 +45,14 @@ class TestQueueExpCLIParser:
         assert parser.parse_args(["--model", "baseline"]).model == "baseline"
         assert parser.parse_args(["--models", "baseline"]).model == "baseline"
 
+    def test_aliases_exact_model(self):
+        parser = build_parser()
+        assert parser.parse_args(["-e", "tritopic"]).exact_model == "tritopic"
+        res_long = parser.parse_args(["--exact-model", "tritopic"])
+        assert res_long.exact_model == "tritopic"
+        res_plural = parser.parse_args(["--exact-models", "tritopic"])
+        assert res_plural.exact_model == "tritopic"
+
     def test_aliases_split_and_runs(self):
         parser = build_parser()
         assert parser.parse_args(["-b"]).split is True
@@ -209,6 +217,15 @@ class TestSubmissionAndMain:
         captured = capsys.readouterr().out
         assert "Experiment Submission Plan" in captured
         assert "Dry run complete" in captured
+
+    def test_main_exact_model_dry_run(self, capsys):
+        exit_code = main(["-d", "fed", "-e", "tritopic", "-n"])
+        assert exit_code == 0
+        captured = capsys.readouterr().out
+        assert "Models (1):    tritopic" in captured
+        assert "Job: fed_tritopic" in captured
+        assert "fast_tritopic" not in captured
+        assert "Dry run complete (1 jobs simulated)." in captured
 
     def test_confirm_submission(self, monkeypatch):
         from scripts.experiments.queue_exp import confirm_submission
