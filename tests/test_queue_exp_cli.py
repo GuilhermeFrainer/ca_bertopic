@@ -1,6 +1,9 @@
 """Tests for scripts/experiments/queue_exp.py CLI and orchestration."""
 
+import logging
 from unittest.mock import MagicMock
+
+import pytest
 
 from scripts.experiments.queue_exp import (
     build_parser,
@@ -10,6 +13,16 @@ from scripts.experiments.queue_exp import (
     submit_jobs,
 )
 from src.experiment_queue import create_queue_plan
+
+
+@pytest.fixture(autouse=True)
+def cleanup_pipeline_logger():
+    yield
+    logger = logging.getLogger("pipeline")
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+    logger.propagate = True
 
 
 class TestQueueExpCLIParser:
