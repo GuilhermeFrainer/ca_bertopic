@@ -124,24 +124,19 @@ foreach ($resType in $resultTypesToProcess) {
         Write-Host "Generating LaTeX Table (Dump)..."
         $tableDumpPath = Join-Path $typeTablesDir "${dataset}_table_dump.tex"
         uv run scripts/analysis/find_best_models.py --dataset $dataset --result-type $resType --latex "$tableDumpPath" --dump
-
-        # 7. Demšar All-vs-All Ranking Table (Dataset)
-        Write-Host "Generating Demšar All-vs-All Table ($dataset)..."
-        $demsarTablePath = Join-Path $typeTablesDir "${dataset}_demsar_all_vs_all.tex"
-        uv run scripts/analysis/demsar_all_vs_all_analysis.py --dataset $dataset --condition $resType --latex "$demsarTablePath" @demsarFlags
-
-        # 8. Demšar Delta Table (Alternative Preprocessing Conditions vs Standard)
-        if ($resType -ne "standard") {
-            Write-Host "Generating Demšar Delta Table ($dataset)..."
-            $demsarDeltaPath = Join-Path $typeTablesDir "${dataset}_demsar_delta.tex"
-            uv run scripts/analysis/demsar_delta_analysis.py --dataset $dataset --condition $resType --latex "$demsarDeltaPath" @demsarFlags
-        }
     }
 
-    # 9. Demšar All-vs-All Ranking Table (All Datasets Pooled)
-    Write-Host "`nGenerating Demšar All-vs-All Table (All Datasets Pooled - $resType)..." -ForegroundColor Yellow
+    # 7. Demšar All-vs-All Ranking Table (Across All Datasets)
+    Write-Host "`nGenerating Demšar All-vs-All Table (All Datasets - $resType)..." -ForegroundColor Yellow
     $allDemsarTablePath = Join-Path $typeTablesDir "all_datasets_demsar_all_vs_all.tex"
     uv run scripts/analysis/demsar_all_vs_all_analysis.py --dataset all --condition $resType --latex "$allDemsarTablePath" @demsarFlags
+
+    # 8. Demšar Delta Table (Alternative Preprocessing vs Standard across All Datasets)
+    if ($resType -ne "standard") {
+        Write-Host "Generating Demšar Delta Table (All Datasets - $resType)..." -ForegroundColor Yellow
+        $allDemsarDeltaPath = Join-Path $typeTablesDir "all_datasets_demsar_delta_${resType}.tex"
+        uv run scripts/analysis/demsar_delta_analysis.py --dataset all --condition $resType --latex "$allDemsarDeltaPath" @demsarFlags
+    }
 }
 
 Write-Host "`nAll results generated successfully in $outputDir" -ForegroundColor Cyan

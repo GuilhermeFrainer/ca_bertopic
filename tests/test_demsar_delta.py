@@ -87,51 +87,54 @@ def test_parse_model_type_and_topic():
 
 
 def test_compute_demsar_delta_table_synthetic():
-    # Construct synthetic data: 1 model, 5 topic counts (1..5), 3 seeds (10, 20, 30)
+    # Construct synthetic data: 1 model, 5 datasets,
+    # 3 topic counts (1..3), 2 seeds (10, 20)
+    datasets = ["fed", "yelp", "trump", "anes", "bills"]
     rows_default = []
     rows_alt = []
 
-    for k in range(1, 6):
-        for seed in [10, 20, 30]:
-            # Baseline: c_v = 0.50 + 0.01*k
-            rows_default.append(
-                {
-                    "model_name": f"baseline_{k}_seed{seed}",
-                    "dataset_name": "fed",
-                    "random_state": seed,
-                    "clustering_algo": "hdbscan",
-                    "dim_red_algo": "umap",
-                    "c_v": 0.50 + 0.01 * k,
-                    "u_mass": -1.0,
-                    "c_npmi": 0.10,
-                    "irbo": 0.80,
-                    "topic_diversity": 0.70,
-                }
-            )
-            # Alternative: c_v improves by exactly 0.05 for all topic counts
-            rows_alt.append(
-                {
-                    "model_name": f"stemmed_baseline_{k}_seed{seed}",
-                    "dataset_name": "fed",
-                    "random_state": seed,
-                    "clustering_algo": "hdbscan",
-                    "dim_red_algo": "umap",
-                    "c_v": 0.50 + 0.01 * k + 0.05,
-                    "u_mass": -1.0,
-                    "c_npmi": 0.10,
-                    "irbo": 0.80,
-                    "topic_diversity": 0.70,
-                }
-            )
+    for ds in datasets:
+        for k in range(1, 4):
+            for seed in [10, 20]:
+                # Baseline: c_v = 0.50 + 0.01*k
+                rows_default.append(
+                    {
+                        "model_name": f"baseline_{k}_seed{seed}",
+                        "dataset_name": ds,
+                        "random_state": seed,
+                        "clustering_algo": "hdbscan",
+                        "dim_red_algo": "umap",
+                        "c_v": 0.50 + 0.01 * k,
+                        "u_mass": -1.0,
+                        "c_npmi": 0.10,
+                        "irbo": 0.80,
+                        "topic_diversity": 0.70,
+                    }
+                )
+                # Alternative: c_v improves by exactly 0.05 for all datasets
+                rows_alt.append(
+                    {
+                        "model_name": f"stemmed_baseline_{k}_seed{seed}",
+                        "dataset_name": ds,
+                        "random_state": seed,
+                        "clustering_algo": "hdbscan",
+                        "dim_red_algo": "umap",
+                        "c_v": 0.50 + 0.01 * k + 0.05,
+                        "u_mass": -1.0,
+                        "c_npmi": 0.10,
+                        "irbo": 0.80,
+                        "topic_diversity": 0.70,
+                    }
+                )
 
     df_default = pl.DataFrame(rows_default)
     df_alt = pl.DataFrame(rows_alt)
 
-    # Run Demšar evaluation with alpha=0.10, two-sided
+    # Run Demšar evaluation across datasets with alpha=0.10, two-sided
     results = compute_demsar_delta_table(
         df_default=df_default,
         df_alternative=df_alt,
-        dataset="fed",
+        datasets=datasets,
         alpha=0.10,
         alternative="two-sided",
         correction="per_metric",
@@ -141,6 +144,8 @@ def test_compute_demsar_delta_table_synthetic():
     assert not results["df_details"].is_empty()
     assert results["models"] == ["baseline"]
     assert "c_v" in results["metrics"]
+    assert results["n_datasets"] == 5
+    assert results["n_blocks"] == 5
 
     details = results["df_details"]
     cv_row = details.filter(
@@ -148,7 +153,7 @@ def test_compute_demsar_delta_table_synthetic():
     )
     assert not cv_row.is_empty()
     assert abs(cv_row["mean_delta"][0] - 0.05) < 1e-5
-    # All 5 differences are +0.05 -> raw exact p-value is 0.0625
+    # All 5 dataset differences are +0.05 -> raw exact p-value is 0.0625
     assert abs(cv_row["p_raw"][0] - 0.0625) < 1e-5
     # Single model in family -> p_adj = 0.0625 < 0.10 -> significant!
     assert cv_row["is_significant"][0] is True
@@ -160,7 +165,7 @@ def test_compute_demsar_delta_table_synthetic():
 
 def test_compute_demsar_delta_table_empty():
     empty = pl.DataFrame()
-    res = compute_demsar_delta_table(empty, empty, dataset="fed")
+    res = compute_demsar_delta_table(empty, empty, datasets=["fed"])
     assert res["df_summary"].is_empty()
     assert res["models"] == []
 

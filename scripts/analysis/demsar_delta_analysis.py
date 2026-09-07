@@ -35,9 +35,12 @@ def parse_args():
     )
     parser.add_argument(
         "--dataset",
+        "--datasets",
         type=str,
-        default="fed",
-        help="Dataset name to analyze (e.g., fed, yelp). Default: fed.",
+        nargs="+",
+        default=["all"],
+        dest="dataset",
+        help="Dataset(s) to analyze (e.g., 'fed', 'yelp', or 'all'). Default: all.",
     )
     parser.add_argument(
         "--condition",
@@ -126,40 +129,46 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_dataset_results(dataset: str, condition: str):
-    """Loads default and alternative result DataFrames for the given dataset."""
-    default_files = [
-        f
-        for f in RESULTS_DIR.glob("*.csv")
-        if f.name.lower().startswith(f"{dataset.lower()}_standard")
-        or (f.name.lower().startswith(dataset.lower()) and "standard" in f.name.lower())
-    ]
-    if not default_files:
-        # Fallback to any file starting with dataset that is not stemmed or no_stopword
-        default_files = [
-            f
-            for f in RESULTS_DIR.glob("*.csv")
-            if f.name.lower().startswith(dataset.lower())
-            and "stemmed" not in f.name.lower()
-            and "no_stopword" not in f.name.lower()
-            and "keep_rep" not in f.name.lower()
-        ]
+def load_dataset_results(datasets: list[str] | str, condition: str):
+    """Loads default and alternative result DataFrames for the given dataset(s)."""
+    all_files = list(RESULTS_DIR.glob("*.csv"))
+    if not all_files:
+        raise FileNotFoundError(f"No result CSV files found in {RESULTS_DIR}")
 
+    if isinstance(datasets, str):
+        ds_list = [datasets]
+    else:
+        ds_list = list(datasets)
+
+    is_all = "all" in [d.lower() for d in ds_list]
     alt_pattern = "stemmed" if condition == "stemmed" else "no_stopword"
-    alt_files = [
-        f
-        for f in RESULTS_DIR.glob("*.csv")
-        if f.name.lower().startswith(dataset.lower()) and alt_pattern in f.name.lower()
-    ]
+
+    default_files = []
+    alt_files = []
+
+    for f in all_files:
+        fname = f.name.lower()
+        match_ds = is_all or any(d.lower() in fname for d in ds_list)
+        if not match_ds:
+            continue
+
+        if (
+            "stemmed" not in fname
+            and "no_stopword" not in fname
+            and "keep_rep" not in fname
+        ):
+            default_files.append(f)
+        elif alt_pattern in fname:
+            alt_files.append(f)
 
     if not default_files:
         raise FileNotFoundError(
-            f"No Default/Standard results found for dataset '{dataset}' "
+            f"No Default/Standard results found for dataset(s) {ds_list} "
             f"in {RESULTS_DIR}"
         )
     if not alt_files:
         raise FileNotFoundError(
-            f"No {condition} results found for dataset '{dataset}' in {RESULTS_DIR}"
+            f"No {condition} results found for dataset(s) {ds_list} in {RESULTS_DIR}"
         )
 
     df_default = pl.concat(
@@ -188,8 +197,9 @@ def main():
         else args.exclude_dim_red
     )
 
+    ds_label = ", ".join(args.dataset).upper()
     print(
-        f"Executing Demsar Evaluation for dataset: '{args.dataset}', "
+        f"Executing Demšar Evaluation across dataset(s): '{ds_label}', "
         f"condition: '{args.condition}'..."
     )
     print(
@@ -203,10 +213,14 @@ def main():
         print(f"Error: {e}")
         return
 
+    filter_ds = None if "all" in [d.lower() for d in args.dataset] else args.dataset
+    if filter_ds and len(filter_ds) == 1:
+        filter_ds = filter_ds[0]
+
     results = compute_demsar_delta_table(
         df_default=df_default,
         df_alternative=df_alt,
-        dataset=args.dataset,
+        datasets=filter_ds,
         alpha=args.alpha,
         alternative=args.tail,
         correction=args.correction,
@@ -226,14 +240,14 @@ def main():
     # Generate Markdown Table
     md_table = generate_demsar_delta_markdown_table(
         delta_results=results,
-        dataset=args.dataset,
+        dataset_label=ds_label,
         condition_name=condition_title,
     )
 
     # Generate LaTeX Table
     latex_table = generate_demsar_delta_latex_table(
         delta_results=results,
-        dataset=args.dataset,
+        dataset_label=ds_label,
         condition_name=condition_title,
     )
 
@@ -260,10 +274,11 @@ def main():
 
     if args.save_tables:
         TABLES_DIR.mkdir(parents=True, exist_ok=True)
+        ds_slug = "_".join(args.dataset).lower()
         cond_slug = args.condition.lower().replace(" ", "_")
-        md_file = TABLES_DIR / f"demsar_delta_{args.dataset}_{cond_slug}.md"
-        tex_file = TABLES_DIR / f"demsar_delta_{args.dataset}_{cond_slug}.tex"
-        csv_file = TABLES_DIR / f"demsar_delta_{args.dataset}_{cond_slug}_details.csv"
+        md_file = TABLES_DIR / f"demsar_delta_{ds_slug}_{cond_slug}.md"
+        tex_file = TABLES_DIR / f"demsar_delta_{ds_slug}_{cond_slug}.tex"
+        csv_file = TABLES_DIR / f"demsar_delta_{ds_slug}_{cond_slug}_details.csv"
 
         md_file.write_text(md_table, encoding="utf-8")
         tex_file.write_text(latex_table, encoding="utf-8")

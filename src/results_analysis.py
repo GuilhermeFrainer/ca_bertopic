@@ -576,7 +576,8 @@ def holm_bonferroni(p_values: Sequence[float]) -> List[float]:
 def compute_demsar_delta_table(
     df_default: pl.DataFrame,
     df_alternative: pl.DataFrame,
-    dataset: Optional[str] = "fed",
+    datasets: Optional[Sequence[str] | str] = None,
+    dataset: Optional[str] = None,
     metrics: Optional[List[str]] = None,
     alpha: float = 0.10,
     alternative: str = "two-sided",
@@ -588,19 +589,29 @@ def compute_demsar_delta_table(
 ) -> Dict[str, Any]:
     """Computes Demšar-compliant Model-by-Metric Delta Table and statistical tests.
 
+    Following Demšar (2006) recommendations for comparing two conditions/algorithms,
+    each benchmark dataset is treated as an independent evaluation block. For each
+    (dataset, model), scores are aggregated over random seeds and topic counts. Paired
+    differences are then evaluated using the exact Wilcoxon signed-rank test across
+    the N datasets.
+
     Workflow:
-    1. Seed Aggregation: Averages scores across random seeds for each
-       (model, metric, topic_count).
-    2. Delta Computation: Computes paired differences across N=5 topic counts.
-    3. Non-Parametric Significance: Runs paired exact Wilcoxon signed-rank test
-       for each (model, metric).
-    4. FWER Control: Applies Holm-Bonferroni step-down correction.
-    5. Formatting: Creates structured delta tables with significance flags.
+    1. Dataset Normalization & Filtering: Cleans dataset identifiers and filters
+       by requested datasets.
+    2. Model Type Annotation: Extracts base model types.
+    3. Seed and Topic Count Aggregation: Averages scores across random seeds and
+       topic counts for each (dataset_name, model_type).
+    4. Delta Computation: Computes paired differences across N datasets.
+    5. Non-Parametric Significance: Runs paired exact Wilcoxon signed-rank test
+       for each (model, metric) across the N datasets.
+    6. FWER Control: Applies Holm-Bonferroni step-down correction.
+    7. Formatting: Creates structured delta tables with significance flags.
 
     Args:
         df_default: Polars DataFrame of baseline/default runs.
         df_alternative: Polars DataFrame of alternative configuration runs.
-        dataset: Dataset identifier to filter by (or None for all).
+        datasets: Dataset identifier(s) to filter by (or None / "all" for all).
+        dataset: Backwards-compatible alias for datasets.
         metrics: List of metrics to evaluate (default: METRICS).
         alpha: Significance threshold (e.g., 0.10 for two-tailed or 0.05
             for one-tailed).
@@ -621,7 +632,10 @@ def compute_demsar_delta_table(
         - 'alpha': Alpha threshold used
         - 'alternative': Test direction used
         - 'correction': Correction method used
-        - 'n_topic_blocks': Number of paired topic count blocks (N=5)
+        - 'n_datasets': Number of paired dataset blocks (N)
+        - 'n_blocks': Number of paired dataset blocks (N)
+        - 'n_topic_blocks': Backwards-compatible alias for n_blocks
+        - 'datasets': List of dataset names evaluated
     """
     if df_default.is_empty() or df_alternative.is_empty():
         return {
@@ -632,7 +646,10 @@ def compute_demsar_delta_table(
             "alpha": alpha,
             "alternative": alternative,
             "correction": correction,
+            "n_datasets": 0,
+            "n_blocks": 0,
             "n_topic_blocks": 0,
+            "datasets": [],
         }
 
     target_metrics = [m for m in (metrics or METRICS)]
@@ -641,19 +658,31 @@ def compute_demsar_delta_table(
     std_df = df_default.clone()
     alt_df = df_alternative.clone()
 
-    for df_ref in [std_df, alt_df]:
+    for idx, df_ref in enumerate([std_df, alt_df]):
         if "dataset_name" in df_ref.columns:
-            df_ref = df_ref.with_columns(
-                pl.col("dataset_name")
+            cleaned_ds = (
+                df_ref["dataset_name"]
                 .replace("anes_stemmed", "anes")
                 .str.replace(r"_s\d+$", "")
             )
+            if idx == 0:
+                std_df = std_df.with_columns(cleaned_ds.alias("dataset_name"))
+            else:
+                alt_df = alt_df.with_columns(cleaned_ds.alias("dataset_name"))
+        else:
+            if idx == 0:
+                std_df = std_df.with_columns(pl.lit("dataset").alias("dataset_name"))
+            else:
+                alt_df = alt_df.with_columns(pl.lit("dataset").alias("dataset_name"))
 
-    if dataset:
-        if "dataset_name" in std_df.columns:
-            std_df = std_df.filter(pl.col("dataset_name") == dataset)
-        if "dataset_name" in alt_df.columns:
-            alt_df = alt_df.filter(pl.col("dataset_name") == dataset)
+    target_ds = datasets if datasets is not None else dataset
+    if target_ds is not None and target_ds != "all":
+        if isinstance(target_ds, str):
+            std_df = std_df.filter(pl.col("dataset_name") == target_ds)
+            alt_df = alt_df.filter(pl.col("dataset_name") == target_ds)
+        else:
+            std_df = std_df.filter(pl.col("dataset_name").is_in(list(target_ds)))
+            alt_df = alt_df.filter(pl.col("dataset_name").is_in(list(target_ds)))
 
     if std_df.is_empty() or alt_df.is_empty():
         return {
@@ -664,7 +693,10 @@ def compute_demsar_delta_table(
             "alpha": alpha,
             "alternative": alternative,
             "correction": correction,
+            "n_datasets": 0,
+            "n_blocks": 0,
             "n_topic_blocks": 0,
+            "datasets": [],
         }
 
     # 2. Extract model_type and topic_idx
@@ -749,7 +781,10 @@ def compute_demsar_delta_table(
             "alpha": alpha,
             "alternative": alternative,
             "correction": correction,
+            "n_datasets": 0,
+            "n_blocks": 0,
             "n_topic_blocks": 0,
+            "datasets": [],
         }
 
     available_metrics = [
@@ -764,29 +799,32 @@ def compute_demsar_delta_table(
             "alpha": alpha,
             "alternative": alternative,
             "correction": correction,
+            "n_datasets": 0,
+            "n_blocks": 0,
             "n_topic_blocks": 0,
+            "datasets": [],
         }
 
-    # 4. Seed Aggregation: Average across seeds for each (model_type, topic_idx)
+    # 4. Aggregation across random seeds and topic counts per (dataset_name, model_type)
     agg_exprs = [
         pl.col(m).cast(pl.Float64, strict=False).mean().alias(m)
         for m in available_metrics
     ]
 
     std_agg = (
-        std_df.group_by(["model_type", "topic_idx"])
+        std_df.group_by(["dataset_name", "model_type"])
         .agg(agg_exprs)
-        .sort(["model_type", "topic_idx"])
+        .sort(["dataset_name", "model_type"])
     )
     alt_agg = (
-        alt_df.group_by(["model_type", "topic_idx"])
+        alt_df.group_by(["dataset_name", "model_type"])
         .agg(agg_exprs)
-        .sort(["model_type", "topic_idx"])
+        .sort(["dataset_name", "model_type"])
     )
 
-    # 5. Join default and alternative on paired (model_type, topic_idx)
+    # 5. Join default and alternative on paired (dataset_name, model_type)
     joined = std_agg.join(
-        alt_agg, on=["model_type", "topic_idx"], suffix="_alternative"
+        alt_agg, on=["dataset_name", "model_type"], suffix="_alternative"
     )
     if joined.is_empty():
         return {
@@ -797,7 +835,10 @@ def compute_demsar_delta_table(
             "alpha": alpha,
             "alternative": alternative,
             "correction": correction,
+            "n_datasets": 0,
+            "n_blocks": 0,
             "n_topic_blocks": 0,
+            "datasets": [],
         }
 
     # Desired canonical model order
@@ -817,10 +858,10 @@ def compute_demsar_delta_table(
     ordered_models = [m for m in canonical_order if m in present_models]
     ordered_models += sorted([m for m in present_models if m not in canonical_order])
 
-    # 6. Compute deltas and exact Wilcoxon test for each (model, metric)
+    # 6. Compute deltas across datasets and exact Wilcoxon test for each (model, metric)
     records = []
     for model in ordered_models:
-        model_sub = joined.filter(pl.col("model_type") == model).sort("topic_idx")
+        model_sub = joined.filter(pl.col("model_type") == model).sort("dataset_name")
         n_blocks = len(model_sub)
 
         for metric in available_metrics:
@@ -901,6 +942,7 @@ def compute_demsar_delta_table(
 
     df_summary = pl.DataFrame(summary_rows)
 
+    n_blocks_val = df_details["n_blocks"].max() if not df_details.is_empty() else 0
     return {
         "df_summary": df_summary,
         "df_details": df_details,
@@ -909,8 +951,13 @@ def compute_demsar_delta_table(
         "alpha": alpha,
         "alternative": alternative,
         "correction": correction,
-        "n_topic_blocks": (
-            df_details["n_blocks"].max() if not df_details.is_empty() else 0
+        "n_datasets": n_blocks_val,
+        "n_blocks": n_blocks_val,
+        "n_topic_blocks": n_blocks_val,
+        "datasets": (
+            list(joined["dataset_name"].unique())
+            if "dataset_name" in joined.columns
+            else []
         ),
     }
 
@@ -1168,6 +1215,7 @@ def pairwise_all_vs_all_tests(
 def compute_demsar_all_vs_all(
     df: pl.DataFrame | Sequence[pl.DataFrame],
     dataset: Optional[str | Sequence[str]] = None,
+    datasets: Optional[str | Sequence[str]] = None,
     metrics: Optional[Sequence[str]] = None,
     alpha: float = 0.05,
     exclude_clustering: Optional[Sequence[str]] = None,
@@ -1177,21 +1225,30 @@ def compute_demsar_all_vs_all(
 ) -> Dict[str, Any]:
     """Performs full Demšar (2006) All-vs-All Model Comparison across metrics.
 
+    Following Demšar (2006) recommendations, algorithms are compared across multiple
+    independent benchmark datasets. On each dataset, scores are averaged over random
+    seeds and topic counts. Models are ranked on each dataset, and differences in
+    mean ranks across datasets are evaluated via Friedman / Iman-Davenport omnibus
+    tests and Nemenyi post-hoc critical differences (or Holm-adjusted pairwise tests).
+
     Workflow:
-    1. Seed Aggregation: Averages scores over random seeds for each
-       (dataset, topic_count, model_type).
-    2. Block Construction: Constructs the (N blocks x k models) evaluation matrix.
-    3. Block-by-Block Ranking: Converts scores to fractional ranks (Rank 1 = best)
-       and computes mean rank R_j for each model.
-    4. Omnibus Testing: Computes Friedman chi-square and Iman-Davenport F_F test.
-    5. Post-Hoc Analysis: If omnibus test is significant (p < alpha), computes
+    1. Dataset Normalization & Filtering: Cleans dataset identifiers and filters
+       by specified datasets.
+    2. Seed & Topic Aggregation: Averages scores over random seeds and topic
+       counts for each (dataset, model_type).
+    3. Block Construction: Constructs the (N datasets x k models) evaluation matrix.
+    4. Dataset-by-Dataset Ranking: Converts scores to fractional ranks (Rank 1 = best)
+       for each dataset and computes mean rank R_j for each model across datasets.
+    5. Omnibus Testing: Computes Friedman chi-square and Iman-Davenport F_F test.
+    6. Post-Hoc Analysis: If omnibus test is significant (p < alpha), computes
        Nemenyi CD, equivalence cliques, and all-pairs z-tests with Holm correction.
-    6. Deliverables Generation: Creates Model Ranking Summary Table and k x k
+    7. Deliverables Generation: Creates Model Ranking Summary Table and k x k
        Pairwise Delta Matrix for each metric.
 
     Args:
         df: Polars DataFrame or sequence of DataFrames with results.
         dataset: Dataset identifier or list of datasets to filter by (None = all).
+        datasets: Alias for dataset parameter.
         metrics: List of metrics to evaluate (default: METRICS).
         alpha: Significance threshold (default: 0.05).
         exclude_clustering: Clustering algorithms to exclude.
@@ -1206,7 +1263,12 @@ def compute_demsar_all_vs_all(
         if not df:
             return {
                 "metrics": {},
-                "metadata": {"n_blocks": 0, "k_models": 0, "alpha": alpha},
+                "metadata": {
+                    "n_blocks": 0,
+                    "n_datasets": 0,
+                    "k_models": 0,
+                    "alpha": alpha,
+                },
             }
         combined_df = pl.concat(
             [d.clone() for d in df if isinstance(d, pl.DataFrame) and not d.is_empty()],
@@ -1218,7 +1280,7 @@ def compute_demsar_all_vs_all(
     if combined_df.is_empty():
         return {
             "metrics": {},
-            "metadata": {"n_blocks": 0, "k_models": 0, "alpha": alpha},
+            "metadata": {"n_blocks": 0, "n_datasets": 0, "k_models": 0, "alpha": alpha},
         }
 
     target_metrics = [m for m in (metrics or METRICS)]
@@ -1229,24 +1291,28 @@ def compute_demsar_all_vs_all(
         direction_map.update(higher_is_better)
 
     # 1. Dataset normalization and filtering
-    if "dataset_name" in combined_df.columns:
+    if "dataset_name" not in combined_df.columns:
+        combined_df = combined_df.with_columns(pl.lit("dataset").alias("dataset_name"))
+    else:
         combined_df = combined_df.with_columns(
             pl.col("dataset_name")
             .replace("anes_stemmed", "anes")
             .str.replace(r"_s\d+$", "")
         )
-        if dataset is not None:
-            if isinstance(dataset, str):
-                combined_df = combined_df.filter(pl.col("dataset_name") == dataset)
-            else:
-                combined_df = combined_df.filter(
-                    pl.col("dataset_name").is_in(list(dataset))
-                )
+
+    target_ds = datasets if datasets is not None else dataset
+    if target_ds is not None and target_ds != "all":
+        if isinstance(target_ds, str):
+            combined_df = combined_df.filter(pl.col("dataset_name") == target_ds)
+        else:
+            combined_df = combined_df.filter(
+                pl.col("dataset_name").is_in(list(target_ds))
+            )
 
     if combined_df.is_empty():
         return {
             "metrics": {},
-            "metadata": {"n_blocks": 0, "k_models": 0, "alpha": alpha},
+            "metadata": {"n_blocks": 0, "n_datasets": 0, "k_models": 0, "alpha": alpha},
         }
 
     # 2. Extract model_type and topic_idx
@@ -1320,7 +1386,7 @@ def compute_demsar_all_vs_all(
     if annotated.is_empty():
         return {
             "metrics": {},
-            "metadata": {"n_blocks": 0, "k_models": 0, "alpha": alpha},
+            "metadata": {"n_blocks": 0, "n_datasets": 0, "k_models": 0, "alpha": alpha},
         }
 
     # Canonical model ordering preference
@@ -1344,12 +1410,11 @@ def compute_demsar_all_vs_all(
 
     available_metrics = [m for m in target_metrics if m in annotated.columns]
 
-    # Create Block ID: (dataset_name, topic_idx)
-    block_cols = ["topic_idx"]
-    if "dataset_name" in annotated.columns:
-        block_cols = ["dataset_name", "topic_idx"]
+    # In Demšar (2006), evaluation blocks are the benchmark datasets
+    block_cols = ["dataset_name"]
 
-    # 4. Aggregate across random seeds for each (block, model_type)
+    # 4. Aggregate across random seeds and topic counts for each
+    # (dataset_name, model_type)
     agg_exprs = [
         pl.col(m).cast(pl.Float64, strict=False).mean().alias(m)
         for m in available_metrics
@@ -1360,7 +1425,7 @@ def compute_demsar_all_vs_all(
         .sort(block_cols + ["model_type"])
     )
 
-    # Unique blocks
+    # Unique blocks (datasets)
     blocks_df = df_agg.select(block_cols).unique().sort(block_cols)
     n_blocks = len(blocks_df)
 
@@ -1516,6 +1581,7 @@ def compute_demsar_all_vs_all(
         "metrics": results_by_metric,
         "metadata": {
             "n_blocks": n_blocks,
+            "n_datasets": n_blocks,
             "k_models": len(ordered_models),
             "alpha": alpha,
             "datasets": (

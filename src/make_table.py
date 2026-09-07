@@ -1,3 +1,5 @@
+from typing import Optional
+
 import polars as pl
 from great_tables import GT
 
@@ -555,22 +557,25 @@ def generate_stopword_impact_latex_table(
 
 def generate_demsar_delta_markdown_table(
     delta_results: dict,
-    dataset: str = "fed",
+    dataset: str = "All Datasets",
     condition_name: str = "Alternative",
+    dataset_label: Optional[str] = None,
 ) -> str:
     """Generates a Markdown table summarizing Demšar-compliant performance deltas.
 
     Args:
         delta_results: Output dictionary from compute_demsar_delta_table.
-        dataset: Dataset identifier.
+        dataset: Dataset identifier or default label.
         condition_name: Name of the alternative condition (e.g., 'Stemmed').
+        dataset_label: Optional override for dataset label.
 
     Returns:
         Formatted Markdown table string.
     """
+    label = dataset_label or dataset
     df_summary = delta_results.get("df_summary")
     if df_summary is None or df_summary.is_empty():
-        return f"_No delta results available for dataset {dataset}_"
+        return f"_No delta results available for {label}_"
 
     metrics = delta_results.get("metrics", [])
     metric_labels = {
@@ -586,13 +591,15 @@ def generate_demsar_delta_markdown_table(
 
     lines = []
     lines.append(
-        f"### Performance Delta Table: {condition_name} vs. Default ({dataset.upper()})"
+        f"### Performance Delta Table: {condition_name} vs. Default ({label.upper()})"
     )
     alpha = delta_results.get("alpha", 0.10)
     correction = delta_results.get("correction", "per_metric")
+    n_blocks = delta_results.get("n_datasets", delta_results.get("n_blocks", 0))
     lines.append(
         f"_Statistical significance tested via paired exact Wilcoxon "
-        f"signed-rank test (N=5 topic counts) with Holm-Bonferroni "
+        f"signed-rank test across $N={n_blocks}$ datasets (averaged over seeds and "
+        f"topic counts) with Holm-Bonferroni "
         f"correction ({correction}, $\\alpha = {alpha}$). '*' denotes "
         f"adjusted $p < {alpha}$._\n"
     )
@@ -613,19 +620,21 @@ def generate_demsar_delta_markdown_table(
 
 def generate_demsar_delta_latex_table(
     delta_results: dict,
-    dataset: str = "fed",
+    dataset: str = "All Datasets",
     condition_name: str = "Stemmed",
     pos_color: str = "D4EDDA",
     neg_color: str = "F8D7DA",
+    dataset_label: Optional[str] = None,
 ) -> str:
     """Generates a publication-ready LaTeX table for Demšar-compliant delta evaluations.
 
     Args:
         delta_results: Output dictionary from compute_demsar_delta_table.
-        dataset: Dataset identifier string.
+        dataset: Dataset identifier or default label.
         condition_name: Description of the alternative condition.
         pos_color: Hex color for positive performance change.
         neg_color: Hex color for negative performance change.
+        dataset_label: Optional override for dataset label.
 
     Returns:
         LaTeX table string with proper styling and sizing.
@@ -713,18 +722,21 @@ def generate_demsar_delta_latex_table(
     display_df = format_delta_cells(final_df)
     display_df = display_df.rename(columns=actual_rename)
 
+    label = dataset_label or dataset
+    n_blocks = delta_results.get("n_datasets", delta_results.get("n_blocks", 0))
     caption = (
         f"Demšar-compliant Performance Delta Table for {condition_name} vs. "
-        f"Default on the {dataset.upper()} dataset across $N=5$ topic counts. "
-        f"Values indicate mean delta across topic counts "
+        f"Default across $N={n_blocks}$ datasets ({label.upper()}). "
+        f"Values indicate mean delta across datasets "
         f"($\\text{{mean}} \\pm \\text{{std}}$). "
         f"Statistical significance tested via paired exact Wilcoxon signed-rank "
-        f"tests with Holm-Bonferroni correction ($\\alpha = {alpha}$). "
+        f"tests across datasets with Holm-Bonferroni correction ($\\alpha = {alpha}$). "
         f"$^*$ denotes statistically significant difference "
         f"($p_{{\\text{{adj}}}} < {alpha}$)."
     )
+    clean_label = label.lower().replace(" ", "_").replace(",", "")
     table_label = (
-        f"tab:demsar_delta_{dataset}_{condition_name.lower().replace(' ', '_')}"
+        f"tab:demsar_delta_{clean_label}_{condition_name.lower().replace(' ', '_')}"
     )
 
     latex = display_df.to_latex(
@@ -829,7 +841,7 @@ def generate_demsar_all_vs_all_markdown_table(
     lines.append(
         f"_Omnibus Iman-Davenport Test: $F_F({df1}, {df2}) = {f_stat:.3f}$, "
         f"$p = {p_val:.4f}$ ({sig_str} at $\\alpha = {alpha}$, "
-        f"$N = {n_blocks}$ blocks, $k = {k_models}$ models). "
+        f"$N = {n_blocks}$ datasets, $k = {k_models}$ models). "
         f"Critical Difference (CD) = {cd:.3f}._\n"
     )
 
@@ -987,14 +999,19 @@ def generate_demsar_all_vs_all_latex_table(
     }
     m_tex = metric_labels.get(metric, metric)
 
+    n_blocks = m_data.get(
+        "n_blocks", all_vs_all_results.get("metadata", {}).get("n_blocks", 0)
+    )
     caption = (
-        f"Demšar (2006) All-vs-All Ranking Summary for {m_tex} ({dataset_label}). "
+        f"Demšar (2006) All-vs-All Ranking Summary for {m_tex} across {n_blocks} "
+        f"datasets ({dataset_label}). "
         f"Iman-Davenport omnibus test $F_F({df1}, {df2}) = {f_stat:.3f}$, "
         f"$p = {p_val:.4f}$. "
         f"Critical Difference $\\text{{CD}} = {cd:.3f}$ ($\\alpha = {alpha}$). "
         f"Models sharing a group letter are not significantly different."
     )
-    label = f"tab:demsar_all_vs_all_{metric}_{dataset_label.lower().replace(' ', '_')}"
+    clean_ds_label = dataset_label.lower().replace(" ", "_").replace(",", "")
+    label = f"tab:demsar_all_vs_all_{metric}_{clean_ds_label}"
 
     latex = pdf.to_latex(
         index=False,
@@ -1163,7 +1180,7 @@ def generate_demsar_all_vs_all_report(
     report_lines = [
         "# Demšar (2006) All-vs-All Statistical Comparison Report",
         f"**Benchmark Dataset(s)**: {ds_str}  ",
-        f"**Evaluation Blocks (N)**: {n_blocks} (Topic counts / configurations)  ",
+        f"**Evaluation Datasets (N)**: {n_blocks}  ",
         f"**Algorithms (k)**: {k_models}  ",
         f"**Significance Level (α)**: {alpha}  \n",
         "---",

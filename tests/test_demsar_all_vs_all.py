@@ -117,59 +117,61 @@ def test_pairwise_all_vs_all_tests():
 def test_compute_demsar_all_vs_all_synthetic():
     # Build synthetic multi-model experiment results:
     # 3 models: 'baseline', 'mv_spectral', 'aligned_umap'
-    # 5 topic counts (1..5), 3 random seeds (1, 2, 3)
+    # 5 datasets, 3 topic counts (1..3), 2 random seeds (1, 2)
+    datasets = ["fed", "yelp", "trump", "anes", "bills"]
     rows = []
-    for t in range(1, 6):
-        for s in [1, 2, 3]:
-            # aligned_umap is clearly best, baseline is mid, mv_spectral is lowest
-            rows.append(
-                {
-                    "model_name": f"aligned_umap_{t}_seed{s}",
-                    "dataset_name": "fed",
-                    "random_state": s,
-                    "clustering_algo": "hdbscan",
-                    "dim_red_algo": "umap",
-                    "c_v": 0.80 + 0.01 * t + 0.001 * s,
-                    "u_mass": -0.50 + 0.01 * t,
-                    "c_npmi": 0.20,
-                    "irbo": 0.90,
-                    "topic_diversity": 0.85,
-                }
-            )
-            rows.append(
-                {
-                    "model_name": f"baseline_{t}_seed{s}",
-                    "dataset_name": "fed",
-                    "random_state": s,
-                    "clustering_algo": "hdbscan",
-                    "dim_red_algo": "umap",
-                    "c_v": 0.70 + 0.01 * t + 0.001 * s,
-                    "u_mass": -0.80 + 0.01 * t,
-                    "c_npmi": 0.15,
-                    "irbo": 0.80,
-                    "topic_diversity": 0.75,
-                }
-            )
-            rows.append(
-                {
-                    "model_name": f"mv_spectral_{t}_seed{s}",
-                    "dataset_name": "fed",
-                    "random_state": s,
-                    "clustering_algo": "spectral",
-                    "dim_red_algo": "umap",
-                    "c_v": 0.50 + 0.01 * t + 0.001 * s,
-                    "u_mass": -1.20 + 0.01 * t,
-                    "c_npmi": 0.05,
-                    "irbo": 0.70,
-                    "topic_diversity": 0.65,
-                }
-            )
+    for ds_idx, ds in enumerate(datasets):
+        for t in range(1, 4):
+            for s in [1, 2]:
+                # aligned_umap is clearly best, baseline is mid, mv_spectral is lowest
+                rows.append(
+                    {
+                        "model_name": f"aligned_umap_{t}_seed{s}",
+                        "dataset_name": ds,
+                        "random_state": s,
+                        "clustering_algo": "hdbscan",
+                        "dim_red_algo": "umap",
+                        "c_v": 0.80 + 0.01 * t + 0.001 * s + 0.01 * ds_idx,
+                        "u_mass": -0.50 + 0.01 * t,
+                        "c_npmi": 0.20,
+                        "irbo": 0.90,
+                        "topic_diversity": 0.85,
+                    }
+                )
+                rows.append(
+                    {
+                        "model_name": f"baseline_{t}_seed{s}",
+                        "dataset_name": ds,
+                        "random_state": s,
+                        "clustering_algo": "hdbscan",
+                        "dim_red_algo": "umap",
+                        "c_v": 0.70 + 0.01 * t + 0.001 * s + 0.01 * ds_idx,
+                        "u_mass": -0.80 + 0.01 * t,
+                        "c_npmi": 0.15,
+                        "irbo": 0.80,
+                        "topic_diversity": 0.75,
+                    }
+                )
+                rows.append(
+                    {
+                        "model_name": f"mv_spectral_{t}_seed{s}",
+                        "dataset_name": ds,
+                        "random_state": s,
+                        "clustering_algo": "spectral",
+                        "dim_red_algo": "umap",
+                        "c_v": 0.50 + 0.01 * t + 0.001 * s + 0.01 * ds_idx,
+                        "u_mass": -1.20 + 0.01 * t,
+                        "c_npmi": 0.05,
+                        "irbo": 0.70,
+                        "topic_diversity": 0.65,
+                    }
+                )
 
     df_synth = pl.DataFrame(rows)
 
     results = compute_demsar_all_vs_all(
         df=df_synth,
-        dataset="fed",
+        datasets=datasets,
         alpha=0.05,
     )
 
@@ -195,71 +197,77 @@ def test_compute_demsar_all_vs_all_synthetic():
 
 
 def test_demsar_all_vs_all_table_generators():
-    # Test rendering to Markdown, LaTeX, and full report
+    # Test rendering to Markdown, LaTeX, and full report across 5 datasets
+    datasets = ["fed", "yelp", "trump", "anes", "bills"]
     rows = []
-    for t in range(1, 6):
-        for s in [10, 20, 30]:
-            rows.append(
-                {
-                    "model_name": f"aligned_umap_{t}_seed{s}",
-                    "dataset_name": "fed",
-                    "random_state": s,
-                    "clustering_algo": "hdbscan",
-                    "dim_red_algo": "umap",
-                    "c_v": 0.80 + 0.01 * t,
-                    "u_mass": -0.50,
-                    "c_npmi": 0.20,
-                    "irbo": 0.90,
-                    "topic_diversity": 0.85,
-                }
-            )
-            rows.append(
-                {
-                    "model_name": f"baseline_{t}_seed{s}",
-                    "dataset_name": "fed",
-                    "random_state": s,
-                    "clustering_algo": "hdbscan",
-                    "dim_red_algo": "umap",
-                    "c_v": 0.60 + 0.01 * t,
-                    "u_mass": -1.00,
-                    "c_npmi": 0.10,
-                    "irbo": 0.80,
-                    "topic_diversity": 0.70,
-                }
-            )
+    for ds in datasets:
+        for t in range(1, 3):
+            for s in [10, 20]:
+                rows.append(
+                    {
+                        "model_name": f"aligned_umap_{t}_seed{s}",
+                        "dataset_name": ds,
+                        "random_state": s,
+                        "clustering_algo": "hdbscan",
+                        "dim_red_algo": "umap",
+                        "c_v": 0.80 + 0.01 * t,
+                        "u_mass": -0.50,
+                        "c_npmi": 0.20,
+                        "irbo": 0.90,
+                        "topic_diversity": 0.85,
+                    }
+                )
+                rows.append(
+                    {
+                        "model_name": f"baseline_{t}_seed{s}",
+                        "dataset_name": ds,
+                        "random_state": s,
+                        "clustering_algo": "hdbscan",
+                        "dim_red_algo": "umap",
+                        "c_v": 0.60 + 0.01 * t,
+                        "u_mass": -1.00,
+                        "c_npmi": 0.10,
+                        "irbo": 0.80,
+                        "topic_diversity": 0.70,
+                    }
+                )
 
     df_synth = pl.DataFrame(rows)
-    results = compute_demsar_all_vs_all(df_synth, dataset="fed", alpha=0.05)
+    results = compute_demsar_all_vs_all(df_synth, datasets=datasets, alpha=0.05)
 
     md_table = generate_demsar_all_vs_all_markdown_table(
-        results, metric="c_v", dataset_label="FED"
+        results, metric="c_v", dataset_label="BENCHMARK"
     )
-    assert "Demšar All-vs-All Ranking Summary: Topic Coherence (C_V) [FED]" in md_table
+    assert (
+        "Demšar All-vs-All Ranking Summary: Topic Coherence (C_V) [BENCHMARK]"
+        in md_table
+    )
     assert "**aligned_umap**" in md_table
 
     md_delta = generate_pairwise_delta_markdown_matrix(
-        results, metric="c_v", dataset_label="FED"
+        results, metric="c_v", dataset_label="BENCHMARK"
     )
-    assert "Pairwise Delta Matrix: C_V [FED]" in md_delta
+    assert "Pairwise Delta Matrix: C_V [BENCHMARK]" in md_delta
     assert "**aligned_umap**" in md_delta
 
     tex_table = generate_demsar_all_vs_all_latex_table(
-        results, metric="c_v", dataset_label="FED"
+        results, metric="c_v", dataset_label="BENCHMARK"
     )
     assert "\\begin{table}" in tex_table
     assert "\\caption{Demšar (2006) All-vs-All Ranking Summary" in tex_table
 
     tex_matrix = generate_pairwise_delta_latex_matrix(
-        results, metric="c_v", dataset_label="FED"
+        results, metric="c_v", dataset_label="BENCHMARK"
     )
     assert "\\begin{table}" in tex_matrix
     assert "\\caption{Demšar (2006) Pairwise Delta Matrix" in tex_matrix
 
-    full_report = generate_demsar_all_vs_all_report(results, dataset_label="FED")
+    full_report = generate_demsar_all_vs_all_report(results, dataset_label="BENCHMARK")
     assert "# Demšar (2006) All-vs-All Statistical Comparison Report" in full_report
+    assert "**Evaluation Datasets (N)**: 5" in full_report
     assert "Pairwise Delta Matrix" not in full_report
 
     full_report_with_deltas = generate_demsar_all_vs_all_report(
-        results, dataset_label="FED", include_deltas=True
+        results, dataset_label="BENCHMARK", include_deltas=True
     )
     assert "Pairwise Delta Matrix" in full_report_with_deltas

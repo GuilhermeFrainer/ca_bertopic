@@ -340,15 +340,13 @@ def get_cached_demsar_all_vs_all(
         f_df = f_df.filter(pl.col("condition") == condition)
 
     filter_ds = None if "all" in [d.lower() for d in datasets] else list(datasets)
-    if filter_ds and len(filter_ds) == 1:
-        filter_ds = filter_ds[0]
 
     ex_clust = list(exclude_clustering) if exclude_clustering else None
     ex_dim = list(exclude_dim_red) if exclude_dim_red else None
 
     return compute_demsar_all_vs_all(
         df=f_df,
-        dataset=filter_ds,
+        datasets=filter_ds,
         metrics=list(metrics),
         alpha=alpha,
         exclude_clustering=ex_clust,
@@ -360,7 +358,7 @@ def get_cached_demsar_all_vs_all(
 @st.cache_data
 def get_cached_demsar_delta(
     _df: pl.DataFrame,
-    dataset: str,
+    datasets: tuple[str, ...],
     condition: str,
     alpha: float,
     correction: str,
@@ -371,13 +369,15 @@ def get_cached_demsar_delta(
     df_std = _df.filter(pl.col("condition") == "remove_rep_stopwords")
     df_alt = _df.filter(pl.col("condition") == condition)
 
+    filter_ds = None if "all" in [d.lower() for d in datasets] else list(datasets)
+
     ex_clust = list(exclude_clustering) if exclude_clustering else None
     ex_dim = list(exclude_dim_red) if exclude_dim_red else None
 
     return compute_demsar_delta_table(
         df_default=df_std,
         df_alternative=df_alt,
-        dataset=dataset,
+        datasets=filter_ds,
         alpha=alpha,
         correction=correction,
         exclude_clustering=ex_clust,
@@ -1681,7 +1681,7 @@ def main():
                 da_datasets = st.multiselect(
                     "Datasets:",
                     options=available_ds,
-                    default=["fed"] if "fed" in available_ds else [available_ds[0]],
+                    default=available_ds,
                     key="da_ds",
                 )
             with da_c2:
@@ -1740,8 +1740,13 @@ def main():
                         key="da_inc_deltas",
                     )
 
-            if not da_datasets:
-                st.warning("Please select at least one dataset.")
+            if not da_datasets or len(da_datasets) < 2:
+                st.warning(
+                    "Demšar (2006) all-vs-all testing compares algorithms across "
+                    "multiple datasets. Please select at least 2 datasets to compute "
+                    "the Friedman/Iman-Davenport omnibus test and Nemenyi "
+                    "critical differences."
+                )
             else:
                 ex_clust_list = ("kmeans", "spherical_kmeans") if da_ex_kmeans else None
                 ex_dim_list = ("pca",) if da_ex_pca else None
@@ -1835,15 +1840,16 @@ def main():
             st.subheader("🔬 Demšar Condition Sensitivity Deltas")
             st.caption(
                 "Model-by-metric performance change (Alternative - Default "
-                "Standard) across $N=5$ topic counts. Evaluated using paired exact "
-                "Wilcoxon signed-rank tests with Holm-Bonferroni FWER control."
+                "Standard) across benchmark datasets. Evaluated using paired exact "
+                "Wilcoxon signed-rank tests across datasets with "
+                "Holm-Bonferroni FWER control."
             )
 
             dd_c1, dd_c2, dd_c3, dd_c4 = st.columns(4)
             with dd_c1:
                 available_ds = sorted(df["dataset_label"].unique().to_list())
-                dd_dataset = st.selectbox(
-                    "Dataset:", options=available_ds, index=0, key="dd_ds"
+                dd_datasets = st.multiselect(
+                    "Datasets:", options=available_ds, default=available_ds, key="dd_ds"
                 )
             with dd_c2:
                 dd_cond_map = {
@@ -1887,54 +1893,63 @@ def main():
                         key="dd_merge_info0",
                     )
 
-            ex_clust_list = ("kmeans", "spherical_kmeans") if dd_ex_kmeans else None
-            ex_dim_list = ("pca",) if dd_ex_pca else None
-
-            delta_results = get_cached_demsar_delta(
-                _df=df,
-                dataset=dd_dataset,
-                condition=dd_cond,
-                alpha=dd_alpha,
-                correction=dd_corr,
-                exclude_clustering=ex_clust_list,
-                exclude_dim_red=ex_dim_list,
-                merge_info0=dd_merge_info0,
-            )
-
-            df_summary = delta_results.get("df_summary")
-            if df_summary is None or df_summary.is_empty():
+            if not dd_datasets or len(dd_datasets) < 2:
                 st.warning(
-                    f"No paired results found for dataset '{dd_dataset}' "
-                    f"comparing '{dd_cond_label}'. Ensure both Default and "
-                    "Alternative runs exist."
+                    "Please select at least 2 datasets to evaluate paired "
+                    "Wilcoxon tests across datasets."
                 )
             else:
-                pdf_summary = df_summary.to_pandas()
-                st.dataframe(
-                    style_demsar_delta_dataframe(pdf_summary),
-                    width="stretch",
-                    hide_index=True,
-                )
-                st.caption(
-                    "Cell format: `Mean Δ ± SD` | "
-                    ":green-background[**Green**: Improvement (Δ > 0)] | "
-                    ":red-background[**Red**: Decline (Δ < 0)] | "
-                    "**\\***: Statistically significant ($p_{\\text{adj}} < \\alpha$)"
+                ex_clust_list = ("kmeans", "spherical_kmeans") if dd_ex_kmeans else None
+                ex_dim_list = ("pca",) if dd_ex_pca else None
+
+                delta_results = get_cached_demsar_delta(
+                    _df=df,
+                    datasets=tuple(dd_datasets),
+                    condition=dd_cond,
+                    alpha=dd_alpha,
+                    correction=dd_corr,
+                    exclude_clustering=ex_clust_list,
+                    exclude_dim_red=ex_dim_list,
+                    merge_info0=dd_merge_info0,
                 )
 
-                latex_code = generate_demsar_delta_latex_table(
-                    delta_results,
-                    dataset=dd_dataset,
-                    condition_name=dd_cond.capitalize(),
-                )
-                markdown_code = generate_demsar_delta_markdown_table(
-                    delta_results,
-                    dataset=dd_dataset,
-                    condition_name=dd_cond.capitalize(),
-                )
-                csv_data = pdf_summary.to_csv(index=False)
+                df_summary = delta_results.get("df_summary")
+                if df_summary is None or df_summary.is_empty():
+                    st.warning(
+                        f"No paired results found for datasets {dd_datasets} "
+                        f"comparing '{dd_cond_label}'. Ensure both Default and "
+                        "Alternative runs exist."
+                    )
+                else:
+                    pdf_summary = df_summary.to_pandas()
+                    st.dataframe(
+                        style_demsar_delta_dataframe(pdf_summary),
+                        width="stretch",
+                        hide_index=True,
+                    )
+                    st.caption(
+                        "Cell format: `Mean Δ ± SD` | "
+                        ":green-background[**Green**: Improvement (Δ > 0)] | "
+                        ":red-background[**Red**: Decline (Δ < 0)] | "
+                        "**\\***: Statistically significant "
+                        "($p_{\\text{adj}} < \\alpha$)"
+                    )
 
-                file_slug = f"demsar_delta_{dd_dataset}_{dd_cond}"
+                    dd_label = ", ".join(dd_datasets).upper()
+                    dd_slug = "_".join(dd_datasets).lower()
+                    latex_code = generate_demsar_delta_latex_table(
+                        delta_results,
+                        dataset_label=dd_label,
+                        condition_name=dd_cond.capitalize(),
+                    )
+                    markdown_code = generate_demsar_delta_markdown_table(
+                        delta_results,
+                        dataset_label=dd_label,
+                        condition_name=dd_cond.capitalize(),
+                    )
+                    csv_data = pdf_summary.to_csv(index=False)
+
+                    file_slug = f"demsar_delta_{dd_slug}_{dd_cond}"
                 render_table_export_bar(
                     latex_content=latex_code,
                     csv_content=csv_data,

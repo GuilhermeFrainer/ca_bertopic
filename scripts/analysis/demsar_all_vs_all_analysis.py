@@ -37,12 +37,14 @@ def parse_args():
     )
     parser.add_argument(
         "--dataset",
+        "--datasets",
         type=str,
         nargs="+",
-        default=["fed"],
+        default=["all"],
+        dest="dataset",
         help=(
             "Dataset(s) to analyze (e.g. 'fed', 'yelp', 'fed yelp', or 'all'). "
-            "Default: fed."
+            "Default: all."
         ),
     )
     parser.add_argument(
