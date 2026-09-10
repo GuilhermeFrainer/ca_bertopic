@@ -261,7 +261,26 @@ def get_algorithm(
         if metadata is None:
             raise ValueError("Metadata array is null")
 
+        normalize_text_view = params.pop("normalize_text_view", False)
         cluster_model = mvcluster.MultiviewSpectralClustering(
+            random_state=random_state, **params
+        )
+        return MVCWrapper(
+            model=cluster_model,
+            metadata=metadata,
+            normalize_text_view=normalize_text_view,
+        )
+
+    elif algo_type in (
+        "decoupled_multi_view_spectral_clustering",
+        "hybrid_multi_view_spectral_clustering",
+    ):
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+
+        from src.decoupled_spectral import DecoupledMultiviewSpectralClustering
+
+        cluster_model = DecoupledMultiviewSpectralClustering(
             random_state=random_state, **params
         )
         return MVCWrapper(model=cluster_model, metadata=metadata)
@@ -270,16 +289,35 @@ def get_algorithm(
         if metadata is None:
             raise ValueError("Metadata array is null")
 
+        normalize_text_view = params.pop("normalize_text_view", False)
         cluster_model = mvcluster.MultiviewCoRegSpectralClustering(
             random_state=random_state, **params
         )
-        return MVCWrapper(model=cluster_model, metadata=metadata)
+        return MVCWrapper(
+            model=cluster_model,
+            metadata=metadata,
+            normalize_text_view=normalize_text_view,
+        )
 
     elif algo_type == "multi_view_k_means":
         if metadata is None:
             raise ValueError("Metadata array is null")
 
+        normalize_text_view = params.pop("normalize_text_view", False)
         cluster_model = mvcluster.MultiviewKMeans(random_state=random_state, **params)
+        return MVCWrapper(
+            model=cluster_model,
+            metadata=metadata,
+            normalize_text_view=normalize_text_view,
+        )
+
+    elif algo_type in ("decoupled_multi_view_k_means", "hybrid_multi_view_k_means"):
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+
+        from src.decoupled_kmeans import DecoupledMultiviewKMeans
+
+        cluster_model = DecoupledMultiviewKMeans(random_state=random_state, **params)
         return MVCWrapper(model=cluster_model, metadata=metadata)
 
     elif algo_type == "multi_view_spherical_k_means":

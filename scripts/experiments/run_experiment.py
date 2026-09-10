@@ -44,6 +44,16 @@ def main():
         help="Override the sample size specified in the config file.",
     )
     parser.add_argument(
+        "--seed",
+        type=int,
+        help="Run on a single specific random seed, overriding seeds in config.",
+    )
+    parser.add_argument(
+        "--single-seed",
+        action="store_true",
+        help="Run only the first random seed from the config (ideal for dry runs).",
+    )
+    parser.add_argument(
         "--remove-rep-stopwords",
         action="store_true",
         default=True,
@@ -74,6 +84,11 @@ def main():
         random_seeds = (
             random_state if isinstance(random_state, list) else [random_state]
         )
+        if args.seed is not None:
+            random_seeds = [args.seed]
+        elif args.single_seed:
+            random_seeds = [random_seeds[0]]
+
         primary_random_state = random_seeds[0]
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
@@ -116,7 +131,9 @@ def main():
 
         # Model validation (using primary seed)
         logger.info("Validating model configurations...")
-        models_config: list[dict] = config["models"]
+        models_config: list[dict] = config.get("models") or (
+            [config["model"]] if "model" in config else []
+        )
 
         for m_conf in models_config:
             m_id = m_conf.get("id", "Unknown")

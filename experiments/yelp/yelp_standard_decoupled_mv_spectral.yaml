@@ -1,0 +1,31 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_standard_decoupled_mv_spectral"
+  description: "UMAP + Decoupled Multi-View Spectral Clustering with explicit Cosine text affinity and Euclidean RBF metadata affinity on Yelp."
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
+  decimal_digits: 3
+
+model:
+  id: "decoupled_mv_spectral"
+  description: "UMAP + Decoupled Multi-View Spectral Clustering (Cosine Text + Euclidean RBF Metadata)"
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "decoupled_multi_view_spectral_clustering"
+    params:
+      view_affinities:
+        - "cosine"
+        - "rbf"
+      n_clusters:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

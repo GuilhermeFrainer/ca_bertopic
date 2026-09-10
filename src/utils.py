@@ -84,7 +84,17 @@ def load_config(exp_name: str, experiments_dir: Path) -> dict:
     config_path = experiments_dir / filename
 
     if not config_path.exists():
-        raise FileNotFoundError(f"Experiment file {config_path} not found.")
+        matches = [
+            m for m in experiments_dir.rglob(filename) if "archive" not in m.parts
+        ]
+        if matches:
+            config_path = matches[0]
+        else:
+            all_matches = list(experiments_dir.rglob(filename))
+            if all_matches:
+                config_path = all_matches[0]
+            else:
+                raise FileNotFoundError(f"Experiment file {config_path} not found.")
 
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)

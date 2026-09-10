@@ -47,6 +47,16 @@ def main():
         "--model", type=int, help="Run only the n-th model configuration (1-indexed)."
     )
     parser.add_argument(
+        "--seed",
+        type=int,
+        help="Run on a single specific random seed, overriding seeds in config.",
+    )
+    parser.add_argument(
+        "--single-seed",
+        action="store_true",
+        help="Run only the first random seed from the config (ideal for dry runs).",
+    )
+    parser.add_argument(
         "--remove-rep-stopwords",
         action="store_true",
         default=True,
@@ -75,6 +85,15 @@ def main():
 
         exp_name = config["experiment"]["name"]
         random_state = utils.get_random_state(config["experiment"]["random_state"])
+        if args.seed is not None:
+            random_state = [args.seed]
+        elif args.single_seed:
+            random_state = (
+                [random_state[0]]
+                if isinstance(random_state, list)
+                else [random_state]
+            )
+
         primary_random_state = (
             random_state[0] if isinstance(random_state, list) else random_state
         )

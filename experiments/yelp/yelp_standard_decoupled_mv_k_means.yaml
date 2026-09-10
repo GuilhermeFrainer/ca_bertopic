@@ -1,0 +1,34 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_standard_decoupled_mv_k_means"
+  description: "UMAP + Decoupled Multi-View K-Means with explicit Cosine text metric and Euclidean metadata metric on Yelp."
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
+  decimal_digits: 3
+
+model:
+  id: "decoupled_mv_k_means"
+  description: "UMAP + Decoupled Multi-View K-Means (Cosine Text + Euclidean Metadata)"
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "decoupled_multi_view_k_means"
+    params:
+      view_metrics:
+        - "cosine"
+        - "euclidean"
+      view_weights:
+        - 1.0
+        - 1.0
+      n_clusters:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50

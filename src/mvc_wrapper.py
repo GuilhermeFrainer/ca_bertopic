@@ -22,11 +22,28 @@ def _to_numpy_matrix(data: Any) -> np.ndarray:
 class MVCWrapper(BaseEstimator, ClusterMixin):
     metadata: np.ndarray
     labels_: Optional[np.ndarray]
+    normalize_text_view: bool
 
-    def __init__(self, model, metadata: Union[np.ndarray, pl.DataFrame, Any]):
+    def __init__(
+        self,
+        model,
+        metadata: Union[np.ndarray, pl.DataFrame, Any],
+        normalize_text_view: bool = False,
+    ):
         self.model = model
         self.metadata = _to_numpy_matrix(metadata)
+        self.normalize_text_view = normalize_text_view
         self.labels_ = None
+
+    def _prepare_views(self, X: Any) -> list[np.ndarray]:
+        X_arr = np.asarray(X)
+        if self.normalize_text_view:
+            norm = np.linalg.norm(X_arr, axis=1, keepdims=True)
+            norm = np.where(norm == 0, 1.0, norm)
+            X_text = X_arr / norm
+        else:
+            X_text = X_arr
+        return [X_text, self.metadata]
 
     def fit(self, X, y=None):
         if not len(X) == len(self.metadata):
@@ -35,7 +52,7 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
                 f"{len(X)} vs {len(self.metadata)}"
             )
 
-        Xs = [X, self.metadata]
+        Xs = self._prepare_views(X)
         self.model.fit(Xs)
 
         self.labels_ = self.model.labels_
@@ -47,7 +64,7 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
                 "Metadata and textual embeddings must have the same length. "
                 f"Found {len(X)} and {len(self.metadata)}"
             )
-        Xs = [X, self.metadata]
+        Xs = self._prepare_views(X)
         return self.model.predict(Xs)
 
 

@@ -1,0 +1,29 @@
+extends: "datasets/yelp.yaml"
+
+experiment:
+  name: "yelp_standard_mv_spectral_l2_norm"
+  description: "UMAP + Multi-View Spectral Clustering with L2-normalized text view (cosine equivalence) and Euclidean metadata on Yelp."
+  random_state:
+    - 36201624
+    - 62613654
+    - 57116123
+  decimal_digits: 3
+
+model:
+  id: "mv_spectral_l2_norm"
+  description: "UMAP + Multi-View Spectral Clustering (L2-Normalized Text View)"
+  dimensionality_reduction:
+    type: "umap"
+    params:
+      min_dist: 0.0
+      metric: "cosine"
+  clustering:
+    type: "multi_view_spectral_clustering"
+    params:
+      normalize_text_view: true
+      n_clusters:
+        - 10
+        - 20
+        - 30
+        - 40
+        - 50
