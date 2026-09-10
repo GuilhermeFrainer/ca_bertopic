@@ -74,9 +74,13 @@ def main():
         logger.info(f"Starting STM experiment: {exp_name}")
         logger.info(f"Random state: {random_state}")
 
-        if isinstance(random_state, list) and (
-            args.sample is not None
-            or config["experiment"].get("sample_size") is not None
+        if (
+            isinstance(random_state, list)
+            and len(random_state) > 1
+            and (
+                args.sample is not None
+                or config["experiment"].get("sample_size") is not None
+            )
         ):
             logger.warning(
                 f"Multiple seeds are specified, but data sampling is active. "

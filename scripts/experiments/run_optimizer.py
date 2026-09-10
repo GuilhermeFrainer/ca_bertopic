@@ -100,9 +100,13 @@ def main():
 
         logger = logger_config.setup_logging(exp_name, LOG_DIR)
 
-        if isinstance(random_state, list) and (
-            args.sample is not None
-            or config["experiment"].get("sample_size") is not None
+        if (
+            isinstance(random_state, list)
+            and len(random_state) > 1
+            and (
+                args.sample is not None
+                or config["experiment"].get("sample_size") is not None
+            )
         ):
             logger.warning(
                 f"Multiple seeds are specified, but data sampling is active. "
