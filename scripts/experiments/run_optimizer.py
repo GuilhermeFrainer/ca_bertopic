@@ -153,28 +153,60 @@ def main():
         # Get optional rounding parameter
         decimal_digits = config.get("experiment", {}).get("decimal_digits")
 
+        # Determine filename base tag
+        is_stemmed = "stemmed" in exp_name.lower()
+        if is_stemmed:
+            tag = "stemmed"
+        elif args.remove_rep_stopwords:
+            tag = "remove_rep_stopwords"
+        else:
+            tag = "keep_rep_stopwords"
+
+        fn_base = exp_name if tag in exp_name else f"{exp_name}_{tag}"
+        if args.model is not None:
+            fn_base = f"{fn_base}_m{args.model}"
+
         # Check for existing results to resume if --resume is passed
         start_index = 0
         results_path = None
 
         if args.resume:
-            pattern = f"{exp_name}-*-{primary_random_state}.csv"
-            matching_files = sorted(RESULTS_DIR.glob(pattern))
+            patterns = [
+                f"{fn_base}-*-{primary_random_state}.csv",
+                f"{exp_name}-*-{primary_random_state}.csv",
+            ]
+            matching_files = sorted(
+                {f for pat in patterns for f in RESULTS_DIR.glob(pat)}
+            )
             if matching_files:
-                latest_file = matching_files[-1]
-                try:
-                    # Read the file to see how many results it has
-                    existing_df = pl.read_csv(latest_file, infer_schema_length=None)
+                target_n_obs = len(text)
+                selected_file = None
+                for file in reversed(matching_files):
+                    try:
+                        df = pl.read_csv(file, infer_schema_length=None)
+                        if "n_observations" in df.columns and len(df) > 0:
+                            if df["n_observations"][0] == target_n_obs:
+                                selected_file = file
+                                existing_df = df
+                                break
+                        else:
+                            selected_file = file
+                            existing_df = df
+                            break
+                    except Exception:
+                        continue
+
+                if selected_file is not None:
                     start_index = len(existing_df)
-                    results_path = latest_file
+                    results_path = selected_file
                     logger.info(
-                        f"Found existing results file: {latest_file}. "
+                        f"Found existing results file: {selected_file}. "
                         f"Resuming from index {start_index}."
                     )
-                except Exception as e:
+                else:
                     logger.warning(
-                        f"Could not read existing results file {latest_file}: "
-                        f"{e}. Starting from scratch."
+                        "No existing results file matching the current dataset size was found. "
+                        "Starting from scratch."
                     )
             else:
                 logger.info(
@@ -184,17 +216,6 @@ def main():
 
         if results_path is None:
             file_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            is_stemmed = "stemmed" in exp_name.lower()
-            if is_stemmed:
-                tag = "stemmed"
-            elif args.remove_rep_stopwords:
-                tag = "remove_rep_stopwords"
-            else:
-                tag = "keep_rep_stopwords"
-
-            fn_base = exp_name if tag in exp_name else f"{exp_name}_{tag}"
-            if args.model is not None:
-                fn_base = f"{fn_base}_m{args.model}"
             results_filename = f"{fn_base}-{file_timestamp}-{primary_random_state}"
             results_path = RESULTS_DIR / f"{results_filename}.csv"
         else:
