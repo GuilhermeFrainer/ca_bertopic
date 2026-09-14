@@ -57,6 +57,7 @@ url = "https://pypi.nvidia.com/"
 
 [dependency-groups]
 dev = [
+    "marimo>=0.23.16",
     "pytest>=9.0.2",
 ]
 
@@ -76,3 +77,4 @@ select = ["E", "F", "W", "I"]
 "scripts/**/*.py" = ["E402"]
 "tests/test_find_best_models.py" = ["E402"]
 "notebooks/*.ipynb" = ["E402", "F821", "E711", "F811", "E501"]
+"notebooks/*.py" = ["E402", "E501"]

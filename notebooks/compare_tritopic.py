@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.16"
+__generated_with = "0.24.1"
 app = marimo.App(width="wide")
 
 
@@ -14,7 +14,14 @@ def _():
     import pandas as pd
     import polars as pl
 
-    return Path, alt, mo, np, pd, pl
+    return Path, alt, mo, pd, pl
+
+
+@app.cell
+def _():
+    import sys
+    sys.executable
+    return
 
 
 @app.cell
@@ -255,7 +262,6 @@ def _(dataset_dropdown, matched_df, mo, pl):
         ],
         justify="space-between",
     )
-
     return filtered_df, metrics_list, stat_cards
 
 
@@ -447,7 +453,6 @@ def _(alt, filtered_df, metric_dropdown, mo, pd, pl):
                 mo.hstack([_chart_identity, _chart_residuals], justify="center", gap=2),
             ]
         )
-
     return (parity_charts,)
 
 
@@ -662,7 +667,6 @@ def _(mo, pl, unmatched_fast, unmatched_reg):
         unmatched_view = mo.md(
             "_All discovered TriTopic runs have complete apples-to-apples pairs._"
         )
-
     return (unmatched_view,)
 
 
@@ -697,7 +701,7 @@ def _(
         gap=2,
     )
     dashboard_layout
-    return (dashboard_layout,)
+    return
 
 
 if __name__ == "__main__":
