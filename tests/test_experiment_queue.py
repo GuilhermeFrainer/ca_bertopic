@@ -390,3 +390,60 @@ class TestCreateQueuePlan:
         assert len(plan.jobs) == 1
         assert plan.total_jobs == 1
         assert plan.dry_run is True
+
+    def test_reservation_job_construction(self):
+        jobs = build_jobs(
+            datasets=["fed"],
+            models=["baseline"],
+            split=False,
+            model_indices=[1],
+            use_stemmed=False,
+            keep_rep_stopwords=False,
+            reservation="my_reservation",
+        )
+        assert len(jobs) == 1
+        job = jobs[0]
+        assert job.reservation == "my_reservation"
+        assert "--reservation=my_reservation" in job.sbatch_args
+        assert "--reservation=my_reservation" in job.full_sbatch_command()
+
+    def test_reservation_none_by_default(self):
+        jobs = build_jobs(
+            datasets=["fed"],
+            models=["baseline"],
+            split=False,
+            model_indices=[1],
+            use_stemmed=False,
+            keep_rep_stopwords=False,
+        )
+        assert jobs[0].reservation is None
+        assert not any("--reservation" in arg for arg in jobs[0].sbatch_args)
+
+    def test_create_queue_plan_with_reservation(self):
+        plan = create_queue_plan(
+            raw_datasets="fed",
+            raw_models="baseline",
+            raw_excludes=None,
+            raw_runs=None,
+            split=False,
+            use_stemmed=False,
+            keep_rep_stopwords=False,
+            reservation="  cluster_node_1  ",
+        )
+        assert plan.reservation == "cluster_node_1"
+        assert plan.jobs[0].reservation == "cluster_node_1"
+        assert "--reservation=cluster_node_1" in plan.jobs[0].sbatch_args
+
+    def test_create_queue_plan_empty_reservation_is_none(self):
+        plan = create_queue_plan(
+            raw_datasets="fed",
+            raw_models="baseline",
+            raw_excludes=None,
+            raw_runs=None,
+            split=False,
+            use_stemmed=False,
+            keep_rep_stopwords=False,
+            reservation="   ",
+        )
+        assert plan.reservation is None
+        assert plan.jobs[0].reservation is None

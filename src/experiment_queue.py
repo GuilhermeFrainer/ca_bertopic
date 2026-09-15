@@ -75,6 +75,7 @@ class SlurmJobConfig:
     cpus: int = DEFAULT_CPUS
     time_limit: str = DEFAULT_TIME
     project_name: str = PROJECT_NAME
+    reservation: str | None = None
 
     @property
     def rep_flag(self) -> str:
@@ -119,7 +120,7 @@ class SlurmJobConfig:
     @property
     def sbatch_args(self) -> list[str]:
         """Construct the list of sbatch CLI options for this job."""
-        return [
+        args = [
             f"--job-name={self.job_name}",
             "--partition=cidia",
             "--nodes=1",
@@ -130,6 +131,9 @@ class SlurmJobConfig:
             "--output=slurm_log/%x_%j.out",
             "--error=slurm_log/%x_%j.err",
         ]
+        if self.reservation:
+            args.append(f"--reservation={self.reservation}")
+        return args
 
     @property
     def worker_args(self) -> list[str]:
@@ -163,6 +167,7 @@ class QueuePlan:
     excludes: tuple[str, ...]
     dry_run: bool
     jobs: tuple[SlurmJobConfig, ...]
+    reservation: str | None = None
 
     @property
     def total_jobs(self) -> int:
@@ -393,6 +398,7 @@ def build_jobs(
     cpus: int = DEFAULT_CPUS,
     time_limit: str = DEFAULT_TIME,
     project_name: str = PROJECT_NAME,
+    reservation: str | None = None,
 ) -> list[SlurmJobConfig]:
     """Build list of SlurmJobConfig objects for all dataset and model combinations.
 
@@ -410,6 +416,7 @@ def build_jobs(
         cpus: SLURM CPU allocation.
         time_limit: SLURM time allocation.
         project_name: Name of project repository.
+        reservation: Optional SLURM reservation name.
 
     Returns:
         List of SlurmJobConfig objects.
@@ -445,6 +452,7 @@ def build_jobs(
                             cpus=cpus,
                             time_limit=time_limit,
                             project_name=project_name,
+                            reservation=reservation,
                         )
                     )
             else:
@@ -462,6 +470,7 @@ def build_jobs(
                         cpus=cpus,
                         time_limit=time_limit,
                         project_name=project_name,
+                        reservation=reservation,
                     )
                 )
 
@@ -484,6 +493,7 @@ def create_queue_plan(
     project_name: str = PROJECT_NAME,
     allow_empty_datasets: bool = False,
     raw_exact_models: str | None = None,
+    reservation: str | None = None,
 ) -> QueuePlan:
     """Create a fully resolved QueuePlan.
 
@@ -503,6 +513,7 @@ def create_queue_plan(
         project_name: Project name.
         allow_empty_datasets: For internal testing of dataset validation.
         raw_exact_models: User-specified exact model names.
+        reservation: Optional SLURM reservation name.
 
     Returns:
         Resolved QueuePlan.
@@ -529,6 +540,10 @@ def create_queue_plan(
     if raw_excludes and raw_excludes.strip():
         excludes_tuple = tuple(e.strip() for e in raw_excludes.split(",") if e.strip())
 
+    clean_reservation = (
+        reservation.strip() if reservation and reservation.strip() else None
+    )
+
     jobs = build_jobs(
         datasets=datasets,
         models=final_models,
@@ -540,6 +555,7 @@ def create_queue_plan(
         cpus=cpus,
         time_limit=time_limit,
         project_name=project_name,
+        reservation=clean_reservation,
     )
 
     return QueuePlan(
@@ -552,4 +568,5 @@ def create_queue_plan(
         excludes=excludes_tuple,
         dry_run=dry_run,
         jobs=tuple(jobs),
+        reservation=clean_reservation,
     )

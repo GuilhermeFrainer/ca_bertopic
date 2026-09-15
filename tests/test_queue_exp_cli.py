@@ -45,6 +45,12 @@ class TestQueueExpCLIParser:
         assert args.mem is None
         assert args.cpus is None
         assert args.time is None
+        assert args.reservation is None
+
+    def test_reservation_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["--reservation", "cluster_node_gpu"])
+        assert args.reservation == "cluster_node_gpu"
 
     def test_aliases_dataset(self):
         parser = build_parser()
@@ -132,6 +138,21 @@ class TestFormatting:
         summary = format_plan_summary(plan)
         assert "Mode:         SPLIT / BREAKDOWN (3 runs per model: 1 2 3)" in summary
         assert "Variant:      STEMMED (using clean_text_stemmed)" in summary
+
+    def test_format_plan_summary_reservation(self):
+        plan = create_queue_plan(
+            raw_datasets="fed",
+            raw_models="baseline",
+            raw_excludes=None,
+            raw_runs=None,
+            split=False,
+            use_stemmed=False,
+            keep_rep_stopwords=False,
+            dry_run=True,
+            reservation="gpu_cluster_res",
+        )
+        summary = format_plan_summary(plan)
+        assert "Reservation:  gpu_cluster_res" in summary
 
     def test_format_list_jobs(self):
         plan_std = create_queue_plan(
@@ -239,6 +260,56 @@ class TestSubmissionAndMain:
         assert "Job: fed_tritopic" in captured
         assert "fast_tritopic" not in captured
         assert "Dry run complete (1 jobs simulated)." in captured
+
+    def test_submit_jobs_dry_run_with_reservation(self, capsys):
+        plan = create_queue_plan(
+            raw_datasets="fed",
+            raw_models="baseline",
+            raw_excludes=None,
+            raw_runs=None,
+            split=False,
+            use_stemmed=False,
+            keep_rep_stopwords=False,
+            dry_run=True,
+            reservation="my_special_res",
+        )
+        mock_runner = MagicMock()
+        submit_jobs(
+            plan, worker_script="scripts/experiments/slurm_job.sh", runner=mock_runner
+        )
+        mock_runner.assert_not_called()
+        captured = capsys.readouterr().out
+        assert "Job: fed_baseline" in captured
+        assert "| Res: my_special_res" in captured
+
+    def test_submit_jobs_live_with_reservation(self, capsys):
+        plan = create_queue_plan(
+            raw_datasets="fed",
+            raw_models="baseline",
+            raw_excludes=None,
+            raw_runs=None,
+            split=False,
+            use_stemmed=False,
+            keep_rep_stopwords=False,
+            dry_run=False,
+            reservation="my_special_res",
+        )
+        mock_runner = MagicMock()
+        submit_jobs(
+            plan, worker_script="scripts/experiments/slurm_job.sh", runner=mock_runner
+        )
+        assert mock_runner.call_count == 1
+        call_args = mock_runner.call_args[0][0]
+        assert "--reservation=my_special_res" in call_args
+
+    def test_main_with_reservation(self, capsys):
+        exit_code = main(
+            ["-d", "fed", "-m", "baseline", "--reservation", "my_res", "-n"]
+        )
+        assert exit_code == 0
+        captured = capsys.readouterr().out
+        assert "Reservation:  my_res" in captured
+        assert "| Res: my_res" in captured
 
     def test_confirm_submission(self, monkeypatch):
         from scripts.experiments.queue_exp import confirm_submission

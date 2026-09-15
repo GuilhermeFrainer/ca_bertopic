@@ -207,6 +207,14 @@ Examples:
         help="Path to SLURM worker script (default: scripts/experiments/slurm_job.sh).",
     )
 
+    parser.add_argument(
+        "--reservation",
+        dest="reservation",
+        type=str,
+        default=None,
+        help="SLURM reservation name to run jobs within.",
+    )
+
     return parser
 
 
@@ -236,6 +244,9 @@ def format_plan_summary(plan: QueuePlan) -> str:
 
     if plan.excludes:
         lines.append(f" Exclusions:   {','.join(plan.excludes)}")
+
+    if plan.reservation:
+        lines.append(f" Reservation:  {plan.reservation}")
 
     if plan.dry_run:
         lines.append(" Dry Run:      YES (no jobs will be submitted)")
@@ -285,19 +296,21 @@ def submit_jobs(
     Path("slurm_log").mkdir(parents=True, exist_ok=True)
 
     for job_count, job in enumerate(plan.jobs, 1):
+        res_suffix = f" | Res: {job.reservation}" if job.reservation else ""
         if plan.dry_run:
             if job.model_idx is not None:
                 print(
                     f"[{job_count}/{plan.total_jobs}] [DRY RUN] Job: {job.job_name} | "
                     f"Dataset: {job.dataset} | Model: {job.model} "
                     f"(Run #{job.model_idx}) | Mem: {job.mem} | CPUs: {job.cpus} | "
-                    f"Time: {job.time_limit}"
+                    f"Time: {job.time_limit}{res_suffix}"
                 )
             else:
                 print(
                     f"[{job_count}/{plan.total_jobs}] [DRY RUN] Job: {job.job_name} | "
                     f"Dataset: {job.dataset} | Model: {job.model} | "
-                    f"Mem: {job.mem} | CPUs: {job.cpus} | Time: {job.time_limit}"
+                    f"Mem: {job.mem} | CPUs: {job.cpus} | "
+                    f"Time: {job.time_limit}{res_suffix}"
                 )
         else:
             if job.model_idx is not None:
@@ -350,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
             mem=args.mem or DEFAULT_MEM,
             cpus=args.cpus if args.cpus is not None else DEFAULT_CPUS,
             time_limit=args.time or DEFAULT_TIME,
+            reservation=args.reservation,
         )
     except ValueError as e:
         print(f"{e}", file=sys.stderr)
