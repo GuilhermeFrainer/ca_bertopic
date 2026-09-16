@@ -537,3 +537,137 @@ def test_train_and_evaluate_fast_tritopic_real_execution():
     rep_docs_sample = qual_df["representative_docs"].to_list()[0]
     assert len(rep_docs_sample) > 0
     assert rep_docs_sample[0] in texts
+
+
+def test_get_algorithm_mv_hdbscan():
+    """Tests that get_algorithm instantiates MultiViewHDBSCAN in MVCWrapper."""
+    from mv_hdbscan import MultiViewHDBSCAN
+
+    from src.mvc_wrapper import MVCWrapper
+
+    metadata = np.random.rand(20, 2)
+    config = {
+        "type": "multi_view_hdbscan",
+        "params": {
+            "min_cluster_size": 3,
+            "fusion": "mean",
+        },
+    }
+    wrapper = get_algorithm(config, metadata=metadata, random_state=42)
+
+    assert isinstance(wrapper, MVCWrapper)
+    assert isinstance(wrapper.model, MultiViewHDBSCAN)
+    assert wrapper.model.min_cluster_size == 3
+    assert wrapper.model.fusion == "mean"
+
+
+def test_get_algorithm_feature_stacking_hdbscan():
+    """Tests that get_algorithm instantiates FeatureStackingHDBSCAN in MVCWrapper."""
+    from mv_hdbscan import FeatureStackingHDBSCAN
+
+    from src.mvc_wrapper import MVCWrapper
+
+    metadata = np.random.rand(20, 2)
+    config = {
+        "type": "feature_stacking_hdbscan",
+        "params": {
+            "min_cluster_size": 4,
+            "standardize": True,
+        },
+    }
+    wrapper = get_algorithm(config, metadata=metadata, random_state=42)
+
+    assert isinstance(wrapper, MVCWrapper)
+    assert isinstance(wrapper.model, FeatureStackingHDBSCAN)
+    assert wrapper.model.min_cluster_size == 4
+    assert wrapper.model.standardize is True
+
+
+def test_mvc_wrapper_mv_hdbscan_fit_predict():
+    """Tests that MVCWrapper propagates labels_ and probabilities_."""
+    from mv_hdbscan import MultiViewHDBSCAN
+
+    from src.mvc_wrapper import MVCWrapper
+
+    np.random.seed(42)
+    n_samples = 30
+    view1 = np.vstack(
+        [np.random.normal(0, 0.2, (15, 2)), np.random.normal(3, 0.2, (15, 2))]
+    )
+    metadata = np.vstack([np.zeros((15, 1)), np.ones((15, 1))])
+
+    model = MultiViewHDBSCAN(min_cluster_size=5, fusion="max")
+    wrapper = MVCWrapper(model=model, metadata=metadata)
+
+    wrapper.fit(view1)
+    assert wrapper.labels_ is not None
+    assert len(wrapper.labels_) == n_samples
+    assert wrapper.probabilities_ is not None
+    assert len(wrapper.probabilities_) == n_samples
+
+    labels_predict = wrapper.fit_predict(view1)
+    np.testing.assert_array_equal(labels_predict, wrapper.labels_)
+
+
+def test_bertopic_with_mv_hdbscan_end_to_end():
+    """Tests BERTopic training and qualitative extraction with MultiViewHDBSCAN."""
+    from bertopic import BERTopic
+
+    import src.training as training
+    import src.utils as utils
+
+    np.random.seed(42)
+    texts = [
+        "interest rates inflation monetary policy federal reserve central bank",
+        "inflation prices consumer index goods services federal reserve economy",
+        "federal reserve discount window interest rate banking credit markets",
+        "football goal soccer team player match tournament championship",
+        "player scored goal in soccer tournament match championship league",
+        "soccer football league team players coach stadium match victory",
+    ] * 6  # 36 documents
+    embeddings = np.random.rand(len(texts), 16)
+    scaled_metadata = np.array(
+        [[1.0, 0.0] if i % 2 == 0 else [0.0, 1.0] for i in range(len(texts))]
+    )
+
+    model_config = {
+        "dimensionality_reduction": {"type": "pca", "params": {"n_components": 3}},
+        "clustering": {
+            "type": "mv_hdbscan",
+            "params": {"min_cluster_size": 5, "fusion": "mean"},
+        },
+        "bertopic": {"params": {}},
+    }
+
+    topic_model = create_bertopic_instance(
+        model_config=model_config,
+        scaled_metadata=scaled_metadata,
+        random_state=42,
+    )
+    assert isinstance(topic_model, BERTopic)
+
+    config = {
+        "experiment": {
+            "coherence_metrics": [],
+            "diversity_metrics": [],
+        }
+    }
+
+    metrics, fitted_model = training.train_and_evaluate(
+        topic_model=topic_model,
+        model_id="test_mv_hdbscan",
+        text=texts,
+        embeddings=embeddings,
+        config=config,
+        scaled_metadata=scaled_metadata,
+    )
+
+    assert "n_topics" in metrics
+    assert metrics["n_topics"] > 0
+    assert "outliers" in metrics
+
+    qual_df = utils.extract_qualitative_data(
+        fitted_model, "test_mv_hdbscan", {"dataset_name": "test_ds"}
+    )
+    assert "representative_docs" in qual_df.columns
+    assert "representation" in qual_df.columns

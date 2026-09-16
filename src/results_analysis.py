@@ -212,9 +212,20 @@ def calculate_hdbscan_noise_coverage(
     if df.is_empty():
         return pl.DataFrame()
 
-    # Filter for HDBSCAN clustering algorithm
+    # Filter for HDBSCAN clustering algorithms (single-view, multi-view, and stacked)
     if "clustering_algo" in df.columns:
-        filtered_df = df.filter(pl.col("clustering_algo") == "hdbscan")
+        filtered_df = df.filter(
+            pl.col("clustering_algo").is_in(
+                [
+                    "hdbscan",
+                    "mv_hdbscan",
+                    "multi_view_hdbscan",
+                    "feature_stacking_hdbscan",
+                    "stacked_hdbscan",
+                ]
+            )
+            | pl.col("clustering_algo").str.contains("(?i)hdbscan")
+        )
     else:
         filtered_df = df
 

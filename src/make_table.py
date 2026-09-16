@@ -154,6 +154,10 @@ def generate_best_models_latex_table(
         "mv_spectral": "$\\text{\\systemshort}_2$",
         "mv_spectral_info0": "$\\text{\\systemshort}_2\\text{-info0}$",
         "aligned_umap": "$\\text{\\systemshort}_3$",
+        "mv_hdbscan": "$\\text{\\systemshort}_{\\text{HDBSCAN}}$",
+        "multi_view_hdbscan": "$\\text{\\systemshort}_{\\text{HDBSCAN}}$",
+        "feature_stacking_hdbscan": "$\\text{Stacked-HDBSCAN}$",
+        "stacked_hdbscan": "$\\text{Stacked-HDBSCAN}$",
         "stm": "STM",
     }
 
@@ -165,6 +169,9 @@ def generate_best_models_latex_table(
         "mv_spectral",
         "mv_spectral_info0",
         "aligned_umap",
+        "mv_hdbscan",
+        "feature_stacking_hdbscan",
+        "stacked_hdbscan",
         "append_umap",
         "baseline",
         "umap_spectral",
@@ -409,6 +416,10 @@ def generate_stopword_impact_latex_table(
         "mv_spectral": "$\\text{\\systemshort}_2$",
         "mv_spectral_info0": "$\\text{\\systemshort}_2\\text{-info0}$",
         "aligned_umap": "$\\text{\\systemshort}_3$",
+        "mv_hdbscan": "$\\text{\\systemshort}_{\\text{HDBSCAN}}$",
+        "multi_view_hdbscan": "$\\text{\\systemshort}_{\\text{HDBSCAN}}$",
+        "feature_stacking_hdbscan": "$\\text{Stacked-HDBSCAN}$",
+        "stacked_hdbscan": "$\\text{Stacked-HDBSCAN}$",
         "stm": "STM",
     }
 
@@ -418,6 +429,9 @@ def generate_stopword_impact_latex_table(
         "mv_spectral",
         "mv_spectral_info0",
         "aligned_umap",
+        "mv_hdbscan",
+        "feature_stacking_hdbscan",
+        "stacked_hdbscan",
         "append_umap",
         "baseline",
         "umap_spectral",
@@ -654,6 +668,10 @@ def generate_demsar_delta_latex_table(
         "mv_spectral": "$\\text{\\systemshort}_2$",
         "mv_spectral_info0": "$\\text{\\systemshort}_2\\text{-info0}$",
         "aligned_umap": "$\\text{\\systemshort}_3$",
+        "mv_hdbscan": "$\\text{\\systemshort}_{\\text{HDBSCAN}}$",
+        "multi_view_hdbscan": "$\\text{\\systemshort}_{\\text{HDBSCAN}}$",
+        "feature_stacking_hdbscan": "$\\text{Stacked-HDBSCAN}$",
+        "stacked_hdbscan": "$\\text{Stacked-HDBSCAN}$",
         "stm": "STM",
     }
 
@@ -962,6 +980,10 @@ def generate_demsar_all_vs_all_latex_table(
         "mv_spectral": "$\\text{\\systemshort}_2$",
         "mv_spectral_info0": "$\\text{\\systemshort}_2\\text{-info0}$",
         "aligned_umap": "$\\text{\\systemshort}_3$",
+        "mv_hdbscan": "$\\text{\\systemshort}_{\\text{HDBSCAN}}$",
+        "multi_view_hdbscan": "$\\text{\\systemshort}_{\\text{HDBSCAN}}$",
+        "feature_stacking_hdbscan": "$\\text{Stacked-HDBSCAN}$",
+        "stacked_hdbscan": "$\\text{Stacked-HDBSCAN}$",
         "stm": "STM",
     }
 

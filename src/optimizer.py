@@ -45,7 +45,14 @@ def collect_hyperparameters(
 
             # Atomic sequence parameters should not be expanded as grids unless nested
             if (
-                key in ("view_metrics", "view_weights", "view_affinities")
+                key
+                in (
+                    "view_metrics",
+                    "view_weights",
+                    "view_affinities",
+                    "weights",
+                    "metric",
+                )
                 and isinstance(value, list)
                 and (len(value) == 0 or not isinstance(value[0], (list, tuple)))
             ):

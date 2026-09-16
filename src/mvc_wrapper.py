@@ -22,6 +22,7 @@ def _to_numpy_matrix(data: Any) -> np.ndarray:
 class MVCWrapper(BaseEstimator, ClusterMixin):
     metadata: np.ndarray
     labels_: Optional[np.ndarray]
+    probabilities_: Optional[np.ndarray]
     normalize_text_view: bool
 
     def __init__(
@@ -34,6 +35,7 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
         self.metadata = _to_numpy_matrix(metadata)
         self.normalize_text_view = normalize_text_view
         self.labels_ = None
+        self.probabilities_ = None
 
     def _prepare_views(self, X: Any) -> list[np.ndarray]:
         X_arr = np.asarray(X)
@@ -55,8 +57,13 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
         Xs = self._prepare_views(X)
         self.model.fit(Xs)
 
-        self.labels_ = self.model.labels_
+        self.labels_ = getattr(self.model, "labels_", None)
+        self.probabilities_ = getattr(self.model, "probabilities_", None)
         return self
+
+    def fit_predict(self, X, y=None):
+        self.fit(X, y)
+        return self.labels_
 
     def predict(self, X):
         if not len(X) == len(self.metadata):
@@ -65,7 +72,16 @@ class MVCWrapper(BaseEstimator, ClusterMixin):
                 f"Found {len(X)} and {len(self.metadata)}"
             )
         Xs = self._prepare_views(X)
-        return self.model.predict(Xs)
+        if hasattr(self.model, "predict"):
+            return self.model.predict(Xs)
+        elif hasattr(self.model, "fit_predict"):
+            name = type(self.model).__name__
+            raise AttributeError(
+                f"The underlying model {name} does not support "
+                "out-of-sample 'predict'. Use fit_predict or access labels_."
+            )
+        name = type(self.model).__name__
+        raise AttributeError(f"Underlying model {name} does not implement 'predict'.")
 
 
 class AlignedUMAPWrapper(BaseEstimator):

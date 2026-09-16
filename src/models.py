@@ -329,5 +329,54 @@ def get_algorithm(
         )
         return MVCWrapper(model=cluster_model, metadata=metadata)
 
+    elif algo_type in ("multi_view_hdbscan", "mv_hdbscan"):
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+
+        try:
+            from mv_hdbscan import MultiViewHDBSCAN
+        except ImportError:
+            import sys
+            from pathlib import Path
+
+            sibling_src = Path(__file__).resolve().parents[2] / "MV-HDBSCAN" / "src"
+            if sibling_src.exists() and str(sibling_src) not in sys.path:
+                sys.path.insert(0, str(sibling_src))
+            from mv_hdbscan import MultiViewHDBSCAN
+
+        normalize_text_view = params.pop("normalize_text_view", False)
+        # HDBSCAN is density-based and determines cluster count dynamically
+        params.pop("n_clusters", None)
+        cluster_model = MultiViewHDBSCAN(**params)
+        return MVCWrapper(
+            model=cluster_model,
+            metadata=metadata,
+            normalize_text_view=normalize_text_view,
+        )
+
+    elif algo_type in ("feature_stacking_hdbscan", "stacked_hdbscan"):
+        if metadata is None:
+            raise ValueError("Metadata array is null")
+
+        try:
+            from mv_hdbscan import FeatureStackingHDBSCAN
+        except ImportError:
+            import sys
+            from pathlib import Path
+
+            sibling_src = Path(__file__).resolve().parents[2] / "MV-HDBSCAN" / "src"
+            if sibling_src.exists() and str(sibling_src) not in sys.path:
+                sys.path.insert(0, str(sibling_src))
+            from mv_hdbscan import FeatureStackingHDBSCAN
+
+        normalize_text_view = params.pop("normalize_text_view", False)
+        params.pop("n_clusters", None)
+        cluster_model = FeatureStackingHDBSCAN(**params)
+        return MVCWrapper(
+            model=cluster_model,
+            metadata=metadata,
+            normalize_text_view=normalize_text_view,
+        )
+
     else:
         raise ValueError(f"Unknown algorithm type: {algo_type}")

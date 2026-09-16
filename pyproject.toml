@@ -42,12 +42,14 @@ dependencies = [
     "vl-convert-python>=1.8.0",
     "tritopic>=2.3.0",
     "fast-tritopic",
+    "mv-hdbscan",
     "marimo>=0.23.16",
     "tabulate>=0.10.0",
 ]
 
 [tool.uv.sources]
 fast-tritopic = { path = "../fast-tritopic" }
+mv-hdbscan = { path = "../MV-HDBSCAN" }
 
 [project.scripts]
 test = "pytest"
