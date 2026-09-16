@@ -255,7 +255,7 @@ def test_optimizer_run_baseline_with_scaled_metadata():
         "is_baseline": True,
         "dimensionality_reduction": {
             "type": "umap",
-            "params": {"min_dist": 0.0, "metric": "cosine"},
+            "params": {"n_neighbors": 3, "min_dist": 0.0, "metric": "cosine"},
         },
         "clustering": {
             "type": "hdbscan",

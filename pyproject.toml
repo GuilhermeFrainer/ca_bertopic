@@ -65,6 +65,12 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+filterwarnings = [
+    # Ignore scikit-learn 1.6+ deprecation warning emitted inside third-party hdbscan package
+    "ignore:.*'force_all_finite' was renamed to 'ensure_all_finite'.*:FutureWarning",
+    # Ignore umap-learn notification that n_jobs is set to 1 when a random_state seed is configured
+    "ignore:.*n_jobs value.*overridden.*:UserWarning",
+]
 
 [tool.ruff]
 # Target version for the generated code

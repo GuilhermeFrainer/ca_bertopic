@@ -56,28 +56,28 @@ class AppendUMAP(UMAP):
             return np.hstack((X, self.metadata))
         return X
 
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, *args, **kwargs):
         """
         Fits the UMAP model on the concatenated embeddings and metadata.
         """
         X_combined = self._concatenate_metadata(X)
-        super().fit(X_combined, y)
+        super().fit(X_combined, y, *args, **kwargs)
         return self
 
-    def transform(self, X) -> np.ndarray:
+    def transform(self, X, *args, **kwargs) -> np.ndarray:
         """
         Transforms the data into the embedding space after concatenating metadata.
         """
         X_combined = self._concatenate_metadata(X)
-        return super().transform(X_combined)
+        return super().transform(X_combined, *args, **kwargs)
 
-    def fit_transform(self, X, y=None) -> np.ndarray:
+    def fit_transform(self, X, y=None, *args, **kwargs) -> np.ndarray:
         """
         Fits the data and transforms it into the embedding space on the
         concatenated input.
         """
         X_combined = self._concatenate_metadata(X)
-        return super().fit_transform(X_combined, y)
+        return super().fit_transform(X_combined, y, *args, **kwargs)
 
     @staticmethod
     def shape_dims(df: pl.DataFrame) -> np.ndarray:

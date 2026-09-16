@@ -15,8 +15,11 @@ model:
   dimensionality_reduction:
     type: "aligned_umap"
     params:
+      n_components: 5
+      n_neighbors: 15
       min_dist: 0.0
       metric: "cosine"
+      low_memory: false
   clustering:
     type: "multi_view_k_means"
     params:

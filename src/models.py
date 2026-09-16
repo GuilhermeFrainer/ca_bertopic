@@ -238,6 +238,9 @@ def get_algorithm(
     elif algo_type == "pca":
         from sklearn.decomposition import PCA
 
+        if "n_components" not in params:
+            params["n_components"] = 5
+
         return PCA(random_state=random_state, **params)
 
     elif algo_type == "hdbscan":

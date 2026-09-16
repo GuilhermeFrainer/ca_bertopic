@@ -20,12 +20,16 @@ This document provides clear, actionable instructions for any agent or engineer 
 - **Stage 2 (Advisor Snapshot): COMPLETED**
   - Manually completed and preserved at `results/archive/pre_correction_2026-09-16.7z`.
   - Presentation materials and baseline tables for the advisor are securely frozen.
-- **Stage 3 (Configuration Mutation Fix): IN PROGRESS / COMPLETED**
-  - Fixed in-place `.pop()` and parameter assignment mutation in `get_algorithm()` and model factory functions in [src/models.py](src/models.py).
-  - Ensured multi-seed optimizer runs in [src/optimizer.py](src/optimizer.py) pass deep copies to prevent state leakage across seeds.
-  - Added regression test suite.
-- **Stage 4 (BERTopic Defaults & 5D Dimensionality): NEXT UP**
-- **Stage 5 (Run Provenance & Metadata Recording): PENDING**
+- **Stage 3 (Configuration Mutation Fix): COMPLETED**
+  - Fixed in-place `.pop()` and parameter assignment mutation in `get_algorithm()` and model factory functions in [src/models.py](../src/models.py).
+  - Ensured multi-seed optimizer runs in [src/optimizer.py](../src/optimizer.py) pass deep copies to prevent state leakage across seeds.
+  - Added regression test suite in [tests/test_config_mutation_regression.py](../tests/test_config_mutation_regression.py).
+- **Stage 4 (BERTopic Defaults & 5D Dimensionality): COMPLETED**
+  - Updated all 194 active standard UMAP-family YAML configurations to explicitly set `n_components: 5`, `n_neighbors: 15`, `min_dist: 0.0`, `metric: "cosine"`, `low_memory: false`.
+  - Updated all 30 active HDBSCAN configurations to `prediction_data: true` and applied the dataset-specific `min_cluster_size` policy (5 for ANES/Gadarian, 10 for FED/Yelp, 30 for Trump).
+  - Maintained 50 active PCA configurations at `n_components: 5` and added explicit fallback in `get_algorithm()`.
+  - Full documentation in [docs/bertopic_default_parameters_and_clustering_decisions.md](bertopic_default_parameters_and_clustering_decisions.md) and parity test suite in [tests/test_bertopic_defaults_parity.py](../tests/test_bertopic_defaults_parity.py).
+- **Stage 5 (Run Provenance & Metadata Recording): NEXT UP**
 - **Stage 6 (Full-Precision Storage): PENDING**
 - **Stage 7 (Validation & Controlled Rollout): PENDING**
 
