@@ -422,3 +422,17 @@ def test_optimizer_provenance_integration(tmp_path):
     )
     assert len(filtered_df) == 1
     assert filtered_df["run_manifest_path"][0] == row["run_manifest_path"]
+
+
+def test_get_git_info_env_override(monkeypatch):
+    """Verify that get_git_info prioritizes GIT_COMMIT_REV and GIT_DIRTY env vars."""
+    monkeypatch.setenv("GIT_COMMIT_REV", "cluster_commit_12345")
+    monkeypatch.setenv("GIT_DIRTY", "true")
+    rev, dirty = run_provenance.get_git_info()
+    assert rev == "cluster_commit_12345"
+    assert dirty is True
+
+    monkeypatch.setenv("GIT_DIRTY", "false")
+    rev, dirty = run_provenance.get_git_info()
+    assert rev == "cluster_commit_12345"
+    assert dirty is False

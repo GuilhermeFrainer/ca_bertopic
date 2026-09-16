@@ -91,6 +91,8 @@ fi
 # 4. Export UV path and environment configuration
 export PATH="$HOME/.local/bin:$PATH"
 export UV_LINK_MODE="copy"
+export GIT_COMMIT_REV="$(git -C "$HOME/${PROJECT_NAME}" rev-parse HEAD 2>/dev/null || echo "unknown")"
+export GIT_DIRTY="$(git -C "$HOME/${PROJECT_NAME}" status --porcelain 2>/dev/null | grep -q . && echo "true" || echo "false")"
 
 # Link pre-built virtual environment from HOME if available to avoid
 # 10GB package copying and concurrent rebuild race conditions on scratch

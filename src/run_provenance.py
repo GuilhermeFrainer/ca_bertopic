@@ -1,11 +1,14 @@
 import hashlib
 import json
 import logging
+import os
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 logger = logging.getLogger("pipeline")
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 PROVENANCE_SCHEMA_VERSION = 2
 DEFAULT_CAMPAIGN_ID = "bertopic_defaults_v2"
@@ -37,11 +40,22 @@ PROVENANCE_COLUMNS = [
 def get_git_info() -> Tuple[str, bool]:
     """
     Returns the current git commit hash and dirty status.
-    Falls back safely if git is unavailable or repo is detached.
+    Prioritizes GIT_COMMIT_REV and GIT_DIRTY environment variables
+    (e.g., when running on cluster worker nodes where .git is excluded).
+    Falls back to querying git directly via subprocess.
     """
+    env_rev = os.environ.get("GIT_COMMIT_REV")
+    env_dirty = os.environ.get("GIT_DIRTY")
+    if env_rev:
+        is_dirty = (
+            env_dirty.strip().lower() in ("true", "1", "yes") if env_dirty else False
+        )
+        return env_rev.strip(), is_dirty
+
     try:
         rev_output = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
+            cwd=PROJECT_ROOT,
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=2,
@@ -52,6 +66,7 @@ def get_git_info() -> Tuple[str, bool]:
     try:
         status_output = subprocess.check_output(
             ["git", "status", "--porcelain"],
+            cwd=PROJECT_ROOT,
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=2,
