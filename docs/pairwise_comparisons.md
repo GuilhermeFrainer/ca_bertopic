@@ -6,6 +6,8 @@ This proposal organizes model evaluation around explicit research claims and con
 
 ## Reading guide
 
+For the urgent repairs to existing experiments before the future comparison pipeline, read the [experiment integrity repair plan](experiment_integrity_repair_plan.md).
+
 | Document | Read it to understand |
 | --- | --- |
 | [Repository findings](pairwise_repository_findings.md) | How experiments/results work today, observed coverage, naming mismatches, and correctness/provenance problems |

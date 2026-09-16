@@ -2,6 +2,8 @@
 
 Part of the [pairwise comparison proposal](pairwise_comparisons.md). Findings describe the inspection on **2026-09-16**; coverage and implementation may change later.
 
+**User clarification, 2026-09-16:** the baseline is intended to use BERTopic defaults. The 2-versus-5 UMAP dimensionality difference is therefore a confirmed configuration bug, and the user will fix it. This supersedes the earlier suggestion that retaining a renamed 2-dimensional baseline might satisfy the intended experiment. Track current issues in [REPOSITORY_ISSUES.md](../REPOSITORY_ISSUES.md).
+
 ## Current experiment representation
 
 Experiments use YAML under [experiments/](../experiments). Dataset definitions are inherited through `extends`. [src/utils.py](../src/utils.py) merges dataset settings into `experiment`; model settings live under `model` or `models`.
@@ -78,6 +80,12 @@ Existing merge deduplication keys do not include complete configuration/sample i
 
 Relevant implementations: [models.py](../src/models.py), [mvc_wrapper.py](../src/mvc_wrapper.py), [append_umap.py](../src/append_umap.py), [decoupled_kmeans.py](../src/decoupled_kmeans.py), and [decoupled_spectral.py](../src/decoupled_spectral.py).
 
+### Runtime confirmation and intended defaults
+
+Actual model construction, without fitting, confirmed UMAP dimensions of **2** for the repository FED baseline versus **5** for plain `BERTopic()` in the current environment. HDBSCAN `min_cluster_size` was **5** versus **10**, respectively.
+
+BERTopic technically accepts 2 dimensions; 5 is a default, not an API requirement. Nevertheless, the user explicitly requires BERTopic defaults, so the dimensionality mismatch is a confirmed issue for this project. The user owns the fix; no model code/configuration was changed during this review. Other effective baseline defaults also need checking. Preserve the distinction between historical 2-dimensional runs and corrected experiments.
+
 ### Requested versus realized topics
 
 HDBSCAN branches vary BERTopic's post-clustering `nr_topics` reduction request. K-means/spectral branches vary `n_clusters`. These are different mechanisms even when both request 10–50 topics.
@@ -97,7 +105,11 @@ Remaining params: {'n_clusters': 10}
 
 This is a concrete correctness issue. Its historical impact depends on execution mode: separately dispatched individual runs may be unaffected, while sequential runs reusing the dictionary may be affected. Do not assume every normalized result is wrong, or that every result bearing that name actually used normalization.
 
-Proposed response: fix configuration mutation after approval, add a repeated-construction regression test, audit execution history, and quarantine uncertain normalized results until verified or rerun.
+The behavior was subsequently reproduced with the actual current constructors, again yielding `True`, then `False`. Affected historical files have not been identified. Ordinary configurations that never requested normalization are not implicated by this finding.
+
+Proposed response: fix configuration mutation after approval, add a repeated-construction regression test, audit execution history, and **mark potentially affected normalized runs as unverified** until verified or rerun.
+
+The earlier term “quarantine” meant temporarily excluding specific uncertain cells from an analysis claiming to measure normalization's effect. It did not mean moving/deleting files, rejecting every experiment, or interrupting MV-HDBSCAN integration. No such action was taken. Fresh-process individual runs may be unaffected; establish execution history before deciding which cells need reruns. Preserve original artifacts and document analytical exclusions.
 
 ### Geometry descriptions need precision
 

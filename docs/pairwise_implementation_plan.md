@@ -42,7 +42,7 @@ Use focused tests for each stage and full integration fixtures for the final pip
 
 ## Decisions still needed from the user
 
-1. **Meaning of Default BERTopic:** use the existing repository baseline, or add a stock-BERTopic control?
+1. **Meaning of Default BERTopic — resolved, 2026-09-16:** the user wants BERTopic defaults and will fix the 2-versus-5 dimensionality issue. Other effective default settings still need verification; the baseline definition is no longer an open naming choice.
 2. **Primary metrics:** which coherence metric (`c_v` or `c_npmi`) and distinctiveness metric (IRBO or topic diversity) should be primary?
 3. **Preprocessing scope:** should `standard` be primary, with stemmed experiments reported separately as robustness analyses?
 4. **Canonical sample and pending results:** what is the intended Yelp sample, and are the missing Trump/Yelp spectral runs still running or stored elsewhere?
