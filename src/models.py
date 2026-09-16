@@ -1,3 +1,4 @@
+import copy
 from typing import Any, Optional, Union
 
 import mvlearn.cluster as mvcluster
@@ -20,6 +21,7 @@ def create_topic_model_instance(
     Factory function that creates a topic model instance (BERTopic,
     TriTopic, or FastTriTopic) based on the provided configuration dictionary.
     """
+    model_config = copy.deepcopy(model_config)
     model_type = model_config.get("type") or model_config.get("model_type")
     if model_type == "tritopic":
         return create_tritopic_instance(
@@ -68,8 +70,7 @@ def create_fast_tritopic_instance(
 
     from tritopic import TriTopicConfig
 
-    params = model_config.get("params") or {}
-    params = params.copy()
+    params = copy.deepcopy(model_config.get("params") or {})
 
     if "random_state" not in params:
         params["random_state"] = random_state
@@ -105,8 +106,7 @@ def create_tritopic_instance(
     """
     from tritopic import TriTopic, TriTopicConfig
 
-    params = model_config.get("params") or {}
-    params = params.copy()
+    params = copy.deepcopy(model_config.get("params") or {})
 
     if "random_state" not in params:
         params["random_state"] = random_state
@@ -181,9 +181,7 @@ def create_bertopic_instance(
 
     # Extract BERTopic parameters
     bertopic_config = model_config.get("bertopic") or {}
-    bertopic_params = bertopic_config.get("params") or {}
-    # Copy parameters to avoid modifying the original config dict
-    bertopic_params = bertopic_params.copy()
+    bertopic_params = copy.deepcopy(bertopic_config.get("params") or {})
     if "top_n_words" not in bertopic_params:
         bertopic_params["top_n_words"] = 50
 
@@ -209,9 +207,9 @@ def get_algorithm(
     n_clusters: Optional[int] = None,
 ):
     algo_type = config["type"]
-    params = config.get("params") or {}
+    params = copy.deepcopy(config.get("params") or {})
 
-    if n_clusters:
+    if n_clusters is not None:
         params["n_clusters"] = n_clusters
 
     if algo_type == "umap":

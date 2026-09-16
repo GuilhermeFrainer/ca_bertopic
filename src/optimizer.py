@@ -218,7 +218,14 @@ class Optimizer:
             hyperparameter_combinations
         ):
             for seed in seeds:
-                all_runs.append((combo_idx, model_config, varied_params, seed))
+                all_runs.append(
+                    (
+                        combo_idx,
+                        copy.deepcopy(model_config),
+                        copy.deepcopy(varied_params),
+                        seed,
+                    )
+                )
 
         num_runs = len(all_runs)
 
