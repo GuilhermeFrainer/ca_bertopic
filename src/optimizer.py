@@ -9,6 +9,7 @@ import numpy as np
 import polars as pl
 
 import src.models as models
+import src.run_provenance as run_provenance
 import src.training as training
 
 
@@ -184,6 +185,7 @@ class Optimizer:
         self.remove_rep_stopwords = remove_rep_stopwords
         self.results = []
         self.qualitative_results = []
+        self.run_manifests = []
         self.logger = logging.getLogger("pipeline")
 
     def run(self, start_index: int = 0, target_index: int | None = None) -> None:
@@ -324,20 +326,53 @@ class Optimizer:
                     }
                     metrics.update(run_metadata)
                     metrics.update(cleaned_varied_params)
+
+                    # 3b. Collect Provenance from fitted model and config
+                    provenance = run_provenance.collect_run_provenance(
+                        topic_model=trained_model,
+                        model_config=model_config,
+                        run_id=run_id,
+                        run_status="success",
+                    )
+                    metrics.update(provenance)
                     self.results.append(metrics)
+
+                    self.run_manifests.append(
+                        {
+                            "run_id": run_id,
+                            "model_name": run_id,
+                            "seed": seed,
+                            "status": "success",
+                            "provenance": provenance,
+                            "varied_params": cleaned_varied_params,
+                            "model_config": model_config,
+                        }
+                    )
 
                     # 4. Extract Qualitative Data
                     qual_metadata = run_metadata.copy()
                     qual_metadata.update(cleaned_varied_params)
-                    qual_df = utils.extract_qualitative_data(
-                        trained_model, run_id, qual_metadata
+                    self.qualitative_results.append(
+                        utils.extract_qualitative_data(
+                            trained_model, run_id, qual_metadata
+                        )
                     )
-                    self.qualitative_results.append(qual_df)
 
                 except Exception as e:
                     self.logger.error(
                         f"Failed to train model [{run_id}] with params "
                         f"{cleaned_varied_params} and seed {seed}: {e}"
+                    )
+                    self.run_manifests.append(
+                        {
+                            "run_id": run_id,
+                            "model_name": run_id,
+                            "seed": seed,
+                            "status": "failure",
+                            "error": str(e),
+                            "varied_params": cleaned_varied_params,
+                            "model_config": model_config,
+                        }
                     )
                     continue
         except KeyboardInterrupt:
@@ -354,11 +389,20 @@ class Optimizer:
         Saves the collected evaluation metrics to a CSV file.
         Args:
             filepath: The path to the output CSV file.
-            decimal_digits: Optional number of digits for float precision in the CSV.
+            decimal_digits: Deprecated storage parameter. Full floating-point
+                precision is preserved in CSV files. Retained for API compatibility.
         """
         if not self.results:
             self.logger.warning("No results to save. Run the optimization first.")
             return
+
+        save_path = pathlib.Path(filepath)
+        relative_manifest_path = f"logs/manifests/{save_path.stem}_manifest.json"
+
+        # Update run_manifest_path in results if not set
+        for res in self.results:
+            if not res.get("run_manifest_path"):
+                res["run_manifest_path"] = relative_manifest_path
 
         df = pl.DataFrame(self.results)
 
@@ -390,31 +434,53 @@ class Optimizer:
                 self.experiment_config["experiment"].get("diversity_metrics", [])
             )
 
+        provenance_cols = run_provenance.PROVENANCE_COLUMNS
+
         # Varied parameter columns are what's left over
         param_cols = [
             col
             for col in all_cols
-            if col not in core_stats_cols and col not in exp_metrics
+            if col not in core_stats_cols
+            and col not in exp_metrics
+            and col not in provenance_cols
         ]
 
-        # New order: core stats, then params, then calculated metrics
+        # New order: core stats, then params, then calculated metrics, then provenance
         final_order = (
             [c for c in core_stats_cols if c in all_cols]
             + [p for p in param_cols if p in all_cols]
             + [m for m in exp_metrics if m in all_cols]
+            + [pr for pr in provenance_cols if pr in all_cols]
         )
+        final_order += [c for c in all_cols if c not in final_order]
         df = df.select(final_order)
 
         # Handle appending/merging if the file already exists
-        save_path = pathlib.Path(filepath)
         if save_path.exists():
             try:
                 existing_df = pl.read_csv(save_path, infer_schema_length=None)
-                # Ensure we cast new results to match the existing schema
-                # for safe vertical concatenation
-                df = pl.concat(
-                    [existing_df, df.cast(existing_df.schema)], how="vertical"
+                existing_campaign = (
+                    existing_df["campaign_id"][0]
+                    if "campaign_id" in existing_df.columns and len(existing_df) > 0
+                    else None
                 )
+                current_campaign = (
+                    df["campaign_id"][0]
+                    if "campaign_id" in df.columns and len(df) > 0
+                    else None
+                )
+                if existing_campaign != current_campaign:
+                    self.logger.warning(
+                        f"Existing results file {save_path} has incompatible "
+                        f"campaign '{existing_campaign}' (current: "
+                        f"'{current_campaign}'). Saving to a separate file to "
+                        "prevent cross-campaign contamination."
+                    )
+                    save_path = save_path.with_name(
+                        f"{save_path.stem}_{current_campaign or 'v2'}{save_path.suffix}"
+                    )
+                else:
+                    df = pl.concat([existing_df, df], how="diagonal")
             except Exception as e:
                 self.logger.error(
                     f"Failed to merge with existing results file: {e}. "
@@ -424,14 +490,15 @@ class Optimizer:
                     f"{save_path.stem}_v2{save_path.suffix}"
                 )
 
-        df.write_csv(save_path, float_precision=decimal_digits)
+        # Stage 6: Preserve full precision Float64, do not truncate with float_precision
+        df.write_csv(save_path)
         self.logger.info(f"Results saved to {save_path}")
 
         # Save Qualitative Data
+        output_dir = save_path.parent.parent / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
         if self.qualitative_results:
             consolidated_qual_df = pl.concat(self.qualitative_results, how="diagonal")
-            output_dir = save_path.parent.parent / "output"
-            output_dir.mkdir(parents=True, exist_ok=True)
             output_path = output_dir / f"{save_path.stem}.json"
 
             # Handle merging if the qualitative file already exists
@@ -460,3 +527,20 @@ class Optimizer:
                 json.dump(parsed_json, f, indent=4)
 
             self.logger.info(f"Qualitative topic data saved at {output_path}")
+
+        # Save Run Manifest
+        manifest_dir = save_path.parent.parent / "logs" / "manifests"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = manifest_dir / f"{save_path.stem}_manifest.json"
+        git_rev, git_dirty = run_provenance.get_git_info()
+        manifest_payload = {
+            "campaign_id": run_provenance.DEFAULT_CAMPAIGN_ID,
+            "experiment_id": self.experiment_id,
+            "file_timestamp": self.file_timestamp,
+            "code_revision": git_rev,
+            "code_dirty": git_dirty,
+            "dependency_lock_hash": run_provenance.get_dependency_lock_hash(),
+            "runs": self.run_manifests,
+        }
+        run_provenance.save_run_manifest(manifest_path, manifest_payload)
+        self.logger.info(f"Run manifest saved at {manifest_path}")

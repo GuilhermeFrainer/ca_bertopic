@@ -22,11 +22,11 @@ Another agent is integrating MV-HDBSCAN concurrently. Recheck implementation sta
 
 - [ ] **K-means initialization differs:** single-view uses `n_init="auto"`; MV defaults to 5. Align settings for a controlled intervention or explicitly classify the comparison as architectural.
 - [ ] **Spectral affinity bandwidth differs:** single-view uses RBF `gamma=1`; MV estimates bandwidth per view. Metadata is not the only changed component.
-- [ ] **PCA and UMAP dimensionality differ in the inspected configurations:** PCA uses 5; UMAP generally uses 2. Recheck after the user's default-setting fix.
+- [x] **PCA and UMAP dimensionality differ in the inspected configurations:** *(Resolved)* All 194 active standard UMAP-family YAMLs explicitly configured to `n_components: 5`, matching the 50 PCA configurations and tested in [tests/test_bertopic_defaults_parity.py](../tests/test_bertopic_defaults_parity.py).
 - [ ] **`info_view=0` is not metadata-free:** it selects the text-side embedding after multi-view fitting.
 - [ ] **Geometry descriptions need precision:** text normalization occurs after reduction; spherical MV K-means normalizes both views; normalized-input Euclidean/RBF methods are not generally identical to the corresponding spherical/cosine methods.
-- [ ] **Historical provenance is incomplete:** CSVs lack complete resolved configurations and sample fingerprints. This limits verification; it does not prove runs were wrong. Record provenance in future runs and state uncertainty for historical analyses.
-- [ ] **Three-decimal metrics lose precision:** rounding can create ties and affects analysis resolution, not underlying training. Preserve full precision in future results.
+- [x] **Historical provenance is incomplete:** *(Resolved for future runs)* The run provenance system in [src/run_provenance.py](../src/run_provenance.py) records 20 effective estimator and execution fields in CSV results and writes lightweight JSON run manifests alongside qualitative topic outputs (`campaign_id: bertopic_defaults_v2`).
+- [x] **Three-decimal metrics lose precision:** *(Resolved for future runs)* Removed `float_precision=decimal_digits` truncation from `Optimizer.save_results()`, preserving full `Float64` precision in CSV files while retaining 3-decimal presentation in LaTeX and Great Tables exports.
 
 ## Clarification of “quarantine”
 

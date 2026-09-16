@@ -3,6 +3,8 @@ from typing import Optional
 import polars as pl
 from great_tables import GT
 
+from src.run_provenance import PROVENANCE_COLUMNS
+
 
 def generate_gt_table(df: pl.DataFrame) -> GT:
     """
@@ -34,7 +36,9 @@ def generate_gt_table(df: pl.DataFrame) -> GT:
     ]
 
     # Identify metric columns (everything else that is numeric)
-    exclude_from_metrics = core_cols + ["duration_seconds", "outliers"]
+    exclude_from_metrics = (
+        core_cols + ["duration_seconds", "outliers"] + PROVENANCE_COLUMNS
+    )
     metric_cols = [
         col
         for col in display_df.columns
@@ -77,20 +81,21 @@ def generate_latex_table(df: pl.DataFrame) -> str:
     if "n_clusters" in df.columns:
         df = df.with_columns(pl.col("n_clusters").cast(pl.Int64, strict=False))
 
+    rename_map = {
+        "model_name": "Model",
+        "n_topics": "Topics",
+        "u_mass": "$U_{Mass}$",
+        "c_v": "$c_v$",
+        "c_npmi": "$c_{npmi}$",
+        "irbo": "IRBO",
+        "topic_diversity": "Diversity",
+    }
+    cols_to_drop = [c for c in ["outliers", "duration_seconds"] if c in df.columns]
+    active_rename = {k: v for k, v in rename_map.items() if k in df.columns}
     renamed_df = (
         df.with_columns(pl.col("model_name").str.replace_all("_", " "))
-        .drop(["outliers", "duration_seconds"])
-        .rename(
-            {
-                "model_name": "Model",
-                "n_topics": "Topics",
-                "u_mass": "$U_{Mass}$",
-                "c_v": "$c_v$",
-                "c_npmi": "$c_{npmi}$",
-                "irbo": "IRBO",
-                "topic_diversity": "Diversity",
-            }
-        )
+        .drop(cols_to_drop)
+        .rename(active_rename)
     )
 
     # Filter to only existing columns in the rename map + core ones

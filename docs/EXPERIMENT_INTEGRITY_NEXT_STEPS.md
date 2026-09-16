@@ -29,9 +29,17 @@ This document provides clear, actionable instructions for any agent or engineer 
   - Updated all 30 active HDBSCAN configurations to `prediction_data: true` and applied the dataset-specific `min_cluster_size` policy (5 for ANES/Gadarian, 10 for FED/Yelp, 30 for Trump).
   - Maintained 50 active PCA configurations at `n_components: 5` and added explicit fallback in `get_algorithm()`.
   - Full documentation in [docs/bertopic_default_parameters_and_clustering_decisions.md](bertopic_default_parameters_and_clustering_decisions.md) and parity test suite in [tests/test_bertopic_defaults_parity.py](../tests/test_bertopic_defaults_parity.py).
-- **Stage 5 (Run Provenance & Metadata Recording): NEXT UP**
-- **Stage 6 (Full-Precision Storage): PENDING**
-- **Stage 7 (Validation & Controlled Rollout): PENDING**
+- **Stage 5 (Run Provenance & Metadata Recording): COMPLETED**
+  - Implemented [src/run_provenance.py](../src/run_provenance.py) capturing 20 provenance attributes: `result_schema_version`, `campaign_id` (`"bertopic_defaults_v2"`), `run_status`, `dim_red_output_dim`, `dim_red_n_components`, `dim_red_n_neighbors`, `dim_red_metric`, `dim_red_min_dist`, `dim_red_low_memory`, `cluster_min_cluster_size`, `cluster_min_samples`, `cluster_metric`, `cluster_selection_method`, `cluster_prediction_data`, `normalize_text_view`, `resolved_config_hash`, `run_manifest_path`, `code_revision`, `code_dirty`, `dependency_lock_hash`.
+  - Integrated provenance collection and lightweight JSON run manifests into [src/optimizer.py](../src/optimizer.py) and [scripts/experiments/run_experiment.py](../scripts/experiments/run_experiment.py).
+  - Enforced campaign isolation on resumption and diagonal merging in `Optimizer.save_results()`.
+  - Protected table generators in [src/make_table.py](../src/make_table.py) so provenance columns are excluded from metric calculations.
+  - Unit and integration tests in [tests/test_run_provenance.py](../tests/test_run_provenance.py).
+- **Stage 6 (Full-Precision Storage, Unchanged Display Precision): COMPLETED**
+  - Removed `float_precision=decimal_digits` truncation from `Optimizer.save_results()`, preserving full `Float64` precision in CSV storage across all model runners.
+  - Preserved display formatting at 3 decimals in publication outputs (`float_format="%.3f"` in LaTeX, `decimals=3` in Great Tables).
+  - Verified full-precision round-trip serialization and formatting stability in [tests/test_run_provenance.py](../tests/test_run_provenance.py).
+- **Stage 7 (Validation & Controlled Rollout): IN PROGRESS**
 
 ---
 

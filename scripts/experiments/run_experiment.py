@@ -20,6 +20,7 @@ import src.data as data
 import src.logger_config as logger_config
 import src.make_table as make_table
 import src.models as models
+import src.run_provenance as run_provenance
 import src.training as training
 import src.utils as utils
 
@@ -112,13 +113,15 @@ def main():
                 ]
                 if nan_cols:
                     logger.warning(
-                        f"Metadata contains null/NaN values in {len(nan_cols)} feature columns: {nan_cols}"
+                        f"Metadata contains null/NaN values in "
+                        f"{len(nan_cols)} feature columns: {nan_cols}"
                     )
         elif scaled_metadata is not None and getattr(scaled_metadata, "size", 0) > 0:
             if np.isnan(scaled_metadata).any():
                 nan_indices = np.where(np.isnan(scaled_metadata).any(axis=0))[0]
                 logger.warning(
-                    f"Metadata contains NaN values in {len(nan_indices)} feature columns."
+                    f"Metadata contains NaN values in "
+                    f"{len(nan_indices)} feature columns."
                 )
                 logger.warning(f"NaN indices: {nan_indices.tolist()}")
 
@@ -151,11 +154,35 @@ def main():
 
         logger.info("All model configurations are valid. Starting training...")
 
+        # Determine stopword status and output filenames ahead of training
+        is_stemmed = "stemmed" in dataset_name.lower() or "stemmed" in exp_name.lower()
+        if is_stemmed:
+            stopword_status = "stemmed"
+        elif args.remove_rep_stopwords:
+            stopword_status = "remove_rep_stopwords"
+        else:
+            stopword_status = "keep_rep_stopwords"
+
+        seeds_str = (
+            "_".join(str(s) for s in random_seeds)
+            if len(random_seeds) > 1
+            else str(primary_random_state)
+        )
+        tag = stopword_status
+        if tag in exp_name:
+            fn_base = exp_name
+        else:
+            fn_base = f"{exp_name}_{tag}"
+        results_filename = f"{fn_base}-{file_timestamp}-{seeds_str}"
+        manifest_filename = f"{results_filename}_manifest.json"
+        relative_manifest_path = f"logs/manifests/{manifest_filename}"
+
         baseline_config = next((m for m in models_config if m.get("is_baseline")), None)
         other_models = [m for m in models_config if m != baseline_config]
 
         results = []
         qualitative_dfs = []
+        run_manifests = []
 
         for seed in random_seeds:
             logger.info(f"--- Running Seed: {seed} ---")
@@ -166,51 +193,88 @@ def main():
                 b_id: str = baseline_config.get("id", "")
                 logger.info(f"Running Baseline Model: {b_id} (seed {seed})")
 
-                baseline_model = models.create_topic_model_instance(
-                    baseline_config,
-                    scaled_metadata,
-                    seed,
-                    remove_rep_stopwords=args.remove_rep_stopwords,
-                )
+                try:
+                    baseline_model = models.create_topic_model_instance(
+                        baseline_config,
+                        scaled_metadata,
+                        seed,
+                        remove_rep_stopwords=args.remove_rep_stopwords,
+                    )
 
-                metrics, trained_model = training.train_and_evaluate(
-                    topic_model=baseline_model,
-                    model_id=b_id,
-                    text=text,
-                    embeddings=embeddings,
-                    config=config,
-                    scaled_metadata=scaled_metadata,
-                )
+                    metrics, trained_model = training.train_and_evaluate(
+                        topic_model=baseline_model,
+                        model_id=b_id,
+                        text=text,
+                        embeddings=embeddings,
+                        config=config,
+                        scaled_metadata=scaled_metadata,
+                    )
 
-                clustering_algo = baseline_config.get("clustering", {}).get(
-                    "type", baseline_config.get("type", "baseline")
-                )
-                dim_red_algo = baseline_config.get("dimensionality_reduction", {}).get(
-                    "type", "umap"
-                )
+                    clustering_algo = baseline_config.get("clustering", {}).get(
+                        "type", baseline_config.get("type", "baseline")
+                    )
+                    dim_red_config = baseline_config.get("dimensionality_reduction", {})
+                    dim_red_algo = dim_red_config.get("type", "umap")
 
-                run_metadata = {
-                    "experiment_id": exp_name,
-                    "random_state": seed,
-                    "clustering_algo": clustering_algo,
-                    "dim_red_algo": dim_red_algo,
-                    "n_observations": n_observations,
-                    "timestamp": start_timestamp,
-                    "file_timestamp": file_timestamp,
-                    "dataset_name": dataset_name,
-                }
-                metrics.update(run_metadata)
-                results.append(metrics)
+                    run_metadata = {
+                        "experiment_id": exp_name,
+                        "random_state": seed,
+                        "clustering_algo": clustering_algo,
+                        "dim_red_algo": dim_red_algo,
+                        "n_observations": n_observations,
+                        "timestamp": start_timestamp,
+                        "file_timestamp": file_timestamp,
+                        "dataset_name": dataset_name,
+                        "stopword_removal": stopword_status,
+                    }
+                    metrics.update(run_metadata)
 
-                qual_df = utils.extract_qualitative_data(
-                    trained_model, b_id, run_metadata
-                )
-                qualitative_dfs.append(qual_df)
+                    # Collect Provenance
+                    provenance = run_provenance.collect_run_provenance(
+                        topic_model=trained_model,
+                        model_config=baseline_config,
+                        run_id=b_id,
+                        run_manifest_path=relative_manifest_path,
+                    )
+                    metrics.update(provenance)
+                    results.append(metrics)
 
-                baseline_n_topics = metrics["n_topics"]
-                logger.info(
-                    f"Baseline found {baseline_n_topics} topics for seed {seed}."
-                )
+                    run_manifests.append(
+                        {
+                            "run_id": b_id,
+                            "model_name": b_id,
+                            "seed": seed,
+                            "status": "success",
+                            "provenance": provenance,
+                            "model_config": baseline_config,
+                        }
+                    )
+
+                    qual_df = utils.extract_qualitative_data(
+                        trained_model, b_id, run_metadata
+                    )
+                    qualitative_dfs.append(qual_df)
+
+                    baseline_n_topics = metrics["n_topics"]
+                    logger.info(
+                        f"Baseline found {baseline_n_topics} topics for seed {seed}."
+                    )
+                except Exception:
+                    tb_str = traceback.format_exc()
+                    logger.error(
+                        f"Failed during runtime of baseline {b_id} "
+                        f"(seed {seed}):\n{tb_str}"
+                    )
+                    run_manifests.append(
+                        {
+                            "run_id": b_id,
+                            "model_name": b_id,
+                            "seed": seed,
+                            "status": "failure",
+                            "error": tb_str,
+                            "model_config": baseline_config,
+                        }
+                    )
 
             # Run Remaining Models
             for model_config in tqdm(
@@ -234,16 +298,6 @@ def main():
                         config=config,
                         scaled_metadata=scaled_metadata,
                     )
-                    is_stemmed = (
-                        "stemmed" in dataset_name.lower()
-                        or "stemmed" in exp_name.lower()
-                    )
-                    if is_stemmed:
-                        stopword_status = "stemmed"
-                    elif args.remove_rep_stopwords:
-                        stopword_status = "remove_rep_stopwords"
-                    else:
-                        stopword_status = "keep_rep_stopwords"
 
                     clustering_algo = model_config.get("clustering", {}).get(
                         "type", model_config.get("type", "tritopic")
@@ -264,7 +318,27 @@ def main():
                         "stopword_removal": stopword_status,
                     }
                     metrics.update(run_metadata)
+
+                    # Collect Provenance
+                    provenance = run_provenance.collect_run_provenance(
+                        topic_model=trained_model,
+                        model_config=model_config,
+                        run_id=m_id,
+                        run_manifest_path=relative_manifest_path,
+                    )
+                    metrics.update(provenance)
                     results.append(metrics)
+
+                    run_manifests.append(
+                        {
+                            "run_id": m_id,
+                            "model_name": m_id,
+                            "seed": seed,
+                            "status": "success",
+                            "provenance": provenance,
+                            "model_config": model_config,
+                        }
+                    )
 
                     qual_df = utils.extract_qualitative_data(
                         trained_model, m_id, run_metadata
@@ -281,21 +355,58 @@ def main():
                             "that cannot support it with the given data."
                         )
                     logger.error(f"{err_msg}\n{tb_str}")
+                    run_manifests.append(
+                        {
+                            "run_id": m_id,
+                            "model_name": m_id,
+                            "seed": seed,
+                            "status": "failure",
+                            "error": tb_str,
+                            "model_config": model_config,
+                        }
+                    )
                     continue
 
         # Save Results
         results_df = pl.DataFrame(results)
-        seeds_str = (
-            "_".join(str(s) for s in random_seeds)
-            if len(random_seeds) > 1
-            else str(primary_random_state)
+
+        # Reorder columns for clean, consistent CSV schema
+        all_cols = results_df.columns
+        core_stats_cols = [
+            "experiment_id",
+            "random_state",
+            "file_timestamp",
+            "model_name",
+            "dataset_name",
+            "timestamp",
+            "n_observations",
+            "clustering_algo",
+            "dim_red_algo",
+            "duration_seconds",
+            "n_topics",
+            "outliers",
+        ]
+        exp_metrics = []
+        if "experiment" in config:
+            exp_metrics.extend(config["experiment"].get("coherence_metrics", []))
+            exp_metrics.extend(config["experiment"].get("diversity_metrics", []))
+        provenance_cols = run_provenance.PROVENANCE_COLUMNS
+        param_cols = [
+            col
+            for col in all_cols
+            if col not in core_stats_cols
+            and col not in exp_metrics
+            and col not in provenance_cols
+        ]
+        final_order = (
+            [c for c in core_stats_cols if c in all_cols]
+            + [p for p in param_cols if p in all_cols]
+            + [m for m in exp_metrics if m in all_cols]
+            + [pr for pr in provenance_cols if pr in all_cols]
         )
-        tag = stopword_status
-        if tag in exp_name:
-            fn_base = exp_name
-        else:
-            fn_base = f"{exp_name}_{tag}"
-        results_filename = f"{fn_base}-{file_timestamp}-{seeds_str}"
+        final_order += [c for c in all_cols if c not in final_order]
+        results_df = results_df.select(final_order)
+
         results_path = RESULTS_DIR / f"{results_filename}.csv"
         results_df.write_csv(results_path)
 
@@ -312,6 +423,23 @@ def main():
                 json.dump(parsed_json, f, indent=4)
 
             logger.info(f"Qualitative topic data saved at {output_path}")
+
+        # Save Run Manifest
+        manifest_dir = LOG_DIR / "manifests"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = manifest_dir / manifest_filename
+        git_rev, git_dirty = run_provenance.get_git_info()
+        manifest_payload = {
+            "campaign_id": run_provenance.DEFAULT_CAMPAIGN_ID,
+            "experiment_id": exp_name,
+            "file_timestamp": file_timestamp,
+            "code_revision": git_rev,
+            "code_dirty": git_dirty,
+            "dependency_lock_hash": run_provenance.get_dependency_lock_hash(),
+            "runs": run_manifests,
+        }
+        run_provenance.save_run_manifest(manifest_path, manifest_payload)
+        logger.info(f"Run manifest saved at {manifest_path}")
 
         latex_table = make_table.generate_latex_table(results_df)
         table_filename = f"{results_filename}.tex"

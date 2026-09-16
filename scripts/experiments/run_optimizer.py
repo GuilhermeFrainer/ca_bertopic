@@ -16,6 +16,7 @@ import polars as pl
 import src.data as data
 import src.logger_config as logger_config
 import src.make_table as make_table
+import src.run_provenance as run_provenance
 import src.utils as utils
 from src.optimizer import Optimizer
 
@@ -89,9 +90,7 @@ def main():
             random_state = [args.seed]
         elif args.single_seed:
             random_state = (
-                [random_state[0]]
-                if isinstance(random_state, list)
-                else [random_state]
+                [random_state[0]] if isinstance(random_state, list) else [random_state]
             )
 
         primary_random_state = (
@@ -184,6 +183,18 @@ def main():
                 for file in reversed(matching_files):
                     try:
                         df = pl.read_csv(file, infer_schema_length=None)
+                        # Ensure we only resume files belonging to the current campaign
+                        if "campaign_id" in df.columns and len(df) > 0:
+                            if (
+                                df["campaign_id"][0]
+                                != run_provenance.DEFAULT_CAMPAIGN_ID
+                            ):
+                                continue
+                        else:
+                            # Pre-correction legacy run without campaign_id;
+                            # do not resume/append
+                            continue
+
                         if "n_observations" in df.columns and len(df) > 0:
                             if df["n_observations"][0] == target_n_obs:
                                 selected_file = file
@@ -205,8 +216,8 @@ def main():
                     )
                 else:
                     logger.warning(
-                        "No existing results file matching the current dataset size was found. "
-                        "Starting from scratch."
+                        "No existing results file matching the current "
+                        "dataset size was found. Starting from scratch."
                     )
             else:
                 logger.info(
