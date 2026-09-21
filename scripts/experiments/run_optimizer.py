@@ -116,9 +116,10 @@ def main():
 
         # Data loading
         logger.info("Loading and preparing data...")
-        text, embeddings, scaled_metadata = data.load_and_prep_data(
-            config, random_state=primary_random_state
+        prepared = data.load_and_prep_data(
+            config, random_state=primary_random_state, return_prepared=True
         )
+        text, embeddings, scaled_metadata = prepared
 
         # Check for NaNs and warn if found
         if isinstance(scaled_metadata, pl.DataFrame):
@@ -252,6 +253,8 @@ def main():
             random_state=random_state,
             file_timestamp=file_timestamp,
             remove_rep_stopwords=args.remove_rep_stopwords,
+            prepared_data=prepared,
+            assignment_output_dir=PROJECT_ROOT / "output" / "document_assignments",
         )
 
         target_index = args.model - 1 if args.model is not None else None

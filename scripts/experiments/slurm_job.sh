@@ -113,7 +113,7 @@ fi
 RUN_EXIT=$?
 if [ $RUN_EXIT -ne 0 ]; then
     echo "ERROR: Experiment execution failed with exit code $RUN_EXIT" >&2
-    exit $RUN_EXIT
+    # Preserve assignments from successful fits even when later work failed.
 fi
 
 # 6. Sync results back to HOME/slurm
@@ -125,3 +125,4 @@ rsync -a "${JOB_SCRATCH}/tables/" "$HOME/slurm/tables/"
 rsync -a "${JOB_SCRATCH}/models/" "$HOME/slurm/models/"
 
 echo "Job finished at $(date)"
+exit "$RUN_EXIT"

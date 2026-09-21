@@ -21,8 +21,8 @@ import src.logger_config as logger_config
 import src.make_table as make_table
 import src.models as models
 import src.run_provenance as run_provenance
-import src.training as training
 import src.utils as utils
+from src.document_assignments import AssignmentRun
 
 EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
 RESULTS_DIR = PROJECT_ROOT / "results"
@@ -69,6 +69,11 @@ def main():
         dest="remove_rep_stopwords",
         help="Keep English stop words in BERTopic topic representations.",
     )
+    parser.add_argument(
+        "--no-assignment-export",
+        action="store_true",
+        help="Disable document assignments; record disabled status.",
+    )
     args = parser.parse_args()
 
     try:
@@ -100,9 +105,11 @@ def main():
 
         # Data loading using primary_random_state for consistent sampling
         logger.info("Loading and preparing data...")
-        text, embeddings, scaled_metadata = data.load_and_prep_data(
-            config, random_state=primary_random_state
+        prepared = data.load_and_prep_data(
+            config, random_state=primary_random_state, return_prepared=True
         )
+
+        text, embeddings, scaled_metadata = prepared
 
         # Check for NaNs and warn if found
         if isinstance(scaled_metadata, pl.DataFrame):
@@ -193,6 +200,7 @@ def main():
                 b_id: str = baseline_config.get("id", "")
                 logger.info(f"Running Baseline Model: {b_id} (seed {seed})")
 
+                assignment_run = None
                 try:
                     baseline_model = models.create_topic_model_instance(
                         baseline_config,
@@ -201,7 +209,23 @@ def main():
                         remove_rep_stopwords=args.remove_rep_stopwords,
                     )
 
-                    metrics, trained_model = training.train_and_evaluate(
+                    assignment_run = AssignmentRun(
+                        OUTPUT_DIR / "document_assignments",
+                        dataset_name,
+                        prepared,
+                        baseline_config,
+                        {
+                            "model_id": b_id,
+                            "experiment_id": exp_name,
+                            "dataset_name": dataset_name,
+                            "seed": seed,
+                            "stopword_removal": stopword_status,
+                            "file_timestamp": file_timestamp,
+                        },
+                        config,
+                        enabled=not args.no_assignment_export,
+                    )
+                    metrics, trained_model = assignment_run.execute(
                         topic_model=baseline_model,
                         model_id=b_id,
                         text=text,
@@ -227,6 +251,7 @@ def main():
                         "dataset_name": dataset_name,
                         "stopword_removal": stopword_status,
                     }
+                    run_metadata.update(assignment_run.links)
                     metrics.update(run_metadata)
 
                     # Collect Provenance
@@ -245,6 +270,7 @@ def main():
                             "model_name": b_id,
                             "seed": seed,
                             "status": "success",
+                            **assignment_run.links,
                             "provenance": provenance,
                             "model_config": baseline_config,
                         }
@@ -271,6 +297,7 @@ def main():
                             "model_name": b_id,
                             "seed": seed,
                             "status": "failure",
+                            **(assignment_run.links if assignment_run else {}),
                             "error": tb_str,
                             "model_config": baseline_config,
                         }
@@ -281,6 +308,7 @@ def main():
                 other_models, desc=f"Training models (seed {seed})"
             ):
                 m_id = model_config.get("id", "")
+                assignment_run = None
                 try:
                     model_instance = models.create_topic_model_instance(
                         model_config,
@@ -290,7 +318,23 @@ def main():
                         remove_rep_stopwords=args.remove_rep_stopwords,
                     )
 
-                    metrics, trained_model = training.train_and_evaluate(
+                    assignment_run = AssignmentRun(
+                        OUTPUT_DIR / "document_assignments",
+                        dataset_name,
+                        prepared,
+                        model_config,
+                        {
+                            "model_id": m_id,
+                            "experiment_id": exp_name,
+                            "dataset_name": dataset_name,
+                            "seed": seed,
+                            "stopword_removal": stopword_status,
+                            "file_timestamp": file_timestamp,
+                        },
+                        config,
+                        enabled=not args.no_assignment_export,
+                    )
+                    metrics, trained_model = assignment_run.execute(
                         topic_model=model_instance,
                         model_id=m_id,
                         text=text,
@@ -317,6 +361,7 @@ def main():
                         "dataset_name": dataset_name,
                         "stopword_removal": stopword_status,
                     }
+                    run_metadata.update(assignment_run.links)
                     metrics.update(run_metadata)
 
                     # Collect Provenance
@@ -335,6 +380,7 @@ def main():
                             "model_name": m_id,
                             "seed": seed,
                             "status": "success",
+                            **assignment_run.links,
                             "provenance": provenance,
                             "model_config": model_config,
                         }
@@ -361,6 +407,7 @@ def main():
                             "model_name": m_id,
                             "seed": seed,
                             "status": "failure",
+                            **(assignment_run.links if assignment_run else {}),
                             "error": tb_str,
                             "model_config": model_config,
                         }

@@ -16,6 +16,7 @@ renv/*
 
 # Gemini
 .gemini/
+scratch/
 
 # Research directories - keep structure but ignore content
 data/*

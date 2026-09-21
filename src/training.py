@@ -17,6 +17,7 @@ def train_and_evaluate(
     embeddings: np.ndarray,
     config: dict,
     scaled_metadata: Optional[Union[pl.DataFrame, pd.DataFrame, np.ndarray]] = None,
+    after_fit=None,
 ) -> tuple[dict, Any]:
     """
     Fits a pre-instantiated topic model (BERTopic or TriTopic) and calculates
@@ -80,6 +81,9 @@ def train_and_evaluate(
 
     duration = time.time() - start_time
     logger.info(f"[{model_id}] Training finished in {duration:.2f} seconds.")
+
+    if after_fit is not None:
+        after_fit(topic_model, is_tritopic=is_tritopic)
 
     # Build tokenized texts for OCTIS metrics
     if hasattr(topic_model, "vectorizer_model") and hasattr(

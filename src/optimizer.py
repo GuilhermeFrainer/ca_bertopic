@@ -11,6 +11,7 @@ import polars as pl
 import src.models as models
 import src.run_provenance as run_provenance
 import src.training as training
+from src.document_assignments import AssignmentRun
 
 
 def collect_hyperparameters(
@@ -157,6 +158,8 @@ class Optimizer:
         random_state: int,
         file_timestamp: str,
         remove_rep_stopwords: bool = False,
+        prepared_data=None,
+        assignment_output_dir=None,
     ):
         """
         Initializes the Optimizer.
@@ -173,6 +176,9 @@ class Optimizer:
             file_timestamp: The timestamp used in the results filename.
             remove_rep_stopwords: If True, removes English stop words from
                 c-TF-IDF topic representations using CountVectorizer.
+            prepared_data: Source-aligned loader result. Required for assignment
+                export; legacy array-only callers retain their existing behavior.
+            assignment_output_dir: Root of the per-execution assignment subtree.
         """
         self.texts = texts
         self.embeddings = embeddings
@@ -183,6 +189,15 @@ class Optimizer:
         self.random_state = random_state
         self.file_timestamp = file_timestamp
         self.remove_rep_stopwords = remove_rep_stopwords
+        self.prepared_data = prepared_data
+        self.assignment_output_dir = (
+            pathlib.Path(assignment_output_dir)
+            if assignment_output_dir is not None
+            else run_provenance.PROJECT_ROOT / "output" / "document_assignments"
+        )
+        if prepared_data is not None:
+            # Use the exact materialized inputs whose identities were captured.
+            self.texts, self.embeddings, self.scaled_metadata = prepared_data
         self.results = []
         self.qualitative_results = []
         self.run_manifests = []
@@ -202,6 +217,12 @@ class Optimizer:
         import datetime
 
         import src.utils as utils
+
+        if self.prepared_data is None:
+            self.logger.warning(
+                "Assignment export unavailable: Optimizer received no prepared_data. "
+                "Use run_optimizer.py or supply source-aligned prepared inputs."
+            )
 
         hyperparameter_combinations = generate_hyperparameter_combinations(
             self.model_config
@@ -293,8 +314,36 @@ class Optimizer:
                 )
 
                 # 2. Train and Evaluate
+                assignment_run = None
                 try:
-                    metrics, trained_model = training.train_and_evaluate(
+                    train = training.train_and_evaluate
+                    if self.prepared_data is not None:
+                        regime = (
+                            "stemmed"
+                            if "stemmed" in self.experiment_id.lower()
+                            else "remove_rep_stopwords"
+                            if self.remove_rep_stopwords
+                            else "keep_rep_stopwords"
+                        )
+                        assignment_run = AssignmentRun(
+                            self.assignment_output_dir,
+                            dataset_name,
+                            self.prepared_data,
+                            model_config,
+                            {
+                                "model_id": run_id,
+                                "experiment_id": self.experiment_id,
+                                "dataset_name": dataset_name,
+                                "seed": seed,
+                                "random_state": seed,
+                                "stopword_removal": regime,
+                                "file_timestamp": self.file_timestamp,
+                                **cleaned_varied_params,
+                            },
+                            self.experiment_config,
+                        )
+                        train = assignment_run.execute
+                    metrics, trained_model = train(
                         topic_model=topic_model,
                         model_id=run_id,
                         text=self.texts,
@@ -324,6 +373,8 @@ class Optimizer:
                         "file_timestamp": self.file_timestamp,
                         "dataset_name": dataset_name,
                     }
+                    if assignment_run is not None:
+                        run_metadata.update(assignment_run.links)
                     metrics.update(run_metadata)
                     metrics.update(cleaned_varied_params)
 
@@ -333,6 +384,11 @@ class Optimizer:
                         model_config=model_config,
                         run_id=run_id,
                         run_status="success",
+                        run_manifest_path=(
+                            assignment_run.links["assignment_manifest_path"]
+                            if assignment_run is not None
+                            else None
+                        ),
                     )
                     metrics.update(provenance)
                     self.results.append(metrics)
@@ -343,6 +399,7 @@ class Optimizer:
                             "model_name": run_id,
                             "seed": seed,
                             "status": "success",
+                            **(assignment_run.links if assignment_run else {}),
                             "provenance": provenance,
                             "varied_params": cleaned_varied_params,
                             "model_config": model_config,
@@ -369,6 +426,7 @@ class Optimizer:
                             "model_name": run_id,
                             "seed": seed,
                             "status": "failure",
+                            **(assignment_run.links if assignment_run else {}),
                             "error": str(e),
                             "varied_params": cleaned_varied_params,
                             "model_config": model_config,

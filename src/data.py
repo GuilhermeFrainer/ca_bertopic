@@ -1,13 +1,28 @@
 import logging
+from dataclasses import dataclass
 from typing import Optional, Union
 
 import numpy as np
 import polars as pl
 
 
+@dataclass
+class PreparedData:
+    """Training inputs and identity captured in the same materialization."""
+
+    text: list[str]
+    embeddings: np.ndarray
+    metadata: pl.DataFrame
+    documents: pl.DataFrame
+    provenance: dict
+
+    def __iter__(self):
+        return iter((self.text, self.embeddings, self.metadata))
+
+
 def load_and_prep_data(
-    config: dict, random_state: int
-) -> tuple[list[str], np.ndarray, pl.DataFrame]:
+    config: dict, random_state: int, *, return_prepared: bool = False
+) -> tuple[list[str], np.ndarray, pl.DataFrame] | PreparedData:
     """
     Loads parquet, samples data, and processes metadata.
     """
@@ -39,6 +54,28 @@ def load_and_prep_data(
 
     # Lazy load
     full_lf = pl.scan_parquet(data_path)
+    if return_prepared:
+        from src.document_assignments import file_checksum
+
+        source_checksum = file_checksum(data_path)
+        source_identity_stats = {}
+        for column in ("index", "id"):
+            if column in full_lf.collect_schema().names():
+                unique, nulls, count = (
+                    full_lf.select(
+                        pl.col(column).n_unique().alias("unique"),
+                        pl.col(column).null_count().alias("nulls"),
+                        pl.len().alias("count"),
+                    )
+                    .collect()
+                    .row(0)
+                )
+                source_identity_stats[column] = {
+                    "unique_non_null": unique == count and nulls == 0,
+                    "distinct_count": unique,
+                    "null_count": nulls,
+                }
+        full_lf = full_lf.with_row_index("source_row_ordinal")
 
     # Calculate total length before filtering
     total_len = full_lf.select(pl.len()).collect().item()
@@ -74,6 +111,13 @@ def load_and_prep_data(
 
     # Deduplicate required columns
     relevant_cols = list(set([text_col, embedding_col] + cov_cols))
+    if return_prepared:
+        identity_cols = [
+            c
+            for c in ("source_row_ordinal", "index", "id")
+            if c in full_lf.collect_schema().names()
+        ]
+        relevant_cols = list(dict.fromkeys(relevant_cols + identity_cols))
 
     try:
         df = lf.select(relevant_cols).collect()
@@ -90,6 +134,60 @@ def load_and_prep_data(
     embeddings = df[embedding_col].to_numpy()
 
     processed_metadata = process_metadata(df, covariates_config)
+
+    if return_prepared:
+        if file_checksum(data_path) != source_checksum:
+            raise ValueError("Source dataset changed while preparing inputs")
+        documents = df.select(identity_cols).with_row_index("input_position")
+        documents = documents.with_columns(
+            pl.col("source_row_ordinal")
+            .cast(pl.String)
+            .map_elements(
+                lambda row: f"{source_checksum}:{row}", return_dtype=pl.String
+            )
+            .alias("source_document_key")
+        )
+        numerical = (
+            covariates_config
+            if isinstance(covariates_config, list)
+            else covariates_config.get("numerical", [])
+        )
+        import hashlib
+        import json
+
+        provenance = {
+            "dataset_path": str(Path(data_path).resolve()),
+            "dataset_sha256": source_checksum,
+            "source_key_scheme": "sha256:physical_zero_based_row_ordinal",
+            "source_identity_columns": source_identity_stats,
+            "source_row_count": total_len,
+            "selected_row_count": len(df),
+            "text_column": text_col,
+            "embedding_column": embedding_col,
+            "sample_size": sample_size,
+            "sampling_seed": random_state,
+            "sampling_replace": False,
+            "filter_policy": "selected text column: strip != empty; null excluded",
+            "ordered_keys_sha256": hashlib.sha256(
+                json.dumps(
+                    documents["source_document_key"].to_list(), separators=(",", ":")
+                ).encode()
+            ).hexdigest(),
+            "covariates": covariates_config,
+            "raw_covariate_types": {c: str(df.schema[c]) for c in cov_cols},
+            "feature_order": processed_metadata.columns,
+            "numeric_min_max": {c: [df[c].min(), df[c].max()] for c in numerical},
+            "encoding": (
+                "src.data.process_metadata: numeric min-max (constant=0, NaN=0), "
+                "categorical to_dummies(drop_first=False), binary float; "
+                "concatenate in that order"
+            ),
+            "snapshot_retention": (
+                "Retain this exact source parquet once alongside exports; "
+                "path/checksum do not reconstruct an overwritten file."
+            ),
+        }
+        return PreparedData(text, embeddings, processed_metadata, documents, provenance)
 
     return text, embeddings, processed_metadata
 
