@@ -118,4 +118,42 @@ def train_and_evaluate(
     for dm in config["experiment"]["diversity_metrics"]:
         metrics[dm] = evaluation.compute_diversity(dm, model_output=octis_output)
 
+    for metric in (
+        config["experiment"]["coherence_metrics"]
+        + config["experiment"]["diversity_metrics"]
+    ):
+        if not np.isfinite(metrics[metric]):
+            logger.warning(
+                "[%s] Evaluation metric %s returned %s after successful training. "
+                "Keeping the score and continuing; this run has incomplete metrics.",
+                model_id,
+                metric,
+                metrics[metric],
+            )
+    if any(
+        not np.isfinite(metrics[metric])
+        for metric in config["experiment"]["coherence_metrics"]
+    ):
+        vocabulary = {word for document in tokenized_texts for word in document}
+        topics = octis_output.get("topics", [])
+        missing = sorted({word for topic in topics for word in topic} - vocabulary)
+        short_topics = [
+            index
+            for index, topic in enumerate(topics)
+            if len(set(topic) & vocabulary) < 2
+        ]
+        logger.warning(
+            "[%s] Coherence diagnostics: %d tokenized documents; "
+            "%d keywords absent from the evaluation vocabulary (examples: %s); "
+            "%d topics with fewer than two distinct in-vocabulary keywords "
+            "(zero-based evaluation topic indices: %s). "
+            "Check keyword/tokenizer alignment, including multiword phrases.",
+            model_id,
+            len(tokenized_texts),
+            len(missing),
+            missing[:10],
+            len(short_topics),
+            short_topics[:20],
+        )
+
     return metrics, topic_model
