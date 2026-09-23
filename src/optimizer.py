@@ -54,6 +54,7 @@ def collect_hyperparameters(
                     "view_affinities",
                     "weights",
                     "metric",
+                    "keyword_ngram_range",
                 )
                 and isinstance(value, list)
                 and (len(value) == 0 or not isinstance(value[0], (list, tuple)))
@@ -88,6 +89,13 @@ def collect_hyperparameters(
     for key in sorted(params.keys()):
         value = params[key]
         path = ["params", key]
+        # A flat n-gram pair is one setting; nested pairs remain a search grid.
+        if (
+            key == "keyword_ngram_range"
+            and isinstance(value, list)
+            and (not value or not isinstance(value[0], (list, tuple)))
+        ):
+            continue
         if isinstance(value, list) and len(value) > 1:
             param_paths.append(path)
             param_values.append(value)

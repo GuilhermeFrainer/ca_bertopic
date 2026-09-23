@@ -10,6 +10,21 @@ from sklearn.feature_extraction.text import CountVectorizer
 from src.mvc_wrapper import MVCWrapper
 
 
+def _pop_keyword_ngram_range(params: dict) -> tuple[int, int]:
+    """Read our keyword-only option before passing params to TriTopicConfig."""
+    value = params.pop("keyword_ngram_range", (1, 2))
+    if (
+        not isinstance(value, (list, tuple))
+        or len(value) != 2
+        or any(type(bound) is not int for bound in value)
+        or not 1 <= value[0] <= value[1]
+    ):
+        raise ValueError(
+            "keyword_ngram_range must be two positive integers with min <= max"
+        )
+    return tuple(value)
+
+
 def create_topic_model_instance(
     model_config: dict,
     scaled_metadata: Optional[Union[pl.DataFrame, np.ndarray]],
@@ -71,6 +86,7 @@ def create_fast_tritopic_instance(
     from tritopic import TriTopicConfig
 
     params = copy.deepcopy(model_config.get("params") or {})
+    keyword_ngram_range = _pop_keyword_ngram_range(params)
 
     if "random_state" not in params:
         params["random_state"] = random_state
@@ -92,7 +108,10 @@ def create_fast_tritopic_instance(
         params["use_metadata_view"] = True
 
     config_obj = TriTopicConfig(**params)
-    return FastTriTopic(config=config_obj, n_topics=n_topics)
+    model = FastTriTopic(config=config_obj, n_topics=n_topics)
+    # Upstream config does not expose this keyword extractor option.
+    model._keyword_extractor.ngram_range = keyword_ngram_range
+    return model
 
 
 def create_tritopic_instance(
@@ -107,6 +126,7 @@ def create_tritopic_instance(
     from tritopic import TriTopic, TriTopicConfig
 
     params = copy.deepcopy(model_config.get("params") or {})
+    keyword_ngram_range = _pop_keyword_ngram_range(params)
 
     if "random_state" not in params:
         params["random_state"] = random_state
@@ -128,7 +148,10 @@ def create_tritopic_instance(
         params["use_metadata_view"] = True
 
     config_obj = TriTopicConfig(**params)
-    return TriTopic(config=config_obj, n_topics=n_topics)
+    model = TriTopic(config=config_obj, n_topics=n_topics)
+    # Keep graph n-grams unchanged; this only controls topic keywords.
+    model._keyword_extractor.ngram_range = keyword_ngram_range
+    return model
 
 
 def create_bertopic_instance(
