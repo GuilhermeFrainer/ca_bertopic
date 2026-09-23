@@ -20,4 +20,8 @@ the upstream `(1, 2)` default. Archived experiments and existing results are not
 rewritten. New results record the option in their resolved configuration.
 
 Unigram extraction aligns keyword length with the BERTopic experiment defaults.
-It does not by itself align coherence tokenization or guarantee finite scores.
+Coherence evaluation for both TriTopic implementations uses the fitted keyword
+vectorizer's analyzer, matching its punctuation, stopword, and n-gram rules.
+Methods without a vectorizer retain lowercase whitespace tokenization with a
+warning. BERTopic variants continue to use their own `vectorizer_model` analyzer.
+Matching tokenization does not guarantee finite scores for every topic.

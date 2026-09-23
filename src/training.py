@@ -86,7 +86,25 @@ def train_and_evaluate(
         after_fit(topic_model, is_tritopic=is_tritopic)
 
     # Build tokenized texts for OCTIS metrics
-    if hasattr(topic_model, "vectorizer_model") and hasattr(
+    if is_tritopic:
+        # FastTriTopic inherits this extractor. Use the vectorizer fitted during
+        # keyword extraction so punctuation, stopwords and n-grams match.
+        extractor = getattr(topic_model, "_keyword_extractor", None)
+        vectorizer = getattr(extractor, "_vectorizer", None)
+        if callable(getattr(vectorizer, "build_analyzer", None)):
+            analyzer = vectorizer.build_analyzer()
+            tokenized_texts = [analyzer(t) for t in text]
+        else:
+            # Some extraction methods (e.g. KeyBERT) have no fitted vectorizer.
+            if config["experiment"]["coherence_metrics"]:
+                logger.warning(
+                    "[%s] TriTopic keyword extractor has no vectorizer analyzer; "
+                    "coherence evaluation is falling back to lowercase whitespace "
+                    "tokenization, which may not match the topic keywords.",
+                    model_id,
+                )
+            tokenized_texts = [t.lower().split() for t in text]
+    elif hasattr(topic_model, "vectorizer_model") and hasattr(
         topic_model.vectorizer_model, "build_analyzer"
     ):
         analyzer = topic_model.vectorizer_model.build_analyzer()
