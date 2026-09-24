@@ -50,6 +50,15 @@ from src.make_table import (
     style_demsar_delta_dataframe,
     style_demsar_pairwise_matrix,
 )
+from src.model_catalog import (
+    annotate_coverage,
+    annotate_models,
+    configuration_models,
+    filter_catalog,
+    kmeans_algorithms,
+    load_catalog,
+    sort_catalog,
+)
 from src.results_analysis import (
     calculate_hdbscan_noise_coverage,
     compute_demsar_all_vs_all,
@@ -243,6 +252,7 @@ def render_table_export_bar(
     key_prefix: str,
 ):
     """Renders export buttons (LaTeX, CSV, Markdown) and a Save to tables/ button."""
+    file_slug += "_" + st.session_state.get("catalog_scope_slug", "all")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.download_button(
@@ -295,7 +305,7 @@ def render_table_export_bar(
 
 @st.cache_data
 def get_cached_best_models(
-    _df: pl.DataFrame,
+    df: pl.DataFrame,
     dataset: str,
     condition: str,
     exclude_clustering: tuple[str, ...] | None,
@@ -305,12 +315,12 @@ def get_cached_best_models(
     merge_info0: bool,
     suppress_nulls: bool,
 ):
-    f_df = _df
+    f_df = df
     if condition != "all" and "condition" in f_df.columns:
         f_df = f_df.filter(pl.col("condition") == condition)
 
-    ex_clust = list(exclude_clustering) if exclude_clustering else None
-    ex_dim = list(exclude_dim_red) if exclude_dim_red else None
+    ex_clust = list(exclude_clustering or ())
+    ex_dim = list(exclude_dim_red or ())
 
     return find_best_models(
         f_df,
@@ -326,7 +336,7 @@ def get_cached_best_models(
 
 @st.cache_data
 def get_cached_demsar_all_vs_all(
-    _df: pl.DataFrame,
+    df: pl.DataFrame,
     datasets: tuple[str, ...],
     condition: str,
     metrics: tuple[str, ...],
@@ -335,14 +345,14 @@ def get_cached_demsar_all_vs_all(
     exclude_dim_red: tuple[str, ...] | None,
     merge_info0: bool,
 ):
-    f_df = _df
+    f_df = df
     if condition != "all" and "condition" in f_df.columns:
         f_df = f_df.filter(pl.col("condition") == condition)
 
     filter_ds = None if "all" in [d.lower() for d in datasets] else list(datasets)
 
-    ex_clust = list(exclude_clustering) if exclude_clustering else None
-    ex_dim = list(exclude_dim_red) if exclude_dim_red else None
+    ex_clust = list(exclude_clustering or ())
+    ex_dim = list(exclude_dim_red or ())
 
     return compute_demsar_all_vs_all(
         df=f_df,
@@ -357,7 +367,7 @@ def get_cached_demsar_all_vs_all(
 
 @st.cache_data
 def get_cached_demsar_delta(
-    _df: pl.DataFrame,
+    df: pl.DataFrame,
     datasets: tuple[str, ...],
     condition: str,
     alpha: float,
@@ -366,13 +376,13 @@ def get_cached_demsar_delta(
     exclude_dim_red: tuple[str, ...] | None,
     merge_info0: bool,
 ):
-    df_std = _df.filter(pl.col("condition") == "remove_rep_stopwords")
-    df_alt = _df.filter(pl.col("condition") == condition)
+    df_std = df.filter(pl.col("condition") == "remove_rep_stopwords")
+    df_alt = df.filter(pl.col("condition") == condition)
 
     filter_ds = None if "all" in [d.lower() for d in datasets] else list(datasets)
 
-    ex_clust = list(exclude_clustering) if exclude_clustering else None
-    ex_dim = list(exclude_dim_red) if exclude_dim_red else None
+    ex_clust = list(exclude_clustering or ())
+    ex_dim = list(exclude_dim_red or ())
 
     return compute_demsar_delta_table(
         df_default=df_std,
@@ -388,17 +398,17 @@ def get_cached_demsar_delta(
 
 @st.cache_data
 def get_cached_stopword_impact(
-    _df: pl.DataFrame,
+    df: pl.DataFrame,
     dataset: str,
     exclude_clustering: tuple[str, ...] | None,
     exclude_dim_red: tuple[str, ...] | None,
     merge_info0: bool,
 ):
-    df_rem = _df.filter(pl.col("condition") == "remove_rep_stopwords")
-    df_keep = _df.filter(pl.col("condition") == "keep_rep_stopwords")
+    df_rem = df.filter(pl.col("condition") == "remove_rep_stopwords")
+    df_keep = df.filter(pl.col("condition") == "keep_rep_stopwords")
 
-    ex_clust = list(exclude_clustering) if exclude_clustering else None
-    ex_dim = list(exclude_dim_red) if exclude_dim_red else None
+    ex_clust = list(exclude_clustering or ())
+    ex_dim = list(exclude_dim_red or ())
 
     return compute_stopword_impact(
         df_remove_rep_stopwords=df_rem,
@@ -412,12 +422,12 @@ def get_cached_stopword_impact(
 
 @st.cache_data
 def get_cached_noise_coverage(
-    _df: pl.DataFrame,
+    df: pl.DataFrame,
     dataset: str | None,
     condition: str,
     merge_info0: bool,
 ):
-    f_df = _df
+    f_df = df
     if condition != "all" and "condition" in f_df.columns:
         f_df = f_df.filter(pl.col("condition") == condition)
 
@@ -448,6 +458,70 @@ def main():
 
     if df.is_empty():
         st.warning(f"No result files found in `{results_dir}/`.")
+
+    # Catalog scope is shared by every tab, independent of tab-specific filters.
+    try:
+        catalog = load_catalog()
+    except (ValueError, OSError) as exc:
+        st.error(f"Cannot load model catalog: {exc}")
+        return
+    all_results = annotate_models(df, catalog)
+    qual_df = annotate_models(qual_df, catalog)
+    st.sidebar.header("Experiment Organization")
+    priority = st.sidebar.selectbox(
+        "Priority", ["primary", "secondary", "all", "unclassified"],
+        format_func=str.title, key="catalog_priority",
+    )
+    families = st.sidebar.multiselect(
+        "Family", ["hdbscan", "spectral", "k_means", "external"], key="catalog_families"
+    )
+    roles = st.sidebar.multiselect(
+        "Role", ["baseline", "ablation", "external_baseline"], key="catalog_roles"
+    )
+    baselines = st.sidebar.multiselect(
+        "Reference baseline", [mid for mid, entry in catalog.items() if entry["role"] == "baseline"],
+        format_func=lambda mid: catalog[mid]["label"], key="catalog_baselines",
+        help="Shows each selected baseline together with its ablations, within the selected priority.",
+    )
+    include_external = st.sidebar.checkbox(
+        "Include external baselines alongside families", key="catalog_external"
+    )
+    scope = dict(priority=priority, families=families, roles=roles,
+                 baselines=baselines, include_external=include_external)
+    scope_slug = "_".join([priority] + sorted(families) + sorted(roles) + sorted(baselines)
+                          + (["with_external"] if include_external else []))
+    st.session_state["catalog_scope_slug"] = scope_slug
+    df = filter_catalog(all_results, **scope)
+    qual_df = filter_catalog(qual_df, **scope)
+    st.caption(f"Catalog scope: {scope_slug}. {df.height} of {all_results.height} result rows selected.")
+    unknown_count = all_results.filter(pl.col("priority") == "unclassified").height
+    if unknown_count:
+        st.sidebar.warning(f"{unknown_count} result rows are unclassified. Select All or Unclassified to inspect them.")
+
+    # Show planned catalog members even when they have no configuration or results.
+    discovered_catalog_exps = scan_experiment_configs(PROJECT_ROOT / "experiments")
+    config_ids = configuration_models(discovered_catalog_exps)
+    config_frame = annotate_models(pl.DataFrame(
+        {"model_id": list(config_ids.values())}, schema={"model_id": pl.String}
+    ), catalog)
+    configured = set(config_frame["catalog_id"].to_list())
+    observed = set(all_results["catalog_id"].to_list())
+    catalog_frame = annotate_models(pl.DataFrame({"model_id": list(catalog)}), catalog)
+    catalog_frame = filter_catalog(catalog_frame, **scope).with_columns(
+        pl.col("catalog_id").is_in(configured).alias("configuration_available"),
+        pl.col("catalog_id").is_in(observed).alias("results_available"),
+    )
+    catalog_frame = sort_catalog(catalog_frame)
+    with st.expander("Model catalog and availability"):
+        st.caption("Availability across active configurations and loaded results; independent of dataset filters.")
+        st.dataframe(catalog_frame, hide_index=True, width="stretch")
+    if df.is_empty():
+        st.info("No results in this catalog scope. Configuration availability is shown above.")
+        coverage = build_coverage_matrix(discovered_catalog_exps, all_results)
+        if not coverage.is_empty():
+            coverage = filter_catalog(annotate_coverage(coverage, discovered_catalog_exps, catalog), **scope)
+            st.subheader("Experiment Coverage")
+            st.dataframe(sort_catalog(coverage, "experiment_name"), hide_index=True, width="stretch")
         return
 
     # 2. Sidebar Filters
@@ -467,6 +541,9 @@ def main():
     for key in filter_config:
         if key not in st.session_state:
             st.session_state[key] = []
+        elif key in df.columns:
+            available = set(df[key].unique().to_list())
+            st.session_state[key] = [value for value in st.session_state[key] if value in available]
 
     def get_filtered_df(exclude_key: Optional[str] = None) -> pl.DataFrame:
         """
@@ -830,7 +907,7 @@ def main():
                 st.download_button(
                     label="📥 Download Aggregated Table (.csv)",
                     data=disp_pandas.to_csv(index=False),
-                    file_name="aggregated_results.csv",
+                    file_name=f"aggregated_results_{scope_slug}.csv",
                     mime="text/csv",
                     key="agg_dl_csv",
                     use_container_width=True,
@@ -839,7 +916,7 @@ def main():
                 st.download_button(
                     label="📥 Download Aggregated Table (.md)",
                     data=disp_pandas.to_markdown(index=False),
-                    file_name="aggregated_results.md",
+                    file_name=f"aggregated_results_{scope_slug}.md",
                     mime="text/markdown",
                     key="agg_dl_md",
                     use_container_width=True,
@@ -1162,11 +1239,25 @@ def main():
             include_archived=include_archived,
         )
 
-        cov_matrix = build_coverage_matrix(discovered_exps, df)
+        cov_matrix = build_coverage_matrix(discovered_exps, all_results)
+        if not cov_matrix.is_empty():
+            cov_matrix = filter_catalog(annotate_coverage(cov_matrix, discovered_exps, catalog), **scope)
+            cov_matrix = sort_catalog(cov_matrix, "experiment_name")
 
         if cov_matrix.is_empty():
-            st.info("No experiment configurations found.")
+            st.info("No experiment configurations match the catalog scope.")
         else:
+            with st.expander("Completion by priority"):
+                st.dataframe(
+                    cov_matrix.group_by("priority").agg(
+                        pl.len().alias("experiments"),
+                        (pl.col("coverage_status") == "Fully Completed")
+                        .sum()
+                        .alias("fully_completed"),
+                    ).sort("priority"),
+                    hide_index=True,
+                    width="stretch",
+                )
             # Apply coverage filters
             filtered_matrix = cov_matrix
 
@@ -1367,6 +1458,7 @@ def main():
 
             # Prepare Display Table
             display_cols = [
+                "family", "role", "priority", "baseline_id",
                 "dataset_label",
                 "experiment_name",
                 "keep_rep_stopwords",
@@ -1584,10 +1676,10 @@ def main():
                 bm_opt1, bm_opt2, bm_opt3, bm_opt4 = st.columns(4)
                 with bm_opt1:
                     ex_clust = st.checkbox(
-                        "Exclude K-Means", value=True, key="bm_ex_kmeans"
+                        "Exclude K-Means", value=False, key="bm_ex_kmeans"
                     )
                 with bm_opt2:
-                    ex_pca = st.checkbox("Exclude PCA", value=True, key="bm_ex_pca")
+                    ex_pca = st.checkbox("Exclude PCA", value=False, key="bm_ex_pca")
                 with bm_opt3:
                     merge_info0 = st.checkbox(
                         "Merge info0 variants",
@@ -1599,11 +1691,11 @@ def main():
                         "Suppress Nulls", value=False, key="bm_suppress_nulls"
                     )
 
-            ex_clust_list = ("kmeans", "spherical_kmeans") if ex_clust else None
+            ex_clust_list = kmeans_algorithms(df) if ex_clust else None
             ex_dim_list = ("pca",) if ex_pca else None
 
             bm_results = get_cached_best_models(
-                _df=df,
+                df=df,
                 dataset=bm_dataset,
                 condition=bm_cond,
                 exclude_clustering=ex_clust_list,
@@ -1723,10 +1815,10 @@ def main():
                 da_opt1, da_opt2, da_opt3, da_opt4 = st.columns(4)
                 with da_opt1:
                     da_ex_kmeans = st.checkbox(
-                        "Exclude K-Means", value=True, key="da_ex_kmeans"
+                        "Exclude K-Means", value=False, key="da_ex_kmeans"
                     )
                 with da_opt2:
-                    da_ex_pca = st.checkbox("Exclude PCA", value=True, key="da_ex_pca")
+                    da_ex_pca = st.checkbox("Exclude PCA", value=False, key="da_ex_pca")
                 with da_opt3:
                     da_merge_info0 = st.checkbox(
                         "Merge info0 variants",
@@ -1748,11 +1840,11 @@ def main():
                     "critical differences."
                 )
             else:
-                ex_clust_list = ("kmeans", "spherical_kmeans") if da_ex_kmeans else None
+                ex_clust_list = kmeans_algorithms(df) if da_ex_kmeans else None
                 ex_dim_list = ("pca",) if da_ex_pca else None
 
                 da_results = get_cached_demsar_all_vs_all(
-                    _df=df,
+                    df=df,
                     datasets=tuple(da_datasets),
                     condition=da_cond,
                     metrics=tuple(metric_options),
@@ -1882,10 +1974,10 @@ def main():
                 dd_opt1, dd_opt2, dd_opt3 = st.columns(3)
                 with dd_opt1:
                     dd_ex_kmeans = st.checkbox(
-                        "Exclude K-Means", value=True, key="dd_ex_kmeans"
+                        "Exclude K-Means", value=False, key="dd_ex_kmeans"
                     )
                 with dd_opt2:
-                    dd_ex_pca = st.checkbox("Exclude PCA", value=True, key="dd_ex_pca")
+                    dd_ex_pca = st.checkbox("Exclude PCA", value=False, key="dd_ex_pca")
                 with dd_opt3:
                     dd_merge_info0 = st.checkbox(
                         "Merge info0 variants",
@@ -1899,11 +1991,11 @@ def main():
                     "Wilcoxon tests across datasets."
                 )
             else:
-                ex_clust_list = ("kmeans", "spherical_kmeans") if dd_ex_kmeans else None
+                ex_clust_list = kmeans_algorithms(df) if dd_ex_kmeans else None
                 ex_dim_list = ("pca",) if dd_ex_pca else None
 
                 delta_results = get_cached_demsar_delta(
-                    _df=df,
+                    df=df,
                     datasets=tuple(dd_datasets),
                     condition=dd_cond,
                     alpha=dd_alpha,
@@ -1993,7 +2085,7 @@ def main():
                 )
             with sw_c2:
                 sw_ex_kmeans = st.checkbox(
-                    "Exclude K-Means", value=True, key="sw_ex_kmeans"
+                    "Exclude K-Means", value=False, key="sw_ex_kmeans"
                 )
             with sw_c3:
                 sw_merge_info0 = st.checkbox(
@@ -2002,13 +2094,13 @@ def main():
                     key="sw_merge_info0",
                 )
 
-            ex_clust_list = ("kmeans", "spherical_kmeans") if sw_ex_kmeans else None
+            ex_clust_list = kmeans_algorithms(df) if sw_ex_kmeans else None
 
             sw_results = get_cached_stopword_impact(
-                _df=df,
+                df=df,
                 dataset=sw_dataset,
                 exclude_clustering=ex_clust_list,
-                exclude_dim_red=("pca",),
+                exclude_dim_red=(),
                 merge_info0=sw_merge_info0,
             )
 
@@ -2080,7 +2172,7 @@ def main():
                 )
 
             df_noise = get_cached_noise_coverage(
-                _df=df,
+                df=df,
                 dataset=nc_dataset,
                 condition=nc_cond,
                 merge_info0=nc_merge_info0,

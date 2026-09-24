@@ -205,6 +205,11 @@ powershell -ExecutionPolicy Bypass -File scripts/pipelines/local_windows/get_res
 
 ## Visualizing Results
 
+The dashboard defaults to primary models and supports family, role, and reference
+baseline filters. Model priorities and baseline–ablation relationships are stored
+in [`config/model_catalog.yaml`](config/model_catalog.yaml); see the
+[model catalog guide](docs/model_catalog.md) for the classification and editing rules.
+
 The project includes an interactive Streamlit dashboard to explore and compare experiment metrics:
 ```bash
 uv run streamlit run scripts/dashboard.py

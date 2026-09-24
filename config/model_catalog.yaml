@@ -1,0 +1,296 @@
+# Model presentation policy; independent of dataset, seeds and preprocessing.
+# Priority is explicit: family membership never promotes a secondary model.
+schema_version: 1
+models:
+  aligned_umap:
+    label: BERTopic with Aligned UMAP integration.
+    priority: primary
+    role: ablation
+    family: hdbscan
+    baseline_id: baseline
+    reduction: aligned_umap
+    clustering: hdbscan
+  aligned_umap_mv_k_means:
+    label: Aligned UMAP + Multi-View K-Means
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: aligned_umap
+    clustering: multi_view_k_means
+  aligned_umap_mv_spherical_k_means:
+    label: Aligned UMAP + Multi-View Spherical K-Means
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: aligned_umap
+    clustering: multi_view_spherical_k_means
+  append_umap:
+    label: BERTopic with Append UMAP.
+    priority: primary
+    role: ablation
+    family: hdbscan
+    baseline_id: baseline
+    reduction: append_umap
+    clustering: hdbscan
+  append_umap_mv_co_reg_spectral:
+    label: Append UMAP + Multi-View Co-Regularized Spectral Clustering
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: append_umap
+    clustering: co_regularized_multi_view_spectral_clustering
+  append_umap_mv_co_reg_spectral_info0:
+    label: Append UMAP + Multi-View Co-Regularized Spectral Clustering (info_view=0)
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: append_umap
+    clustering: co_regularized_multi_view_spectral_clustering
+  append_umap_mv_k_means:
+    label: Append UMAP + Multi-View K-Means
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: append_umap
+    clustering: multi_view_k_means
+  append_umap_mv_spectral:
+    label: Append UMAP + Multi-View Spectral Clustering
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: append_umap
+    clustering: multi_view_spectral_clustering
+  append_umap_mv_spectral_info0:
+    label: Append UMAP + Multi-View Spectral Clustering (info_view=0)
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: append_umap
+    clustering: multi_view_spectral_clustering
+  append_umap_mv_spherical_k_means:
+    label: Append UMAP + Multi-View Spherical K-Means
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: append_umap
+    clustering: multi_view_spherical_k_means
+  baseline:
+    label: UMAP + HDBSCAN
+    priority: primary
+    role: baseline
+    family: hdbscan
+    baseline_id: null
+    reduction: umap
+    clustering: hdbscan
+  decoupled_mv_k_means:
+    label: UMAP + Decoupled Multi-View K-Means (Cosine Text + Euclidean Metadata)
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: umap
+    clustering: decoupled_multi_view_k_means
+  decoupled_mv_spectral:
+    label: UMAP + Decoupled Multi-View Spectral Clustering (Cosine Text + Euclidean
+      RBF Metadata)
+    priority: primary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: umap
+    clustering: decoupled_multi_view_spectral_clustering
+  fast_tritopic:
+    label: Fast TriTopic multi-view graph topic model with vectorized graph construction.
+    priority: primary
+    role: external_baseline
+    family: external
+    baseline_id: null
+    reduction: none
+    clustering: none
+  k_means:
+    label: UMAP + K-Means
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: umap
+    clustering: k_means
+  mv_co_reg_spectral:
+    label: Multi-View Co-Regularized Spectral Clustering
+    priority: primary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: umap
+    clustering: co_regularized_multi_view_spectral_clustering
+  mv_co_reg_spectral_info0:
+    label: Multi-View Co-Regularized Spectral Clustering (info_view=0)
+    priority: primary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: umap
+    clustering: co_regularized_multi_view_spectral_clustering
+  mv_hdbscan:
+    label: UMAP + MV-HDBSCAN
+    priority: primary
+    role: ablation
+    family: hdbscan
+    baseline_id: baseline
+    reduction: umap
+    clustering: multi_view_hdbscan
+    aliases:
+    - umap_mv_hdbscan
+    - multi_view_hdbscan
+  mv_k_means:
+    label: UMAP + Multi-View K-Means
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: umap
+    clustering: multi_view_k_means
+  mv_k_means_l2_norm:
+    label: UMAP + Multi-View K-Means (L2-Normalized Text View)
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: umap
+    clustering: multi_view_k_means
+  mv_spectral:
+    label: Multi-View Spectral Clustering
+    priority: primary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: umap
+    clustering: multi_view_spectral_clustering
+  mv_spectral_info0:
+    label: Multi-View Spectral Clustering (info_view=0)
+    priority: primary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: umap
+    clustering: multi_view_spectral_clustering
+  mv_spectral_l2_norm:
+    label: UMAP + Multi-View Spectral Clustering (L2-Normalized Text View)
+    priority: primary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: umap
+    clustering: multi_view_spectral_clustering
+  mv_spherical_k_means:
+    label: UMAP + Multi-View Spherical K-Means
+    priority: secondary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: umap
+    clustering: multi_view_spherical_k_means
+  pca_hdbscan:
+    label: PCA + HDBSCAN (no metadata).
+    priority: secondary
+    role: ablation
+    family: hdbscan
+    baseline_id: baseline
+    reduction: pca
+    clustering: hdbscan
+  pca_k_means:
+    label: PCA + K-Means
+    priority: primary
+    role: baseline
+    family: k_means
+    baseline_id: null
+    reduction: pca
+    clustering: k_means
+  pca_mv_co_reg_spectral:
+    label: PCA + Multi-View Co-Regularized Spectral Clustering
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: pca
+    clustering: co_regularized_multi_view_spectral_clustering
+  pca_mv_co_reg_spectral_info0:
+    label: PCA + Multi-View Co-Regularized Spectral Clustering (info_view=0)
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: pca
+    clustering: co_regularized_multi_view_spectral_clustering
+  pca_mv_k_means:
+    label: PCA + Multi-View K-Means
+    priority: primary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: pca
+    clustering: multi_view_k_means
+  pca_mv_spectral:
+    label: PCA + Multi-View Spectral Clustering
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: pca
+    clustering: multi_view_spectral_clustering
+  pca_mv_spectral_info0:
+    label: PCA + Multi-View Spectral Clustering (info_view=0)
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: pca
+    clustering: multi_view_spectral_clustering
+  pca_mv_spherical_k_means:
+    label: PCA + Multi-View Spherical K-Means
+    priority: primary
+    role: ablation
+    family: k_means
+    baseline_id: pca_k_means
+    reduction: pca
+    clustering: multi_view_spherical_k_means
+  pca_spectral:
+    label: PCA + Single-View Spectral Clustering
+    priority: secondary
+    role: ablation
+    family: spectral
+    baseline_id: umap_spectral
+    reduction: pca
+    clustering: spectral_clustering
+  stm:
+    label: STM
+    priority: primary
+    role: external_baseline
+    family: external
+    baseline_id: null
+    reduction: none
+    clustering: none
+  tritopic:
+    label: TriTopic multi-view graph topic model with consensus Leiden clustering.
+    priority: primary
+    role: external_baseline
+    family: external
+    baseline_id: null
+    reduction: none
+    clustering: none
+  umap_spectral:
+    label: UMAP + Single-View Spectral Clustering
+    priority: primary
+    role: baseline
+    family: spectral
+    baseline_id: null
+    reduction: umap
+    clustering: spectral_clustering
