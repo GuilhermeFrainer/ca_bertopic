@@ -5,7 +5,9 @@ param (
     [switch]$Release,
     [switch]$Best,
     [ValidateSet("all", "standard", "stemmed", "no_stopword_removal", "with_stopwords", "no_stopword")]
-    [string]$ResultType = "all"
+    [string]$ResultType = "all",
+    [Alias("Dataset")]
+    [string[]]$Datasets = @("fed", "yelp", "trump", "anes", "gadarian")
 )
 
 # Normalize aliases to primary result type 'no_stopword_removal'
@@ -39,7 +41,7 @@ if ($MergeInfo0) { $noiseFlags += "--merge-info0" }
 $resultTypesToProcess = if ($ResultType -eq "all") { @("standard", "stemmed", "no_stopword_removal") } else { @($ResultType) }
 
 # List of datasets
-$datasets = @("fed", "yelp", "trump", "anes", "gadarian")
+$datasets = $Datasets
 
 foreach ($resType in $resultTypesToProcess) {
     Write-Host "`n============================================================" -ForegroundColor Magenta
@@ -58,9 +60,11 @@ foreach ($resType in $resultTypesToProcess) {
     uv run scripts/analysis/find_best_models.py --label-table --result-type $resType @mergeFlags | Out-File -FilePath "$labelTablePath" -Encoding utf8
 
     # 0b. Generate HDBSCAN Noise Coverage Table (Global across datasets)
-    Write-Host "Generating HDBSCAN Noise Coverage Table ($resType)..." -ForegroundColor Yellow
-    $noiseCoverageTablePath = Join-Path $typeTablesDir "hdbscan_noise_coverage.tex"
-    uv run scripts/analysis/calculate_noise_coverage.py --result-type $resType --output-latex "$noiseCoverageTablePath" @noiseFlags
+    if ($datasets.Count -gt 1) {
+        Write-Host "Generating HDBSCAN Noise Coverage Table ($resType)..." -ForegroundColor Yellow
+        $noiseCoverageTablePath = Join-Path $typeTablesDir "hdbscan_noise_coverage.tex"
+        uv run scripts/analysis/calculate_noise_coverage.py --result-type $resType --output-latex "$noiseCoverageTablePath" @noiseFlags
+    }
 
     foreach ($dataset in $datasets) {
         Write-Host "`n------------------------------------------------------------" -ForegroundColor Green
@@ -127,15 +131,17 @@ foreach ($resType in $resultTypesToProcess) {
     }
 
     # 7. Demšar All-vs-All Ranking Table (Across All Datasets)
-    Write-Host "`nGenerating Demšar All-vs-All Table (All Datasets - $resType)..." -ForegroundColor Yellow
-    $allDemsarTablePath = Join-Path $typeTablesDir "all_datasets_demsar_all_vs_all.tex"
-    uv run scripts/analysis/demsar_all_vs_all_analysis.py --dataset all --condition $resType --latex "$allDemsarTablePath" @demsarFlags
+    if ($datasets.Count -gt 1) {
+        Write-Host "`nGenerating Demšar All-vs-All Table (All Datasets - $resType)..." -ForegroundColor Yellow
+        $allDemsarTablePath = Join-Path $typeTablesDir "all_datasets_demsar_all_vs_all.tex"
+        uv run scripts/analysis/demsar_all_vs_all_analysis.py --dataset all --condition $resType --latex "$allDemsarTablePath" @demsarFlags
 
-    # 8. Demšar Delta Table (Alternative Preprocessing vs Standard across All Datasets)
-    if ($resType -ne "standard") {
-        Write-Host "Generating Demšar Delta Table (All Datasets - $resType)..." -ForegroundColor Yellow
-        $allDemsarDeltaPath = Join-Path $typeTablesDir "all_datasets_demsar_delta_${resType}.tex"
-        uv run scripts/analysis/demsar_delta_analysis.py --dataset all --condition $resType --latex "$allDemsarDeltaPath" @demsarFlags
+        # 8. Demšar Delta Table (Alternative Preprocessing vs Standard across All Datasets)
+        if ($resType -ne "standard") {
+            Write-Host "Generating Demšar Delta Table (All Datasets - $resType)..." -ForegroundColor Yellow
+            $allDemsarDeltaPath = Join-Path $typeTablesDir "all_datasets_demsar_delta_${resType}.tex"
+            uv run scripts/analysis/demsar_delta_analysis.py --dataset all --condition $resType --latex "$allDemsarDeltaPath" @demsarFlags
+        }
     }
 }
 

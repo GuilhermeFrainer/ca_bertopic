@@ -34,7 +34,7 @@ Both [`scripts/analysis/find_best_models.py`](../scripts/analysis/find_best_mode
 
 ### B. PowerShell Orchestration (`get_results.ps1`)
 
-The pipeline script [`scripts/pipelines/local_windows/get_results.ps1`](../scripts/pipelines/local_windows/get_results.ps1) accepts a `-ResultType` parameter (`standard`, `stemmed`, `no_stopword_removal`, or `all`). When set to `all` (default), it iterates through each result type sequentially and exports LaTeX tables (and figures) into organized subfolders:
+The pipeline script [`scripts/pipelines/local_windows/get_results.ps1`](../scripts/pipelines/local_windows/get_results.ps1) accepts a `-ResultType` parameter (`standard`, `stemmed`, `no_stopword_removal`, or `all`) and an optional `-Datasets` parameter (which defaults to all five datasets: `fed`, `yelp`, `trump`, `anes`, `gadarian`). When `-ResultType` is set to `all` (default), it iterates through each result type sequentially and exports LaTeX tables (and figures) into organized subfolders:
 
 ```
 CA-BERTopic-Results/ (or Dissertation release directory)
