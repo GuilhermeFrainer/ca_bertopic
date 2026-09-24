@@ -59,6 +59,7 @@ from src.model_catalog import (
     load_catalog,
     sort_catalog,
 )
+from src.comparisons.analysis import compute_ablation_comparisons
 from src.results_analysis import (
     calculate_hdbscan_noise_coverage,
     compute_demsar_all_vs_all,
@@ -703,14 +704,103 @@ def main():
         return
 
     # 3. Main Tabs
-    tab_metrics, tab_qualitative, tab_coverage, tab_paper_tables = st.tabs(
+    tab_metrics, tab_qualitative, tab_coverage, tab_paper_tables, tab_ablations = st.tabs(
         [
             "📊 Quantitative Metrics",
             "🔍 Qualitative Analysis",
             "📋 Experiment Coverage",
             "📑 Paper Results Tables",
+            "🧪 Ablation Comparisons",
         ]
     )
+
+    with tab_ablations:
+        st.header("Ablation vs Reference Baseline")
+        st.caption(
+            "Pairs come from config/model_catalog.yaml. Positive deltas indicate "
+            "improvement for directional metrics. Results are matched by dataset, "
+            "seed, and requested topic count."
+        )
+        include_secondary = st.checkbox(
+            "Include secondary ablations in the cross-dataset summary",
+            value=False,
+            key="ablation_include_secondary",
+        )
+        primary_ids = {
+            model_id
+            for model_id, entry in catalog.items()
+            if entry["role"] == "ablation" and entry["priority"] == "primary"
+        }
+        pair_datasets, pair_summary, pair_runs = compute_ablation_comparisons(
+            all_results,
+            catalog,
+            summary_model_ids=None if include_secondary else primary_ids,
+        )
+        if pair_datasets.is_empty():
+            st.info("No catalog baseline/ablation run pairs were found in the loaded results.")
+        else:
+            summary_display = (
+                pair_summary.drop(
+                    [column for column in ("Model ID", "Baseline ID") if column in pair_summary.columns]
+                )
+                if not pair_summary.is_empty()
+                else pair_summary
+            )
+            st.subheader("Cross-dataset comparison")
+            st.markdown(
+                "Each row compares one ablation with its reference baseline across the "
+                "five datasets. Positive mean deltas favor the ablation for directional "
+                "metrics. The signed-rank test uses dataset-level averages."
+            )
+            if pair_summary.is_empty():
+                st.info("No cross-dataset summaries are available for the selected model priority.")
+            else:
+                st.dataframe(summary_display, hide_index=True, width="stretch")
+                st.caption(
+                    "Exact two-sided signed-rank p-values use the five datasets as units. "
+                    "Holm-adjusted p-values are withheld for a metric when any included "
+                    "ablation lacks its required complete grid. Incomplete comparisons "
+                    "are shown with a blocked status. The current dashboard correction "
+                    "family is all included ablations within each metric; confirm this "
+                    "family definition before using adjusted values as final inference."
+                )
+
+            st.markdown(
+                "Per-dataset details cover scores and improvement deltas for every available "
+                "quality or operational metric. Inference covers the five core topic "
+                "quality metrics plus duration and outlier count on the standard "
+                "(representation stopwords removed) condition. Each test requires all "
+                "15 seed × requested-count cells in each of the five datasets. Realized "
+                "topic count is shown as an outcome without a better/worse direction."
+            )
+            pair_condition_options = sorted(pair_datasets["Condition"].unique().to_list())
+            pair_condition = st.selectbox(
+                "Preprocessing condition:", pair_condition_options,
+                index=pair_condition_options.index("remove_rep_stopwords")
+                if "remove_rep_stopwords" in pair_condition_options else 0,
+                key="ablation_condition",
+            )
+            pair_view = pair_datasets.filter(pl.col("Condition") == pair_condition)
+            with st.expander("Matched seed × requested-topic-count deltas"):
+                run_view = pair_runs.filter(pl.col("Condition") == pair_condition)
+                run_view = run_view.drop(
+                    [column for column in ("Model ID",) if column in run_view.columns]
+                )
+                st.dataframe(
+                    run_view,
+                    hide_index=True,
+                    width="stretch",
+                )
+            with st.expander("Per-dataset scores, deltas, and coverage"):
+                detail_view = pair_view.drop(
+                    [column for column in ("Model ID", "Baseline ID") if column in pair_view.columns]
+                )
+                st.dataframe(detail_view, hide_index=True, width="stretch")
+                st.caption(
+                    "Matching sample size does not prove identical document samples or "
+                    "historical effective configurations. Those checks remain necessary "
+                    "before interpreting results as strict ablations."
+                )
 
     with tab_metrics:
         # 3. Data Table with Great Tables
