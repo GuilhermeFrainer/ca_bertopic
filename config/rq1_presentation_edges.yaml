@@ -1,0 +1,52 @@
+# Exploratory dashboard/paper preview edges for RQ1.
+# These definitions encode research design only; they contain no observed results.
+schema_version: 1
+edges:
+  - id: hdbscan_append_umap
+    reference_model: baseline
+    variant_model: append_umap
+    chain: HDBSCAN integration
+    label: Baseline → Append UMAP
+    intended_change: Add metadata before UMAP while retaining HDBSCAN and topic reduction.
+    classification: strict_candidate
+    main_figure: true
+  - id: hdbscan_aligned_umap
+    reference_model: baseline
+    variant_model: aligned_umap
+    chain: HDBSCAN integration
+    label: Baseline → Aligned UMAP
+    intended_change: Replace ordinary UMAP with aligned multi-view reduction.
+    classification: architectural
+    main_figure: true
+  - id: pca_mv_k_means
+    reference_model: pca_k_means
+    variant_model: pca_mv_k_means
+    chain: PCA + K-means
+    label: PCA K-means → PCA Multi-View K-means
+    intended_change: Replace single-view with multi-view K-means after PCA.
+    classification: architectural
+    main_figure: true
+  - id: spectral_mv_spectral
+    reference_model: umap_spectral
+    variant_model: mv_spectral
+    chain: UMAP + spectral
+    label: Single-View Spectral → Multi-View Spectral
+    intended_change: Introduce multi-view spectral clustering; affinity construction also differs.
+    classification: architectural
+    main_figure: true
+  - id: spectral_mv_coreg
+    reference_model: mv_spectral
+    variant_model: mv_co_reg_spectral
+    chain: UMAP + spectral refinement
+    label: Multi-View Spectral → Co-Regularized Spectral
+    intended_change: Change the multi-view spectral formulation to co-regularized spectral clustering.
+    classification: architectural
+    main_figure: true
+  - id: spectral_mv_info0
+    reference_model: mv_spectral
+    variant_model: mv_spectral_info0
+    chain: UMAP + spectral refinement
+    label: Multi-View Spectral → Multi-View Spectral (info_view=0)
+    intended_change: Select the text-side spectral embedding after multi-view fitting.
+    classification: strict_candidate
+    main_figure: true

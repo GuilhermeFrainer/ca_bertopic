@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from itertools import product
 import math
+from pathlib import Path
 
 import polars as pl
+import yaml
 
 SEEDS = (36201624, 62613654, 57116123)
 REQUESTED_TOPICS = (10, 20, 30, 40, 50)
@@ -18,6 +20,35 @@ METRIC_DIRECTIONS = {
     "outliers": "minimize",
     "n_topics": "outcome",
 }
+RQ1_EDGE_REGISTRY = Path(__file__).resolve().parents[2] / "config" / "rq1_presentation_edges.yaml"
+
+
+def load_rq1_edges(path=RQ1_EDGE_REGISTRY):
+    """Load and validate the explicit RQ1 display/comparison edges."""
+    with Path(path).open(encoding="utf-8") as stream:
+        registry = yaml.safe_load(stream)
+    if not isinstance(registry, dict) or set(registry) != {"schema_version", "edges"}:
+        raise ValueError("Invalid RQ1 edge registry structure")
+    if registry["schema_version"] != 1 or not isinstance(registry["edges"], list):
+        raise ValueError("Unsupported RQ1 edge registry schema")
+    required = {
+        "id", "reference_model", "variant_model", "chain", "label",
+        "intended_change", "classification", "main_figure",
+    }
+    ids = set()
+    for edge in registry["edges"]:
+        if not isinstance(edge, dict) or set(edge) != required:
+            raise ValueError("Each RQ1 edge must have exactly the registered fields")
+        if edge["id"] in ids:
+            raise ValueError(f"Duplicate RQ1 edge id: {edge['id']}")
+        ids.add(edge["id"])
+        if edge["reference_model"] == edge["variant_model"]:
+            raise ValueError(f"Self-comparison in RQ1 edge: {edge['id']}")
+        if edge["classification"] not in {"strict_candidate", "architectural"}:
+            raise ValueError(f"Invalid comparison classification: {edge['id']}")
+        if not isinstance(edge["main_figure"], bool):
+            raise ValueError(f"main_figure must be boolean: {edge['id']}")
+    return registry["edges"]
 
 
 def _as_int(value):
@@ -353,3 +384,78 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
         else pl.DataFrame()
     )
     return dataset_frame, summary_frame, run_frame
+
+
+def compute_registered_edge_comparisons(df: pl.DataFrame, catalog: dict, edges: list[dict]):
+    """Compute results for explicit directed edges, including adjacent variants."""
+    dataset_rows = []
+    summary_rows = []
+    run_rows = []
+    for order, edge in enumerate(edges):
+        reference_id = edge["reference_model"]
+        variant_id = edge["variant_model"]
+        if reference_id not in catalog or variant_id not in catalog:
+            raise ValueError(f"Unknown model in RQ1 edge: {edge['id']}")
+        if catalog[variant_id]["role"] != "ablation":
+            raise ValueError(f"RQ1 edge variant is not a catalog ablation: {edge['id']}")
+
+        edge_catalog = dict(catalog)
+        edge_catalog[variant_id] = dict(catalog[variant_id], baseline_id=reference_id)
+        dataset_frame, summary_frame, run_frame = compute_ablation_comparisons(
+            df, edge_catalog, summary_model_ids={variant_id}
+        )
+        if not dataset_frame.is_empty():
+            dataset_rows.extend(
+                row for row in dataset_frame.filter(
+                    (pl.col("Model ID") == variant_id)
+                    & (pl.col("Baseline ID") == reference_id)
+                ).to_dicts()
+            )
+        if not summary_frame.is_empty():
+            summary_rows.extend(
+                row for row in summary_frame.filter(
+                    pl.col("Model ID") == variant_id
+                ).to_dicts()
+            )
+        if not run_frame.is_empty():
+            run_rows.extend(
+                row for row in run_frame.filter(
+                    pl.col("Model ID") == variant_id
+                ).to_dicts()
+            )
+
+        metadata = {
+            "Edge order": order,
+            "Edge ID": edge["id"],
+            "Chain": edge["chain"],
+            "Comparison": edge["label"],
+            "Intended change": edge["intended_change"],
+            "Comparison type": edge["classification"],
+        }
+        for rows in (dataset_rows, summary_rows, run_rows):
+            # Only annotate rows belonging to the edge just computed.
+            for row in reversed(rows):
+                if row.get("Model ID") != variant_id:
+                    break
+                row.update(metadata)
+
+    # Apply Holm within metric over the registered RQ1 edges that can be tested.
+    tested_by_metric = {}
+    for row in summary_rows:
+        if row.get("Raw exact p") is not None:
+            tested_by_metric.setdefault(row["Metric"], []).append(row)
+    for metric_rows in tested_by_metric.values():
+        adjusted = _holm([row["Raw exact p"] for row in metric_rows])
+        for row, adjusted_p in zip(metric_rows, adjusted):
+            row["Holm adjusted p"] = adjusted_p
+            row["Inference status"] = row["Inference status"].split(
+                "; Holm adjusted across ", maxsplit=1
+            )[0]
+            row["Inference status"] += (
+                f"; exploratory Holm across {len(metric_rows)} estimable RQ1 edges"
+            )
+
+    def frame(rows):
+        return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
+
+    return frame(dataset_rows), frame(summary_rows), frame(run_rows)

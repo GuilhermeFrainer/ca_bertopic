@@ -59,7 +59,11 @@ from src.model_catalog import (
     load_catalog,
     sort_catalog,
 )
-from src.comparisons.analysis import compute_ablation_comparisons
+from src.comparisons.analysis import (
+    compute_ablation_comparisons,
+    compute_registered_edge_comparisons,
+    load_rq1_edges,
+)
 from src.results_analysis import (
     calculate_hdbscan_noise_coverage,
     compute_demsar_all_vs_all,
@@ -715,94 +719,247 @@ def main():
     )
 
     with tab_ablations:
-        st.header("Ablation vs Reference Baseline")
+        st.header("RQ1: Exploratory Ablation Results")
+        st.warning(
+            "Exploratory preview for presentation design and advisor discussion. "
+            "These partial results are not final submission results. Regenerate the "
+            "analysis after the planned runs and parity checks are complete."
+        )
         st.caption(
-            "Pairs come from config/model_catalog.yaml. Positive deltas indicate "
-            "improvement for directional metrics. Results are matched by dataset, "
-            "seed, and requested topic count."
+            "Rows are explicit directed comparisons from the RQ1 edge registry. "
+            "Each dataset contributes one value after averaging matched seeds and "
+            "requested topic counts. Positive deltas favor the variant."
         )
-        include_secondary = st.checkbox(
-            "Include secondary ablations in the cross-dataset summary",
-            value=False,
-            key="ablation_include_secondary",
-        )
-        primary_ids = {
-            model_id
-            for model_id, entry in catalog.items()
-            if entry["role"] == "ablation" and entry["priority"] == "primary"
-        }
-        pair_datasets, pair_summary, pair_runs = compute_ablation_comparisons(
-            all_results,
-            catalog,
-            summary_model_ids=None if include_secondary else primary_ids,
-        )
-        if pair_datasets.is_empty():
-            st.info("No catalog baseline/ablation run pairs were found in the loaded results.")
+        try:
+            rq1_edges = load_rq1_edges()
+        except (OSError, ValueError) as exc:
+            st.error(f"Cannot load RQ1 comparison edges: {exc}")
+            rq1_edges = []
+        main_edges = [edge for edge in rq1_edges if edge["main_figure"]]
+        edge_datasets, edge_summary, edge_runs = compute_registered_edge_comparisons(
+            all_results, catalog, main_edges
+        ) if main_edges else (pl.DataFrame(), pl.DataFrame(), pl.DataFrame())
+
+        if edge_datasets.is_empty():
+            st.info("No matched results are available for the registered RQ1 edges.")
         else:
-            summary_display = (
-                pair_summary.drop(
-                    [column for column in ("Model ID", "Baseline ID") if column in pair_summary.columns]
-                )
-                if not pair_summary.is_empty()
-                else pair_summary
+            standard_condition = "remove_rep_stopwords"
+            plot_rows = edge_datasets.filter(
+                (pl.col("Condition") == standard_condition)
+                & pl.col("Metric").is_in(["c_npmi", "irbo"])
+                & pl.col("Improvement delta").is_not_null()
             )
-            st.subheader("Cross-dataset comparison")
+            summary_by_edge_metric = {
+                (row["Edge ID"], row["Metric"]): row
+                for row in edge_summary.to_dicts()
+            }
+            edge_order = [edge["id"] for edge in main_edges]
+            plot_row_names = {}
+            for edge in main_edges:
+                for metric in ("c_npmi", "irbo"):
+                    result = summary_by_edge_metric.get((edge["id"], metric), {})
+                    n = result.get("Datasets", 0) or 0
+                    wins, ties, losses = (
+                        result.get("Wins"), result.get("Ties"), result.get("Losses")
+                    )
+                    wtl = f"{wins}/{ties}/{losses}" if wins is not None else "not tested"
+                    plot_row_names[(edge["id"], metric)] = (
+                        f"{edge['chain']} · {edge['label']}   "
+                        f"(W/T/L {wtl}; n={n}/5)"
+                    )
+
+            st.subheader("Dataset-level improvement plot")
             st.markdown(
-                "Each row compares one ablation with its reference baseline across the "
-                "datasets that have complete matched grids. Positive mean deltas favor "
-                "the ablation for directional metrics. The signed-rank test uses one "
-                "dataset-level average per included dataset."
+                "Each dot is one dataset. The black diamond marks the median dataset "
+                "delta. Dataset colors and marker shapes are consistent across panels. "
+                "Rows are grouped by the registered comparison chain."
             )
-            if pair_summary.is_empty():
-                st.info("No cross-dataset summaries are available for the selected model priority.")
-            else:
-                st.dataframe(summary_display, hide_index=True, width="stretch")
+            dataset_order = ["anes", "fed", "gadarian", "trump", "yelp"]
+            dataset_colors = ["#0072B2", "#E69F00", "#009E73", "#CC79A7", "#D55E00"]
+            dataset_shapes = ["circle", "square", "triangle-up", "diamond", "cross"]
+
+            def delta_panel(metric, title):
+                rows = plot_rows.filter(pl.col("Metric") == metric).to_dicts()
+                if not rows:
+                    return None
+                for row in rows:
+                    row["Plot row"] = plot_row_names[(row["Edge ID"], metric)]
+                rows.sort(key=lambda row: edge_order.index(row["Edge ID"]))
+                ordered_labels = [
+                    plot_row_names[(edge["id"], metric)] for edge in main_edges
+                    if (edge["id"], metric) in summary_by_edge_metric
+                ]
+                medians = []
+                for edge in main_edges:
+                    summary = summary_by_edge_metric.get((edge["id"], metric))
+                    if summary and summary.get("Median dataset delta") is not None:
+                        medians.append({
+                            "Plot row": plot_row_names[(edge["id"], metric)],
+                            "Median dataset delta": summary["Median dataset delta"],
+                        })
+                max_abs = max(abs(row["Improvement delta"]) for row in rows)
+                limit = max(max_abs * 1.15, 0.005)
+                y = alt.Y(
+                    "Plot row:N", sort=ordered_labels,
+                    axis=alt.Axis(title=None, labelLimit=340, labelFontSize=10),
+                )
+                x = alt.X(
+                    "Improvement delta:Q",
+                    title=f"Improvement-oriented Δ {metric}",
+                    scale=alt.Scale(domain=[-limit, limit]),
+                )
+                base = alt.Chart(alt.Data(values=rows))
+                points = base.mark_point(filled=True, size=90, opacity=0.9).encode(
+                    x=x,
+                    y=y,
+                    yOffset=alt.YOffset("Dataset:N", sort=dataset_order),
+                    color=alt.Color(
+                        "Dataset:N",
+                        scale=alt.Scale(domain=dataset_order, range=dataset_colors),
+                        legend=alt.Legend(title="Dataset"),
+                    ),
+                    shape=alt.Shape(
+                        "Dataset:N",
+                        scale=alt.Scale(domain=dataset_order, range=dataset_shapes),
+                        legend=None,
+                    ),
+                    tooltip=[
+                        alt.Tooltip("Chain:N"), alt.Tooltip("Comparison:N"),
+                        alt.Tooltip("Dataset:N"), alt.Tooltip("Improvement delta:Q", format=".5f"),
+                        alt.Tooltip("Coverage:N"),
+                    ],
+                )
+                median = alt.Chart(alt.Data(values=medians)).mark_point(
+                    shape="diamond", color="#111111", size=170,
+                ).encode(
+                    x=alt.X("Median dataset delta:Q", scale=alt.Scale(domain=[-limit, limit])),
+                    y=alt.Y("Plot row:N", sort=ordered_labels),
+                    tooltip=[alt.Tooltip("Median dataset delta:Q", format=".5f")],
+                )
+                zero = alt.Chart(alt.Data(values=[{"zero": 0}])).mark_rule(
+                    color="#666666", strokeDash=[4, 4],
+                ).encode(x=alt.X("zero:Q"))
+                height = max(260, 46 * len(ordered_labels))
+                return (zero + points + median).properties(
+                    title=title, height=height,
+                ).configure_axis(grid=True, gridOpacity=0.2)
+
+            figure_left, figure_right = st.columns(2)
+            with figure_left:
+                chart = delta_panel("c_npmi", "A · NPMI")
+                if chart is not None:
+                    st.altair_chart(chart, width="stretch")
+            with figure_right:
+                chart = delta_panel("irbo", "B · IRBO")
+                if chart is not None:
+                    st.altair_chart(chart, width="stretch")
+            st.caption(
+                "No confidence intervals are shown. Datasets are the independent units; "
+                "seed and requested-count runs are repeated conditions. A row's dataset "
+                "set can differ from another row, as shown by its n and W/T/L annotation."
+            )
+
+            main_table_rows = []
+            edge_dataset_lookup = {
+                (row["Edge ID"], row["Metric"]): row
+                for row in edge_summary.to_dicts()
+            }
+            for edge in main_edges:
+                c_npmi = edge_dataset_lookup.get((edge["id"], "c_npmi"), {})
+                irbo = edge_dataset_lookup.get((edge["id"], "irbo"), {})
+                c_npmi_set = c_npmi.get("Included datasets", "") or "none"
+                irbo_set = irbo.get("Included datasets", "") or "none"
+                main_table_rows.append({
+                    "Chain": edge["chain"],
+                    "Comparison": edge["label"],
+                    "Intended change": edge["intended_change"],
+                    "Type": edge["classification"].replace("_", " "),
+                    "Datasets used (NPMI / IRBO)": (
+                        f"{c_npmi.get('Dataset coverage', '0/5')} [{c_npmi_set}] / "
+                        f"{irbo.get('Dataset coverage', '0/5')} [{irbo_set}]"
+                    ),
+                    "Median Δ c_npmi": c_npmi.get("Median dataset delta"),
+                    "NPMI W/T/L": (
+                        f"{c_npmi.get('Wins')}/{c_npmi.get('Ties')}/{c_npmi.get('Losses')}"
+                        if c_npmi.get("Wins") is not None else "—"
+                    ),
+                    "Median Δ IRBO": irbo.get("Median dataset delta"),
+                    "IRBO W/T/L": (
+                        f"{irbo.get('Wins')}/{irbo.get('Ties')}/{irbo.get('Losses')}"
+                        if irbo.get("Wins") is not None else "—"
+                    ),
+                })
+            st.subheader("Compact comparison table")
+            st.dataframe(
+                pl.DataFrame(main_table_rows, infer_schema_length=None),
+                hide_index=True,
+                width="stretch",
+            )
+
+            with st.expander("Exploratory statistical diagnostics"):
+                stats_view = edge_summary.drop(
+                    [column for column in ("Edge ID", "Model ID", "Baseline ID", "Edge order") if column in edge_summary.columns]
+                )
+                st.dataframe(stats_view, hide_index=True, width="stretch")
                 st.caption(
-                    "Exact two-sided signed-rank p-values use dataset-level differences; "
-                    "at least two datasets must each have all 15 matched runs. The table "
-                    "shows included and missing/incomplete datasets for every test. Holm "
-                    "adjustment covers estimable comparisons within each metric; those "
-                    "tests can have different dataset counts. The current correction "
-                    "family is all included ablations within each metric; confirm this "
-                    "family definition before using adjusted values as final inference."
+                    "Exact p-values and Holm adjustments are exploratory. The adjustment "
+                    "currently covers estimable registered main-figure edges within each "
+                    "metric; incomplete edges are shown but omitted from that adjustment. "
+                    "Final family membership remains to be approved."
+                )
+            with st.expander("Dataset-level and seed × topic-count details"):
+                condition_options = sorted(edge_datasets["Condition"].unique().to_list())
+                condition = st.selectbox(
+                    "Preprocessing condition:", condition_options,
+                    index=condition_options.index("remove_rep_stopwords")
+                    if "remove_rep_stopwords" in condition_options else 0,
+                    key="rq1_detail_condition",
+                )
+                dataset_view = edge_datasets.filter(pl.col("Condition") == condition).drop(
+                    [column for column in ("Edge ID", "Model ID", "Baseline ID", "Edge order") if column in edge_datasets.columns]
+                )
+                run_view = edge_runs.filter(pl.col("Condition") == condition).drop(
+                    [column for column in ("Edge ID", "Model ID", "Edge order") if column in edge_runs.columns]
+                )
+                st.markdown("**Dataset summaries and coverage**")
+                st.dataframe(dataset_view, hide_index=True, width="stretch")
+                st.markdown("**Matched seed × requested-topic-count values**")
+                st.dataframe(run_view, hide_index=True, width="stretch")
+                st.caption(
+                    "Matching sample size does not prove identical document samples or "
+                    "historical effective configurations. None of the comparisons has "
+                    "passed a full historical parity audit."
                 )
 
-            st.markdown(
-                "Per-dataset details cover scores and improvement deltas for every available "
-                "quality or operational metric. Inference covers the five core topic "
-                "quality metrics plus duration and outlier count on the standard "
-                "(representation stopwords removed) condition. Each included dataset "
-                "requires all 15 seed × requested-count cells. At least two complete "
-                "datasets are needed for a cross-dataset test. Realized "
-                "topic count is shown as an outcome without a better/worse direction."
+        with st.expander("All catalog baseline comparisons (supporting inventory)"):
+            include_secondary = st.checkbox(
+                "Include secondary catalog ablations",
+                value=False,
+                key="ablation_include_secondary",
             )
-            pair_condition_options = sorted(pair_datasets["Condition"].unique().to_list())
-            pair_condition = st.selectbox(
-                "Preprocessing condition:", pair_condition_options,
-                index=pair_condition_options.index("remove_rep_stopwords")
-                if "remove_rep_stopwords" in pair_condition_options else 0,
-                key="ablation_condition",
+            primary_ids = {
+                model_id for model_id, entry in catalog.items()
+                if entry["role"] == "ablation" and entry["priority"] == "primary"
+            }
+            pair_datasets, pair_summary, _ = compute_ablation_comparisons(
+                all_results,
+                catalog,
+                summary_model_ids=None if include_secondary else primary_ids,
             )
-            pair_view = pair_datasets.filter(pl.col("Condition") == pair_condition)
-            with st.expander("Matched seed × requested-topic-count deltas"):
-                run_view = pair_runs.filter(pl.col("Condition") == pair_condition)
-                run_view = run_view.drop(
-                    [column for column in ("Model ID",) if column in run_view.columns]
-                )
+            if pair_summary.is_empty():
+                st.info("No catalog baseline comparison results are available.")
+            else:
                 st.dataframe(
-                    run_view,
+                    pair_summary.drop(
+                        [column for column in ("Model ID", "Baseline ID") if column in pair_summary.columns]
+                    ),
                     hide_index=True,
                     width="stretch",
                 )
-            with st.expander("Per-dataset scores, deltas, and coverage"):
-                detail_view = pair_view.drop(
-                    [column for column in ("Model ID", "Baseline ID") if column in pair_view.columns]
-                )
-                st.dataframe(detail_view, hide_index=True, width="stretch")
                 st.caption(
-                    "Matching sample size does not prove identical document samples or "
-                    "historical effective configurations. Those checks remain necessary "
-                    "before interpreting results as strict ablations."
+                    "These rows follow model_catalog.yaml baseline_id references. They "
+                    "supplement the directed RQ1 edges above and do not imply adjacent "
+                    "component changes or verified strict ablations."
                 )
 
     with tab_metrics:
