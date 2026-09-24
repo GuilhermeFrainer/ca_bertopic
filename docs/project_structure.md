@@ -18,7 +18,8 @@ The top-level `batch/` directory has been removed, and its contents have been re
 │   │   └── summarize_datasets.py
 │   │
 │   ├── experiments/            # Core model training/execution entry points
-│   │   ├── run_experiment.py
+│   │   ├── queue_exp.py
+│   │   ├── slurm_job.sh
 │   │   ├── run_optimizer.py
 │   │   └── run_stm.py
 │   │
@@ -57,9 +58,10 @@ This directory contains scripts for data ingestion, cleaning, feature engineerin
 - **[summarize_datasets.py](../scripts/data_prep/summarize_datasets.py)**: Utility to output statistics (token counts, document numbers) about the processed datasets.
 
 ### 2. Experiments ([scripts/experiments/](../scripts/experiments))
-Contains primary entry points to launch model training and evaluations.
-- **[run_experiment.py](../scripts/experiments/run_experiment.py)**: Runs a single experiment comparing multiple model configurations defined by YAML files in the `experiments/` directory.
-- **[run_optimizer.py](../scripts/experiments/run_optimizer.py)**: Handles hyperparameter tuning and optimization.
+Contains the batch dispatcher and experiment workers. Start experiment batches with [queue_exp.sh](../scripts/pipelines/slurm/queue_exp.sh).
+- **[queue_exp.py](../scripts/experiments/queue_exp.py)**: Selects configurations and submits SLURM jobs through the shell entry point.
+- **[slurm_job.sh](../scripts/experiments/slurm_job.sh)**: Executes a queued job.
+- **[run_optimizer.py](../scripts/experiments/run_optimizer.py)**: Runs individual Python experiment configurations, including fixed parameters and parameter grids; also used by SLURM workers.
 - **[run_stm.py](../scripts/experiments/run_stm.py)**: A Python wrapper to coordinate R-based Structural Topic Model training.
 
 ### 3. Analysis & Evaluation ([scripts/analysis/](../scripts/analysis))
@@ -78,7 +80,7 @@ Keeps R language scripts separated from the Python codebase.
 Consolidates sequential execution and batch runners.
 - **`local_windows/`**: Local Windows batch `.bat` scripts and PowerShell `.ps1` files. *Note: Ignored by git to allow local modification.*
 - **`local_unix/`**: Local shell scripts to fetch results. *Note: Ignored by git to allow local modification.*
-- **`slurm/`**: Production SLURM scripts to dispatch jobs to clusters (e.g., `queue_standard_experiments.sh`, `queue_trump_experiments.sh`). *Note: Tracked by git for reproducibility.*
+- **`slurm/`**: Production SLURM scripts to dispatch jobs to clusters (primary batch entry point: `queue_exp.sh`). *Note: Tracked by git for reproducibility.*
 
 ---
 
@@ -96,11 +98,12 @@ uv run scripts/data_prep/generate_embeddings.py --dataset fed --columns clean_te
 
 ### Running Experiments
 ```bash
-# Run Trump experiment
-uv run python scripts/experiments/run_experiment.py --exp trump
+# Preview a batch, then submit it
+bash scripts/pipelines/slurm/queue_exp.sh -d fed --dry-run
+bash scripts/pipelines/slurm/queue_exp.sh -d fed
 
-# Run Hyperparameter optimization
-uv run python scripts/experiments/run_optimizer.py --exp yelp_opt_spectral
+# Run an individual configuration
+uv run python scripts/experiments/run_optimizer.py --exp fed/fed_standard_baseline
 ```
 
 ### Result Analysis

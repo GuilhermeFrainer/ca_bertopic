@@ -170,7 +170,7 @@ def test_create_tritopic_instance_n_clusters_override():
     """
     from src.models import create_tritopic_instance
 
-    # 1. Explicit n_clusters argument (e.g. from run_experiment matching baseline)
+    # 1. Explicit n_clusters argument overrides configured cluster count
     model_config_1 = {"type": "tritopic", "params": {}}
     model_1 = create_tritopic_instance(
         model_config=model_config_1, random_state=42, n_clusters=20

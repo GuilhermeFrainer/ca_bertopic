@@ -3,8 +3,8 @@
 
 <#
 # OPTIONAL: Run these if you haven't generated the raw results for Trump yet:
-uv run scripts/run_optimizer.py --exp trump_opt_mv_spectral
-uv run scripts/run_optimizer.py --exp trump_opt_mv_co_reg_spectral
+uv run python scripts/experiments/run_optimizer.py --exp archive/trump/trump_opt_mv_spectral
+uv run python scripts/experiments/run_optimizer.py --exp archive/trump/trump_opt_mv_co_reg_spectral
 #>
 
 # Set output directory

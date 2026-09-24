@@ -85,32 +85,50 @@ To eliminate confounding between models, **all text preprocessing is executed 10
 
 ## Running Experiments
 
-Experiment configurations are defined by `.yaml` files in the `experiments/` directory and executed via `scripts/experiments/run_experiment.py`.
+The primary entry point for experiment batches is `scripts/pipelines/slurm/queue_exp.sh`.
+It delegates to `scripts/experiments/queue_exp.py`, which selects configurations and
+submits SLURM workers. Python experiment workers execute `scripts/experiments/run_optimizer.py`;
+STM uses its separate runner. Agents should use this batch workflow for experiment campaigns.
 
 Active production experiments are organized by dataset:
 - `experiments/<dataset>/`: Standard unstemmed runs (`<dataset>_standard_*.yaml`).
 - `experiments/<dataset>_stemmed/`: Stemmed text runs (`<dataset>_stemmed_standard_*.yaml`).
 - `experiments/archive/<dataset>/`: Archived optimization, ablation, and exploratory runs.
 
-### Command-Line Execution
+### Batch Execution (SLURM)
 
-To run an experiment:
+From the repository root on the cluster:
+
 ```bash
-uv run python scripts/experiments/run_experiment.py --exp <dataset>/<config_name>
-```
-*(You may omit the directory prefix and `.yaml` extension if the configuration name is unique, e.g., `--exp trump_standard_baseline`)*.
+# Preview the FED batch without submitting jobs
+bash scripts/pipelines/slurm/queue_exp.sh -d fed --dry-run
 
-#### Examples:
+# Submit the FED batch
+bash scripts/pipelines/slurm/queue_exp.sh -d fed
+
+# Submit selected model categories across datasets, split by configuration and seed
+bash scripts/pipelines/slurm/queue_exp.sh -d gadarian,anes -m baseline,mv_spectral --split
+
+# Submit stemmed FED experiments
+bash scripts/pipelines/slurm/queue_exp.sh -d fed --stemmed
+```
+
+Use `--help` for selection and resource options. `--dry-run` previews submission;
+it does not train models.
+
+### Individual Experiments
+
+For an individual configuration, use `scripts/experiments/run_optimizer.py` directly.
+It supports both fixed configurations and parameter grids:
+
 ```bash
-# Run Trump standard baseline experiment
-uv run python scripts/experiments/run_experiment.py --exp trump/trump_standard_baseline
+uv run python scripts/experiments/run_optimizer.py --exp fed/fed_standard_mv_k_means
 
-# Run FED Multi-View K-Means experiment
-uv run python scripts/experiments/run_experiment.py --exp fed/fed_standard_mv_k_means
-
-# Fast dry-run with a single seed and subsample
-uv run python scripts/experiments/run_experiment.py --exp trump/trump_standard_baseline --sample 500 --single-seed
+# Sampled training run with one seed (executes training)
+uv run python scripts/experiments/run_optimizer.py --exp trump/trump_standard_baseline --sample 500 --single-seed
 ```
+
+You may omit the directory prefix and `.yaml` extension if the configuration name is unique.
 
 ### Representation Stop Words Removal (`--remove-rep-stopwords`)
 

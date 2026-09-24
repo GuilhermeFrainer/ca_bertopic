@@ -22,13 +22,13 @@ Using `sklearn.feature_extraction.text.CountVectorizer(stop_words="english")` as
 
 ### 1. Command-Line Interface (CLI)
 
-Both single-experiment and hyperparameter optimization scripts support the `--remove-rep-stopwords` flag:
+For experiment batches, use `scripts/pipelines/slurm/queue_exp.sh`; representation stop words are removed by default. The individual Python runner supports `--remove-rep-stopwords`:
 
 ```bash
-# Standard experiment
-uv run python scripts/experiments/run_experiment.py --exp yelp_standard_baseline --remove-rep-stopwords
+# Batch execution (representation stop words removed by default)
+bash scripts/pipelines/slurm/queue_exp.sh -d yelp
 
-# Hyperparameter optimization
+# Individual experiment
 uv run python scripts/experiments/run_optimizer.py --exp yelp/yelp_standard_baseline --remove-rep-stopwords
 ```
 
@@ -62,4 +62,4 @@ The SLURM queue orchestrator script [`scripts/pipelines/slurm/queue_exp.sh`](../
 
 - [`src/models.py`](../src/models.py): [`create_bertopic_instance`](../src/models.py) handles `remove_rep_stopwords` parameter and attaches `CountVectorizer(stop_words="english")`.
 - [`src/optimizer.py`](../src/optimizer.py): [`Optimizer`](../src/optimizer.py) forwards the representation stop words setting across hyperparameter trials.
-- [`scripts/experiments/run_experiment.py`](../scripts/experiments/run_experiment.py) & [`scripts/experiments/run_optimizer.py`](../scripts/experiments/run_optimizer.py): CLI options and argument parsing.
+- [`scripts/experiments/run_optimizer.py`](../scripts/experiments/run_optimizer.py): CLI options and argument parsing.

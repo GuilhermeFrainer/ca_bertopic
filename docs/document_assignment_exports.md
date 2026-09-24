@@ -1,8 +1,9 @@
 # Document assignment exports and focused FED reruns
 
-`scripts/experiments/run_experiment.py` and `run_optimizer.py` export complete final
+The primary batch entry point is `scripts/pipelines/slurm/queue_exp.sh`.
+Its Python experiment worker, `scripts/experiments/run_optimizer.py`, exports complete final
 assignments by default for BERTopic-backed models, TriTopic, and FastTriTopic.
-The `queue_exp.py` → `slurm_job.sh` → `run_optimizer.py` workflow uses this export
+The `queue_exp.sh` → `queue_exp.py` → `slurm_job.sh` → `run_optimizer.py` workflow uses this export
 automatically, including split jobs selected with `--model`. No model settings,
 embedding generation, probability computation, or text filtering policy changed.
 The loader's existing selected-text filter is recorded explicitly; this work does
@@ -59,9 +60,7 @@ all execution directories and their canonical references intact, including older
 executions no longer selected in merged metrics. Historical outputs remain readable
 but have no complete assignments; representative lists cannot backfill them.
 
-In `run_experiment.py`, `--no-assignment-export` disables assignment/topic export and records
-`export_status: disabled` in an execution manifest. Shared loader/training APIs
-remain backward compatible. The optimizer CLI passes the source-aligned prepared
+The optimizer CLI enables exports and passes the source-aligned prepared
 inputs to every grid/seed execution. Direct library callers of `Optimizer` must
 provide `prepared_data` to enable exports; legacy array-only calls issue a warning
 and keep their previous behavior because source identities cannot be reconstructed.
@@ -70,12 +69,15 @@ mapping and dominant-topic semantics; its runner is unchanged.
 
 ## Stage A: three full-corpus runs
 
-From the repository root, run these separately:
+For standard experiment batches, use `bash scripts/pipelines/slurm/queue_exp.sh -d fed`.
+The dedicated qualitative configs below are individual reruns; the standard batch
+selector does not select them. From the repository root, run these separately
+or use the explicit SLURM worker commands in the remote workflow below:
 
 ```bash
-uv run python scripts/experiments/run_experiment.py --exp fed/fed_qualitative_k50_mv_spectral --seed 36201624
-uv run python scripts/experiments/run_experiment.py --exp fed/fed_qualitative_k50_baseline --seed 36201624
-uv run python scripts/experiments/run_experiment.py --exp fed/fed_qualitative_k50_umap_spectral --seed 36201624
+uv run python scripts/experiments/run_optimizer.py --exp fed/fed_qualitative_k50_mv_spectral --seed 36201624
+uv run python scripts/experiments/run_optimizer.py --exp fed/fed_qualitative_k50_baseline --seed 36201624
+uv run python scripts/experiments/run_optimizer.py --exp fed/fed_qualitative_k50_umap_spectral --seed 36201624
 ```
 
 The [CAST2](../experiments/fed/fed_qualitative_k50_mv_spectral.yaml),
@@ -85,10 +87,9 @@ configs preserve their production model parameters and standard `clean_text` /
 `clean_text_embedding` inputs, changing only experiment names and requested K.
 Representation stopword removal remains enabled by default. No sampling is set.
 
-K is a scalar 50: the direct runner does not expand parameter grids. Human model
-IDs are `mv_spectral`, `baseline`, and `umap_spectral`; UUID plus manifest seed
-identify executions. Do not expect the optimizer's historical `_5_seed...` names.
-Separate executions avoid the combined-run baseline topic-count override.
+K is a scalar 50, so each config has one parameter combination. With an explicit
+`--seed`, optimizer model names are `<model>_1`; with all three configured seeds,
+they are `<model>_1_seed<seed>`. UUID plus manifest seed identify executions.
 
 ## Stage B: nine runs total, including Stage A
 
@@ -97,7 +98,7 @@ If Stage A is usable, run **six additional runs** (PowerShell):
 ```powershell
 foreach ($seed in 62613654,57116123) {
     foreach ($model in 'mv_spectral','baseline','umap_spectral') {
-        uv run python scripts/experiments/run_experiment.py --exp "fed/fed_qualitative_k50_$model" --seed $seed
+        uv run python scripts/experiments/run_optimizer.py --exp "fed/fed_qualitative_k50_$model" --seed $seed
     }
 }
 ```
@@ -107,7 +108,7 @@ Or Bash:
 ```bash
 for seed in 62613654 57116123; do
   for model in mv_spectral baseline umap_spectral; do
-    uv run python scripts/experiments/run_experiment.py --exp "fed/fed_qualitative_k50_$model" --seed "$seed"
+    uv run python scripts/experiments/run_optimizer.py --exp "fed/fed_qualitative_k50_$model" --seed "$seed"
   done
 done
 ```
@@ -118,7 +119,7 @@ runs. Do not also run Stage A separately unless deliberate repeats are intended.
 
 ## Remote SLURM workflow
 
-Your existing `queue_exp.py` commands now export assignments automatically. The
+Your existing `scripts/pipelines/slurm/queue_exp.sh` batch commands export assignments automatically. The
 queue dispatcher needs no new flag: its optimizer entry point enables export.
 Both ordinary grid jobs and split jobs retain their existing configuration/seed
 ordering and human-readable model IDs. Each execution additionally receives a UUID.

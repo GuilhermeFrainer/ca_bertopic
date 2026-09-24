@@ -247,45 +247,6 @@ def test_archive_preserves_execution_artifacts(tmp_path, prepared):
     assert inspect_run(run.path)["run_uid"] == run.uid
 
 
-def test_both_runner_branches_export(tmp_path, prepared, monkeypatch):
-    import logging
-
-    from scripts.experiments import run_experiment as runner
-    from src import evaluation
-
-    data, config = prepared
-    config["experiment"].update(name="fed_export_test", random_state=[42])
-    config["models"] = [{"id": "baseline", "is_baseline": True}, {"id": "mv_spectral"}]
-    monkeypatch.setattr(runner.utils, "load_config", lambda *args: config)
-    monkeypatch.setattr(
-        runner.logger_config,
-        "setup_logging",
-        lambda *args: logging.getLogger("pipeline"),
-    )
-    monkeypatch.setattr(
-        runner.models,
-        "create_topic_model_instance",
-        lambda *args, **kwargs: FittedModel(),
-    )
-    monkeypatch.setattr(evaluation, "bertopic_output_to_octis", lambda *args: {})
-    monkeypatch.setattr(runner.make_table, "generate_latex_table", lambda *args: "test")
-    for name in ("OUTPUT_DIR", "RESULTS_DIR", "LOG_DIR", "TABLES_DIR"):
-        path = tmp_path / name
-        path.mkdir()
-        monkeypatch.setattr(runner, name, path)
-    monkeypatch.setattr("sys.argv", ["run_experiment.py", "--exp", "test"])
-    runner.main()
-    manifests = list(
-        (tmp_path / "OUTPUT_DIR").glob("document_assignments/*/*/manifest.json")
-    )
-    assert len(manifests) == 2
-    payloads = [json.loads(p.read_text()) for p in manifests]
-    assert {p["model_id"] for p in payloads} == {"baseline", "mv_spectral"}
-    assert all(p["status"] == "success" for p in payloads)
-    metrics = pl.read_csv(next((tmp_path / "RESULTS_DIR").glob("*.csv")))
-    assert metrics["run_uid"].n_unique() == 2
-
-
 @pytest.mark.parametrize("name", ["baseline", "mv_spectral", "umap_spectral"])
 def test_real_smoke_fit(tmp_path, name):
     """Small synthetic fits, distinct from the full-corpus scientific reruns."""
@@ -474,7 +435,10 @@ def test_optimizer_retains_assignments_after_evaluation_failure(
     )
 
 
-def test_optimizer_cli_passes_prepared_inputs(tmp_path, prepared, monkeypatch):
+@pytest.mark.parametrize("model_id", ["baseline", "mv_spectral"])
+def test_optimizer_cli_passes_prepared_inputs(
+    tmp_path, prepared, monkeypatch, model_id
+):
     import logging
 
     from scripts.experiments import run_optimizer as runner
@@ -482,7 +446,7 @@ def test_optimizer_cli_passes_prepared_inputs(tmp_path, prepared, monkeypatch):
 
     _, config = prepared
     config["experiment"].update(name="fed_cli_export", random_state=[42, 43])
-    config["model"] = {"id": "baseline"}
+    config["model"] = {"id": model_id}
     monkeypatch.setattr(runner.utils, "load_config", lambda *args: config)
     monkeypatch.setattr(
         runner.logger_config,

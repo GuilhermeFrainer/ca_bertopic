@@ -16,7 +16,7 @@ The standard configurations specify three seeds:
 
 The requested topic grid is `10, 20, 30, 40, 50`. The [optimizer](../src/optimizer.py) expands these into 15 runs per model and dataset. A numeric suffix in a model name identifies a **configuration-combination index**, not necessarily the requested topic count. Matching must use the actual parameter or an unambiguous resolved grid mapping.
 
-The main entry points are [run_experiment.py](../scripts/experiments/run_experiment.py) and [run_optimizer.py](../scripts/experiments/run_optimizer.py). Models are constructed in [src/models.py](../src/models.py); fitting and evaluation occur in [src/training.py](../src/training.py).
+The primary batch entry point is [queue_exp.sh](../scripts/pipelines/slurm/queue_exp.sh). Python workers and individual configurations use [run_optimizer.py](../scripts/experiments/run_optimizer.py). Models are constructed in [src/models.py](../src/models.py); fitting and evaluation occur in [src/training.py](../src/training.py).
 
 ## Current result representation
 

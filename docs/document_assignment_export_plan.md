@@ -1,5 +1,9 @@
 # Implementation handoff: document assignments for qualitative CAST analysis
 
+> Historical planning document; implementation details may be superseded.
+> Start experiment batches with `scripts/pipelines/slurm/queue_exp.sh`;
+> use `scripts/experiments/run_optimizer.py` for individual Python configurations.
+
 ## Objective
 
 Implement persistent document-level outputs so that we can find and verify examples where textually similar documents share a text-only baseline topic but CAST separates them into substantively meaningful topics associated with different metadata contexts.
@@ -39,7 +43,6 @@ Inspect applicable repository instructions before editing. Relevant code as revi
 
 - `src/data.py::load_and_prep_data`: filters empty texts and optionally samples before selecting text, embeddings, and covariates. Returns three objects and currently discards source identifiers.
 - `src/training.py::train_and_evaluate`: BERTopic calls `fit_transform`, then evaluates and returns metrics plus the fitted model. TriTopic uses a different interface (`labels_` versus topic objects in `topics_`).
-- `scripts/experiments/run_experiment.py`: two training paths (baseline and remaining models); writes metrics CSV, qualitative topic JSON, and run manifests. Does not export all document assignments.
 - `src/utils.py::extract_qualitative_data`: saves topic-level counts, keywords, and representative texts, not full membership.
 - `src/run_provenance.py`: already records estimator/configuration/code/dependency provenance. Extend this machinery where appropriate.
 - `src/optimizer.py`: another caller of training and qualitative extraction; audit compatibility when changing shared interfaces.
@@ -117,7 +120,7 @@ Optional assignment strength:
    - no accidental scalar, ragged, null, or misaligned label arrays.
 5. Write artifacts atomically per successful fit, without waiting for the entire seed/configuration sweep to finish. Persist run status incrementally so a later failure does not orphan already exported assignments.
 6. Prefer retaining valid fit assignments even if metric evaluation subsequently fails. If refactoring training/evaluation to permit this, track `fit_status`, `evaluation_status`, and `export_status` explicitly; never label a partially failed run a complete success.
-7. Wire both baseline and remaining-model paths in `run_experiment.py`. An export failure must be visible in run status/logging, not silently ignored.
+7. Ensure optimizer executions retain assignment exports for baseline and other models. An export failure must be visible in run status/logging, not silently ignored.
 8. For the new runs, enable assignment export by default; a documented opt-out is acceptable. Record when deliberately disabled. Existing historical outputs remain readable and are explicitly missing these artifacts; do not guess/backfill assignments from representatives.
 9. Audit optimizer compatibility. Reuse the shared exporter for successful optimizer fits if feasible; otherwise explicitly document this as unsupported in the initial delivery rather than silently implying all entry points export assignments.
 

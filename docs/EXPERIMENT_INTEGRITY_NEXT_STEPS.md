@@ -1,5 +1,9 @@
 # Experiment Integrity Repair: Next Steps and Execution Guide
 
+> Historical planning document; implementation details may be superseded.
+> Start experiment batches with `scripts/pipelines/slurm/queue_exp.sh`;
+> use `scripts/experiments/run_optimizer.py` for individual Python configurations.
+
 **Date:** 2026-09-16  
 **Status:** In Progress (Stages 1 and 2 completed; Stage 3 in progress)  
 **Parent Plan:** [docs/experiment_integrity_repair_plan.md](docs/experiment_integrity_repair_plan.md)  
@@ -31,7 +35,7 @@ This document provides clear, actionable instructions for any agent or engineer 
   - Full documentation in [docs/bertopic_default_parameters_and_clustering_decisions.md](bertopic_default_parameters_and_clustering_decisions.md) and parity test suite in [tests/test_bertopic_defaults_parity.py](../tests/test_bertopic_defaults_parity.py).
 - **Stage 5 (Run Provenance & Metadata Recording): COMPLETED**
   - Implemented [src/run_provenance.py](../src/run_provenance.py) capturing 20 provenance attributes: `result_schema_version`, `campaign_id` (`"bertopic_defaults_v2"`), `run_status`, `dim_red_output_dim`, `dim_red_n_components`, `dim_red_n_neighbors`, `dim_red_metric`, `dim_red_min_dist`, `dim_red_low_memory`, `cluster_min_cluster_size`, `cluster_min_samples`, `cluster_metric`, `cluster_selection_method`, `cluster_prediction_data`, `normalize_text_view`, `resolved_config_hash`, `run_manifest_path`, `code_revision`, `code_dirty`, `dependency_lock_hash`.
-  - Integrated provenance collection and lightweight JSON run manifests into [src/optimizer.py](../src/optimizer.py) and [scripts/experiments/run_experiment.py](../scripts/experiments/run_experiment.py).
+  - Integrated provenance collection and lightweight JSON run manifests into [src/optimizer.py](../src/optimizer.py) and the now-removed legacy runner.
   - Enforced campaign isolation on resumption and diagonal merging in `Optimizer.save_results()`.
   - Protected table generators in [src/make_table.py](../src/make_table.py) so provenance columns are excluded from metric calculations.
   - Unit and integration tests in [tests/test_run_provenance.py](../tests/test_run_provenance.py).
@@ -104,7 +108,7 @@ Preserve full floating-point accuracy in CSV storage while retaining standard 3-
 #### Actionable Steps:
 1. **Remove CSV Float Truncation:**
    - In [src/optimizer.py](src/optimizer.py), remove `float_precision=3` from `Optimizer.save_results()` when calling `write_csv()`.
-   - Check all result writers in [src/training.py](src/training.py) and [scripts/experiments/run_experiment.py](scripts/experiments/run_experiment.py) to ensure unrounded `Float64` metrics are written.
+   - Check all result writers in [src/training.py](src/training.py) and [src/optimizer.py](../src/optimizer.py) to ensure unrounded `Float64` metrics are written.
 2. **Preserve Presentation Precision:**
    - Leave `float_format="%.3f"` in LaTeX exporters and `decimals=3` in Great Tables formatters unchanged in [src/make_table.py](src/make_table.py).
 

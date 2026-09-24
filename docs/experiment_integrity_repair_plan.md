@@ -1,5 +1,9 @@
 # Experiment integrity repair plan
 
+> Historical planning document; implementation details may be superseded.
+> Start experiment batches with `scripts/pipelines/slurm/queue_exp.sh`;
+> use `scripts/experiments/run_optimizer.py` for individual Python configurations.
+
 **Status: implementation handoff, not implemented.** Prepared on 2026-09-16 after a read-only inspection. The user requested a plan before reaching usage limits. This document covers existing experiments and runners; it does not depend on implementing the proposed pairwise-comparison framework.
 
 The baseline must use **BERTopic's defaults**, rather than the defaults of independently constructed UMAP/HDBSCAN objects. The user previously said they would fix baseline dimensionality. Coordinate that work with this plan and with the other agent integrating MV-HDBSCAN; inspect the current diff before editing shared files.
@@ -178,7 +182,7 @@ experiment.decimal_digits = 3
 
 Remove presentation precision from CSV serialization. Use Polars' full floating-point serialization without a fixed three-digit cap, and verify round-trip behavior for the installed version. Preserve Float64 metric values and avoid rounding before saving. “Full precision” means preserving the computed floating-point values, not inventing additional scientific accuracy.
 
-Keep `decimal_digits` available for display where appropriate; deprecate its storage meaning without silently breaking callers. `run_experiment.py`, STM result writers, and result merging already use uncapped `write_csv` in the inspected paths; audit all writers and intermediate rounding rather than assuming every CSV currently has the same defect.
+Keep `decimal_digits` available for display where appropriate; deprecate its storage meaning without silently breaking callers. The removed legacy runner, STM result writers, and result merging already used uncapped `write_csv` in the inspected paths; audit all writers and intermediate rounding rather than assuming every CSV currently has the same defect.
 
 Leave existing LaTeX/Great Tables formatting in place. For example, the general LaTeX exporter uses `float_format="%.3f"` and the Great Tables exporter uses `decimals=3`. Other exporters may have their own precision; preserve each formatter's existing policy. Perform statistical calculations on unrounded values and format only at presentation boundaries.
 

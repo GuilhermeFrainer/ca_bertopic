@@ -40,7 +40,7 @@ Because the configuration resolver uses the path relative to the `experiments/` 
 
 ```bash
 # Example: Run an archived optimization config
-python scripts/experiments/run_experiment.py --exp archive/trump/trump_opt_mv_spectral
+python scripts/experiments/run_optimizer.py --exp archive/trump/trump_opt_mv_spectral
 ```
 
 ## Verification
