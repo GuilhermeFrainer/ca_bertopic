@@ -9,6 +9,7 @@ import polars as pl
 
 SEEDS = (36201624, 62613654, 57116123)
 REQUESTED_TOPICS = (10, 20, 30, 40, 50)
+BENCHMARK_DATASETS = ("anes", "fed", "gadarian", "trump", "yelp")
 QUALITY_METRICS = ("c_v", "c_npmi", "u_mass", "irbo", "topic_diversity")
 INFERENTIAL_METRICS = (*QUALITY_METRICS, "duration_seconds", "outliers")
 METRIC_DIRECTIONS = {
@@ -150,11 +151,10 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
     inference_ids = {name for name, _ in inference_ablations}
 
     family_records = {metric: [] for metric in INFERENTIAL_METRICS}
-    family_blockers = {metric: 0 for metric in INFERENTIAL_METRICS}
     standard_seen = set()
     for ablation_id, entry in ablations:
         baseline_id = entry["baseline_id"]
-        datasets = sorted({key[1] for key in cells if key[0] in {ablation_id, baseline_id}})
+        datasets = BENCHMARK_DATASETS
         conditions = sorted({key[2] for key in cells if key[0] in {ablation_id, baseline_id}})
         for condition in conditions:
             if condition in {"standard", "remove_rep_stopwords"} and ablation_id in inference_ids:
@@ -216,8 +216,6 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
                 if failures:
                     status += "; " + ", ".join(sorted(set(failures)))
                 for metric, deltas in metric_diffs.items():
-                    if not deltas:
-                        continue
                     metric_status = status if len(deltas) == expected_count else f"incomplete metric: {len(deltas)}/{expected_count} valid values"
                     dataset_rows.append({
                         "Ablation": entry["label"], "Model ID": ablation_id,
@@ -225,9 +223,9 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
                         "Baseline ID": baseline_id, "Metric": metric,
                         "Direction": METRIC_DIRECTIONS[metric], "Dataset": dataset,
                         "Condition": condition,
-                        "Baseline score": sum(baseline_scores[metric]) / len(baseline_scores[metric]),
-                        "Ablation score": sum(variant_scores[metric]) / len(variant_scores[metric]),
-                        "Improvement delta": sum(deltas) / len(deltas),
+                        "Baseline score": sum(baseline_scores[metric]) / len(baseline_scores[metric]) if baseline_scores[metric] else None,
+                        "Ablation score": sum(variant_scores[metric]) / len(variant_scores[metric]) if variant_scores[metric] else None,
+                        "Improvement delta": sum(deltas) / len(deltas) if deltas else None,
                         "Matched cells": len(deltas), "Expected cells": expected_count,
                         "Coverage": f"{len(deltas)}/{expected_count}", "Status": metric_status,
                         "Provenance": "sample/config parity not fully verifiable from merged result rows",
@@ -242,9 +240,14 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
             if condition in {"standard", "remove_rep_stopwords"} and ablation_id in inference_ids:
                 for metric in INFERENTIAL_METRICS:
                     dataset_deltas = pair_dataset_deltas[metric]
-                    complete = len(dataset_deltas) == 5 and all(value is not None for value in dataset_deltas)
                     # Keep dataset-level deltas in rows above; inference is cross-dataset only.
                     flattened = [sum(values) / len(values) for values in dataset_deltas if values is not None]
+                    complete_datasets = [
+                        dataset for dataset, values in zip(datasets, dataset_deltas)
+                        if values is not None
+                    ]
+                    dataset_coverage = f"{len(complete_datasets)}/{len(BENCHMARK_DATASETS)}"
+                    complete = len(complete_datasets) >= 2
                     if complete:
                         (
                             p_value, statistic, nonzero, zero_count, tied_rank_groups,
@@ -256,6 +259,12 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
                             "Reference baseline": catalog[baseline_id]["label"],
                             "Baseline ID": baseline_id, "Metric": metric,
                             "Datasets": len(flattened),
+                            "Dataset coverage": dataset_coverage,
+                            "Included datasets": ", ".join(complete_datasets),
+                            "Missing/incomplete datasets": ", ".join(
+                                dataset for dataset in BENCHMARK_DATASETS
+                                if dataset not in complete_datasets
+                            ),
                             "Mean dataset delta": sum(flattened) / len(flattened),
                             "Median dataset delta": ordered[len(ordered)//2] if len(ordered) % 2 else (ordered[len(ordered)//2-1] + ordered[len(ordered)//2]) / 2,
                             "Wins": sum(value > 0 for value in flattened),
@@ -268,16 +277,25 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
                             "Rank-biserial effect": rank_biserial,
                             "Raw exact p": p_value,
                             "Holm adjusted p": None,
-                            "Inference status": "complete; multiplicity family pending completeness audit",
+                            "Inference status": (
+                                f"tested across {len(complete_datasets)} complete datasets"
+                                if len(complete_datasets) == len(BENCHMARK_DATASETS)
+                                else f"partial benchmark: tested across {len(complete_datasets)} complete datasets"
+                            ),
                         }
                         family_records[metric].append(summary)
                     else:
-                        family_blockers[metric] += 1
                         summary_rows.append({
                             "Ablation": entry["label"], "Model ID": ablation_id,
                             "Reference baseline": catalog[baseline_id]["label"],
                             "Baseline ID": baseline_id, "Metric": metric,
                             "Datasets": len(flattened),
+                            "Dataset coverage": dataset_coverage,
+                            "Included datasets": ", ".join(complete_datasets),
+                            "Missing/incomplete datasets": ", ".join(
+                                dataset for dataset in BENCHMARK_DATASETS
+                                if dataset not in complete_datasets
+                            ),
                             "Mean dataset delta": sum(flattened) / len(flattened) if flattened else None,
                             "Median dataset delta": None, "Wins": None, "Ties": None,
                             "Losses": None, "Signed-rank statistic": None,
@@ -285,7 +303,7 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
                             "Tied-rank groups": None, "Sign-flip assignments": None,
                             "Rank-biserial effect": None, "Raw exact p": None,
                             "Holm adjusted p": None,
-                            "Inference status": "blocked: requires five complete datasets × 15 matched cells",
+                            "Inference status": "descriptive only: fewer than two datasets have a complete 15-cell grid",
                         })
 
     # Keep catalog pairs with no standard-condition rows visible in the summary.
@@ -293,7 +311,6 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
         if ablation_id in standard_seen:
             continue
         for metric in INFERENTIAL_METRICS:
-            family_blockers[metric] += 1
             summary_rows.append({
                 "Ablation": entry["label"], "Model ID": ablation_id,
                 "Reference baseline": catalog[entry["baseline_id"]]["label"],
@@ -308,20 +325,17 @@ def compute_ablation_comparisons(df: pl.DataFrame, catalog: dict, summary_model_
                 "Inference status": "blocked: no standard-condition matched results found",
             })
 
-    # The registered family contains every catalog ablation for each metric. A missing
-    # primary contrast blocks adjusted inference for that metric instead of shrinking it.
+    # Correct over comparisons that can be tested; incomplete comparisons remain
+    # visible as blocked rows and do not prevent analysis of available datasets.
     for metric in INFERENTIAL_METRICS:
         records = family_records[metric]
-        if family_blockers[metric] or len(records) != len(inference_ablations):
-            blockers = family_blockers[metric] + max(0, len(inference_ablations) - len(records) - family_blockers[metric])
-            for record in records:
-                record["Inference status"] = f"raw exact test only; Holm family blocked by {blockers} incomplete catalog comparisons"
-                summary_rows.append(record)
-        else:
+        if records:
             adjusted = _holm([record["Raw exact p"] for record in records])
             for record, adjusted_p in zip(records, adjusted):
                 record["Holm adjusted p"] = adjusted_p
-                record["Inference status"] = "complete; Holm adjusted across all catalog ablations for this metric"
+                record["Inference status"] += (
+                    f"; Holm adjusted across {len(records)} estimable comparisons for this metric"
+                )
                 summary_rows.append(record)
     dataset_frame = (
         pl.DataFrame(dataset_rows, infer_schema_length=None)

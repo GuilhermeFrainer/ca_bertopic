@@ -749,18 +749,20 @@ def main():
             st.subheader("Cross-dataset comparison")
             st.markdown(
                 "Each row compares one ablation with its reference baseline across the "
-                "five datasets. Positive mean deltas favor the ablation for directional "
-                "metrics. The signed-rank test uses dataset-level averages."
+                "datasets that have complete matched grids. Positive mean deltas favor "
+                "the ablation for directional metrics. The signed-rank test uses one "
+                "dataset-level average per included dataset."
             )
             if pair_summary.is_empty():
                 st.info("No cross-dataset summaries are available for the selected model priority.")
             else:
                 st.dataframe(summary_display, hide_index=True, width="stretch")
                 st.caption(
-                    "Exact two-sided signed-rank p-values use the five datasets as units. "
-                    "Holm-adjusted p-values are withheld for a metric when any included "
-                    "ablation lacks its required complete grid. Incomplete comparisons "
-                    "are shown with a blocked status. The current dashboard correction "
+                    "Exact two-sided signed-rank p-values use dataset-level differences; "
+                    "at least two datasets must each have all 15 matched runs. The table "
+                    "shows included and missing/incomplete datasets for every test. Holm "
+                    "adjustment covers estimable comparisons within each metric; those "
+                    "tests can have different dataset counts. The current correction "
                     "family is all included ablations within each metric; confirm this "
                     "family definition before using adjusted values as final inference."
                 )
@@ -769,8 +771,9 @@ def main():
                 "Per-dataset details cover scores and improvement deltas for every available "
                 "quality or operational metric. Inference covers the five core topic "
                 "quality metrics plus duration and outlier count on the standard "
-                "(representation stopwords removed) condition. Each test requires all "
-                "15 seed × requested-count cells in each of the five datasets. Realized "
+                "(representation stopwords removed) condition. Each included dataset "
+                "requires all 15 seed × requested-count cells. At least two complete "
+                "datasets are needed for a cross-dataset test. Realized "
                 "topic count is shown as an outcome without a better/worse direction."
             )
             pair_condition_options = sorted(pair_datasets["Condition"].unique().to_list())
