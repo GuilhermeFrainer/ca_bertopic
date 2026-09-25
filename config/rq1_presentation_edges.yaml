@@ -18,6 +18,14 @@ edges:
     intended_change: Replace ordinary UMAP with aligned multi-view reduction.
     classification: architectural
     main_figure: true
+  - id: hdbscan_mv_hdbscan
+    reference_model: baseline
+    variant_model: mv_hdbscan
+    chain: HDBSCAN integration
+    label: Baseline → MV-HDBSCAN
+    intended_change: Replace single-view HDBSCAN with multi-view HDBSCAN after UMAP.
+    classification: architectural
+    main_figure: true
   - id: pca_mv_k_means
     reference_model: pca_k_means
     variant_model: pca_mv_k_means
@@ -35,18 +43,18 @@ edges:
     classification: architectural
     main_figure: true
   - id: spectral_mv_coreg
-    reference_model: mv_spectral
+    reference_model: umap_spectral
     variant_model: mv_co_reg_spectral
     chain: UMAP + spectral refinement
-    label: Multi-View Spectral → Co-Regularized Spectral
-    intended_change: Change the multi-view spectral formulation to co-regularized spectral clustering.
+    label: UMAP + Spectral → Multi-View Co-Regularized Spectral
+    intended_change: Compare co-regularized multi-view spectral clustering with UMAP + single-view spectral clustering.
     classification: architectural
     main_figure: true
   - id: spectral_mv_info0
-    reference_model: mv_spectral
+    reference_model: umap_spectral
     variant_model: mv_spectral_info0
     chain: UMAP + spectral refinement
-    label: Multi-View Spectral → Multi-View Spectral (info_view=0)
-    intended_change: Select the text-side spectral embedding after multi-view fitting.
+    label: UMAP + Spectral → Multi-View Spectral (info_view=0)
+    intended_change: Compare the info_view=0 multi-view spectral variant with UMAP + single-view spectral clustering.
     classification: strict_candidate
     main_figure: true

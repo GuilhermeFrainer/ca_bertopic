@@ -60,6 +60,7 @@ from src.model_catalog import (
     sort_catalog,
 )
 from src.comparisons.analysis import (
+    INFERENTIAL_METRICS,
     compute_ablation_comparisons,
     compute_registered_edge_comparisons,
     load_rq1_edges,
@@ -864,31 +865,33 @@ def main():
                 (row["Edge ID"], row["Metric"]): row
                 for row in edge_summary.to_dicts()
             }
+            metric_labels = {
+                "c_v": "C_v",
+                "c_npmi": "NPMI",
+                "u_mass": "UMass",
+                "irbo": "IRBO",
+                "topic_diversity": "Topic diversity",
+                "duration_seconds": "Duration (s)",
+                "outliers": "Outliers",
+            }
             for edge in main_edges:
-                c_npmi = edge_dataset_lookup.get((edge["id"], "c_npmi"), {})
-                irbo = edge_dataset_lookup.get((edge["id"], "irbo"), {})
-                c_npmi_set = c_npmi.get("Included datasets", "") or "none"
-                irbo_set = irbo.get("Included datasets", "") or "none"
-                main_table_rows.append({
+                row = {
                     "Chain": edge["chain"],
                     "Comparison": edge["label"],
                     "Intended change": edge["intended_change"],
                     "Type": edge["classification"].replace("_", " "),
-                    "Datasets used (NPMI / IRBO)": (
-                        f"{c_npmi.get('Dataset coverage', '0/5')} [{c_npmi_set}] / "
-                        f"{irbo.get('Dataset coverage', '0/5')} [{irbo_set}]"
-                    ),
-                    "Median Δ c_npmi": c_npmi.get("Median dataset delta"),
-                    "NPMI W/T/L": (
-                        f"{c_npmi.get('Wins')}/{c_npmi.get('Ties')}/{c_npmi.get('Losses')}"
-                        if c_npmi.get("Wins") is not None else "—"
-                    ),
-                    "Median Δ IRBO": irbo.get("Median dataset delta"),
-                    "IRBO W/T/L": (
-                        f"{irbo.get('Wins')}/{irbo.get('Ties')}/{irbo.get('Losses')}"
-                        if irbo.get("Wins") is not None else "—"
-                    ),
-                })
+                }
+                for metric in INFERENTIAL_METRICS:
+                    summary = edge_dataset_lookup.get((edge["id"], metric), {})
+                    label = metric_labels.get(metric, metric)
+                    row[f"Median Δ {label}"] = summary.get("Median dataset delta")
+                    wins, ties, losses = (
+                        summary.get("Wins"), summary.get("Ties"), summary.get("Losses")
+                    )
+                    row[f"{label} W/T/L"] = (
+                        f"{wins}/{ties}/{losses}" if wins is not None else "—"
+                    )
+                main_table_rows.append(row)
             st.subheader("Compact comparison table")
             st.dataframe(
                 pl.DataFrame(main_table_rows, infer_schema_length=None),
