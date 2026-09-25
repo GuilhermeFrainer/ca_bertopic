@@ -71,7 +71,8 @@ Examples:
         help=(
             "Comma-separated list of models or model categories to run. "
             "Categories: baseline, stm, spectral, kmeans, spherical, "
-            "pca, umap, tritopic. Default: all standard models."
+            "pca, umap, tritopic. Exact models include mv_hdbscan and "
+            "feature_stacking_hdbscan. Default: all standard models."
         ),
     )
 
